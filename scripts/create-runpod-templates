@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+python_bin="${PYTHON:-$(pwd)/venv/bin/python}"
+exec "$python_bin" -m comfyui_runpod_agentic.template_admin "$@"

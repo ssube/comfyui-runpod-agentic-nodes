@@ -167,6 +167,24 @@ COMFYUI_E2E_PORT=18200 scripts/e2e-comfy-cpu
 
 In restricted sandboxes, the server phase may need permission to bind a localhost port.
 
+## Creating Runpod Templates
+
+Template creation is scripted and repeatable:
+
+```bash
+scripts/create-runpod-templates \
+  --spec defaults/runpod_templates.bootstrap.json \
+  --map defaults/runpod_template_ids.json
+```
+
+The script reads `RUNPOD_API_KEY` from the environment or `.env.d/runpod.env`, calls Runpod's GraphQL `saveTemplate` mutation, and persists template IDs into the JSON map. If a template key already exists in the map, the saved ID is sent back to Runpod so the template is updated instead of creating a new one.
+
+Preview sanitized inputs without calling Runpod:
+
+```bash
+scripts/create-runpod-templates --dry-run
+```
+
 ## Security Notes
 
 - `RUNPOD_API_KEY` is read server-side only.

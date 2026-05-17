@@ -11,6 +11,16 @@ def test_runpod_client_loads_token_from_env(monkeypatch):
     assert RunpodClient().api_key == "rp_test_token"
 
 
+def test_runpod_client_loads_token_from_env_file(monkeypatch, tmp_path):
+    env_file = tmp_path / "runpod.env"
+    env_file.write_text("export RUNPOD_API_KEY='rp_file_token'\n")
+    monkeypatch.delenv("RUNPOD_API_KEY", raising=False)
+    monkeypatch.setenv("RUNPOD_ENV_FILE", str(env_file))
+
+    assert get_runpod_api_key() == "rp_file_token"
+    assert RunpodClient().api_key == "rp_file_token"
+
+
 def test_collect_run_logs_reads_command_log_files(tmp_path):
     store = StateStore(tmp_path / "state.sqlite")
     stdout = tmp_path / "stdout.log"

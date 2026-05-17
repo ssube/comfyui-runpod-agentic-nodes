@@ -10,6 +10,9 @@ dist/
 *.egg-info/
 .coverage
 htmlcov/
+.env
+.env.*
+.env.d/
 user/
 logs/
 state.sqlite

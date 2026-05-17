@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -22,6 +23,7 @@ class RunpodClientProtocol(Protocol):
     def stop_pod(self, pod_id: str) -> dict[str, Any]: ...
     def resume_pod(self, pod_id: str) -> dict[str, Any]: ...
     def terminate_pod(self, pod_id: str) -> None: ...
+    def save_template(self, input: dict[str, Any]) -> dict[str, Any]: ...
 
 
 @dataclass
@@ -69,14 +71,32 @@ class RunpodClient:
         mutation = "mutation Terminate($input: PodTerminateInput!) { podTerminate(input: $input) }"
         self._graphql(mutation, {"input": {"podId": pod_id}})
 
+    def save_template(self, input: dict[str, Any]) -> dict[str, Any]:
+        mutation = """
+        mutation SaveTemplate($input: SaveTemplateInput!) {
+          saveTemplate(input: $input) {
+            id
+            name
+            imageName
+            containerDiskInGb
+            volumeInGb
+            volumeMountPath
+            dockerArgs
+            ports
+            env { key value }
+          }
+        }
+        """
+        return self._graphql(mutation, {"input": clean_none(input)})["saveTemplate"]
+
     def _graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
             raise RunpodClientError("RUNPOD_API_KEY is required for Runpod API calls.")
         body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
         request = urllib.request.Request(
-            self.endpoint,
+            endpoint_with_api_key(self.endpoint, self.api_key),
             data=body,
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+            headers={"Content-Type": "application/json"},
             method="POST",
         )
         try:
@@ -95,3 +115,11 @@ def clean_none(value: Any) -> Any:
     if isinstance(value, list):
         return [clean_none(item) for item in value]
     return value
+
+
+def endpoint_with_api_key(endpoint: str, api_key: str) -> str:
+    parsed = urllib.parse.urlparse(endpoint)
+    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    query = [(key, value) for key, value in query if key != "api_key"]
+    query.append(("api_key", api_key))
+    return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(query)))
