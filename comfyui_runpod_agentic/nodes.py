@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from .planner import Planner
+from .runner import default_state_path
 from .specs import (
     AgentSpec,
     BrowserSpec,
@@ -381,6 +383,61 @@ class RunpodRunNode:
         return (json.dumps(plan.to_dict(), indent=2, sort_keys=True),)
 
 
+class RunpodLogsNode:
+    CATEGORY = "Runpod/Core"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("logs", "saved_path")
+    FUNCTION = "collect"
+    OUTPUT_NODE = True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "run_id": ("STRING", {"default": ""}),
+                "stream": (["both", "stdout", "stderr"],),
+                "max_chars": ("INT", {"default": 20000, "min": 1000}),
+                "save_copy": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    def collect(self, run_id: str, stream: str = "both", max_chars: int = 20000, save_copy: bool = True):
+        from .state_store import StateStore
+
+        store = StateStore(default_state_path())
+        text = collect_run_logs(store, run_id, stream=stream, max_chars=int(max_chars))
+        saved_path = ""
+        if save_copy and run_id:
+            out_dir = store.path.parent / "logs" / run_id
+            out_dir.mkdir(parents=True, exist_ok=True)
+            saved = out_dir / f"collected-{stream}.log"
+            saved.write_text(text)
+            saved_path = str(saved)
+        return (text, saved_path)
+
+
+def collect_run_logs(store, run_id: str, *, stream: str, max_chars: int) -> str:
+    if not run_id:
+        return ""
+    commands = store.list_commands(run_id)
+    chunks: list[str] = []
+    for command in commands:
+        paths = []
+        if stream in {"both", "stdout"} and command.get("stdout_path"):
+            paths.append(("stdout", Path(command["stdout_path"])))
+        if stream in {"both", "stderr"} and command.get("stderr_path"):
+            paths.append(("stderr", Path(command["stderr_path"])))
+        for label, path in paths:
+            if not path.exists():
+                continue
+            chunks.append(f"===== {command['phase']} #{command['order_index']} {label} ({path}) =====")
+            chunks.append(path.read_text(errors="replace"))
+    text = "\n".join(chunks)
+    if len(text) > max_chars:
+        return text[-max_chars:]
+    return text
+
+
 NODE_CLASSES = [
     RunpodAgentNode,
     RunpodBrowserNode,
@@ -394,4 +451,5 @@ NODE_CLASSES = [
     RunpodKeepAliveNode,
     RunpodPodNode,
     RunpodRunNode,
+    RunpodLogsNode,
 ]

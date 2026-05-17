@@ -4,6 +4,7 @@ from .nodes import (
     RunpodKeepAliveNode,
     RunpodLLMApiNode,
     RunpodLLMServerNode,
+    RunpodLogsNode,
     RunpodNetworkStorageNode,
     RunpodPodNode,
     RunpodRunNode,
@@ -26,6 +27,7 @@ NODE_CLASS_MAPPINGS = {
     "RunpodKeepAlive": RunpodKeepAliveNode,
     "RunpodPod": RunpodPodNode,
     "RunpodRun": RunpodRunNode,
+    "RunpodLogs": RunpodLogsNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -41,6 +43,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RunpodKeepAlive": "Keep Alive",
     "RunpodPod": "Pod",
     "RunpodRun": "Runpod Run",
+    "RunpodLogs": "Runpod Logs",
 }
 
 WEB_DIRECTORY = "./web"

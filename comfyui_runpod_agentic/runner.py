@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from .planner import DeploymentPlan, Planner
 from .runpod_client import RunpodClient, RunpodClientProtocol
-from .specs import DeploymentSpec, to_plain
+from .runtime_contracts import with_env
+from .specs import DeploymentSpec, RuntimeContract, to_plain
 from .ssh_client import SSHClientProtocol, SubprocessSSHClient, extract_ssh_endpoint
 from .state_store import StateStore
 from .validation import validate_deployment
@@ -38,6 +39,7 @@ class RunpodRunner:
     def run(self, deployment: DeploymentSpec, *, mode: str, prompt: Any = None, on_error: str = "stop_created") -> dict[str, Any]:
         validate_deployment(deployment, mode=mode, require_api_key=True)
         plan = self.planner.build(deployment, mode=mode, prompt=prompt)
+        self.reconcile_managed_pods(plan.run_id)
         self.state_store.record_run(plan.run_id, plan.workflow_hash, plan.deployment_hash, mode, "started")
         try:
             if mode in {"stop", "terminate", "destroy"}:
@@ -54,24 +56,42 @@ class RunpodRunner:
 
     def _apply(self, plan: DeploymentPlan, *, wait: bool) -> dict[str, Any]:
         created: dict[str, dict[str, Any]] = {}
+        resource_ids: dict[str, str] = {}
         for resource in plan.resources:
             pod = self.runpod_client.create_or_deploy_pod(resource.pod_input)
             created[resource.name] = pod
             resource_id = self.state_store.record_resource(plan.run_id, resource, pod, status=pod.get("desiredStatus", "created"))
+            resource_ids[resource.name] = resource_id
             self.state_store.add_event(plan.run_id, "pod_created", resource.name, resource_id=resource_id, payload={"pod_id": pod.get("id")})
 
         agent = next(resource for resource in plan.resources if resource.role == "agent")
+        resolved_contract = resolve_dependency_endpoints(plan, created)
+        plan = replace(plan, runtime_contract=resolved_contract)
         agent_pod = created[agent.name]
         host, port = extract_ssh_endpoint(agent_pod)
-        self._run_agent_ssh_steps(plan, host, port)
+        self._run_agent_ssh_steps(plan, host, port, resource_ids.get(agent.name))
         status = "waiting" if wait else "launched"
         return {"run_id": plan.run_id, "status": status, "pods": {name: pod.get("id") for name, pod in created.items()}, "plan": plan.to_dict()}
 
-    def _run_agent_ssh_steps(self, plan: DeploymentPlan, host: str, port: int) -> None:
+    def _run_agent_ssh_steps(self, plan: DeploymentPlan, host: str, port: int, resource_id: str | None) -> None:
         commands = [action for action in plan.actions if action.action == "RUN_SSH_COMMAND"]
         for action in commands:
             command = action.detail["command"]
+            log_paths = self._command_log_paths(plan.run_id, action.detail)
+            command_id = self.state_store.start_command(
+                plan.run_id,
+                resource_id,
+                action.detail["phase"],
+                int(action.detail["order"]),
+                action.detail.get("command_hash") or stable_command_hash(command),
+                str(log_paths["stdout"]),
+                str(log_paths["stderr"]),
+            )
             result = self.ssh_client.run(host, port, command)
+            log_paths["stdout"].write_text(result.stdout)
+            log_paths["stderr"].write_text(result.stderr)
+            status = "completed" if result.exit_code == 0 else "failed"
+            self.state_store.finish_command(command_id, status, result.exit_code)
             self.state_store.add_event(plan.run_id, "ssh_command", command, payload={"exit_code": result.exit_code})
             if result.exit_code != 0 and action.detail.get("failure_policy") == "fail":
                 raise RuntimeError(f"SSH command failed with exit code {result.exit_code}: {command}")
@@ -92,6 +112,12 @@ class RunpodRunner:
         self.ssh_client.write_file(host, port, f"{base}/session.env", session_env)
         self.ssh_client.write_file(host, port, f"{base}/commands.json", json.dumps(commands, indent=2, sort_keys=True))
         self.state_store.add_event(plan.run_id, "runtime_config_written", base)
+
+    def _command_log_paths(self, run_id: str, detail: dict[str, Any]) -> dict[str, Path]:
+        base = self.state_store.path.parent / "logs" / run_id
+        base.mkdir(parents=True, exist_ok=True)
+        prefix = f"{int(detail['order']):04d}-{detail['phase']}-{stable_command_hash(detail['command'])[:12]}"
+        return {"stdout": base / f"{prefix}.stdout.log", "stderr": base / f"{prefix}.stderr.log"}
 
     def _launch_command(self, plan: DeploymentPlan) -> str:
         agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
@@ -122,6 +148,61 @@ class RunpodRunner:
             else:
                 self.runpod_client.stop_pod(resource["runpod_pod_id"])
 
+    def reconcile_managed_pods(self, run_id: str | None = None) -> list[dict[str, Any]]:
+        pods = [pod for pod in self.runpod_client.list_pods() if str(pod.get("name", "")).startswith("crag-")]
+        for pod in pods:
+            self.state_store.record_remote_resource(pod, run_id=run_id)
+        return pods
+
 
 def shell_env(value: str) -> str:
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
+
+
+def stable_command_hash(command: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(command.encode("utf-8")).hexdigest()
+
+
+def resolve_dependency_endpoints(plan: DeploymentPlan, pods: dict[str, dict[str, Any]]) -> RuntimeContract:
+    env = dict(plan.runtime_contract.env.values)
+    for resource in plan.resources:
+        if resource.role == "agent":
+            continue
+        endpoint = public_http_endpoint(pods.get(resource.name, {}))
+        if not endpoint:
+            continue
+        if resource.role == "browser":
+            replace_prefix(env, "crag://browser/playwright", endpoint)
+            replace_prefix(env, "crag://browser/neko", endpoint)
+        elif resource.role == "llm":
+            replace_prefix(env, "crag://llm/ollama", endpoint)
+            replace_prefix(env, "crag://llm/vllm", endpoint)
+        elif resource.role == "sql":
+            replace_prefix(env, "crag://sql/postgres", endpoint)
+            replace_prefix(env, "crag://sql/mysql", endpoint)
+        elif resource.role == "vector":
+            replace_prefix(env, "crag://vector/chroma", endpoint)
+            replace_prefix(env, "crag://vector/qdrant", endpoint)
+    return with_env(plan.runtime_contract, env)
+
+
+def replace_prefix(env: dict[str, str], placeholder: str, endpoint: str) -> None:
+    for key, value in list(env.items()):
+        if value.startswith(placeholder):
+            env[key] = endpoint + value.removeprefix(placeholder)
+
+
+def public_http_endpoint(pod: dict[str, Any]) -> str | None:
+    ports = ((pod.get("runtime") or {}).get("ports") or pod.get("ports") or [])
+    for port in ports:
+        private = port.get("privatePort") or port.get("containerPort") or port.get("container_port")
+        if int(private or 0) == 22:
+            continue
+        public = port.get("publicPort") or port.get("public_port")
+        host = port.get("ip") or port.get("host") or port.get("hostname")
+        if host and public:
+            scheme = "https" if str(port.get("type") or port.get("protocol")).lower() == "https" else "http"
+            return f"{scheme}://{host}:{int(public)}"
+    return None

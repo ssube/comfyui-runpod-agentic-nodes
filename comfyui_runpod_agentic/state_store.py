@@ -134,6 +134,57 @@ class StateStore:
             )
         return resource_id
 
+    def record_remote_resource(self, pod: dict[str, Any], *, run_id: str | None = None) -> str:
+        name = str(pod.get("name") or "")
+        parsed = parse_managed_name(name)
+        resource_id = pod.get("id") or name
+        now = utc_now()
+        cost = pod.get("adjustedCostPerHr") or pod.get("costPerHr")
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO resources (id, run_id, node_id, role, desired_hash, runpod_pod_id, runpod_template_id, name, status, cost_per_hr, created_at, last_seen_at, stop_after, terminate_after)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET runpod_pod_id=excluded.runpod_pod_id, status=excluded.status, cost_per_hr=excluded.cost_per_hr, last_seen_at=excluded.last_seen_at
+                """,
+                (
+                    resource_id,
+                    run_id or pod_env(pod).get("CRAG_RUN_ID"),
+                    pod_env(pod).get("CRAG_NODE_ID") or parsed.get("node_id"),
+                    pod_env(pod).get("CRAG_ROLE") or parsed.get("role"),
+                    pod_env(pod).get("CRAG_DESIRED_HASH") or parsed.get("desired_hash"),
+                    pod.get("id"),
+                    pod.get("templateId") or pod.get("template_id"),
+                    name,
+                    pod.get("desiredStatus") or pod.get("status"),
+                    cost,
+                    now,
+                    now,
+                    None,
+                    None,
+                ),
+            )
+        return str(resource_id)
+
+    def start_command(self, run_id: str, resource_id: str | None, phase: str, order_index: int, command_hash: str, stdout_path: str, stderr_path: str) -> str:
+        command_id = uuid.uuid4().hex
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO commands (id, run_id, resource_id, phase, order_index, command_hash, status, started_at, stdout_path, stderr_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (command_id, run_id, resource_id, phase, order_index, command_hash, "running", utc_now(), stdout_path, stderr_path),
+            )
+        return command_id
+
+    def finish_command(self, command_id: str, status: str, exit_code: int) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE commands SET status = ?, finished_at = ?, exit_code = ? WHERE id = ?",
+                (status, utc_now(), exit_code, command_id),
+            )
+
     def add_event(self, run_id: str, event_type: str, message: str, *, resource_id: str | None = None, payload: dict[str, Any] | None = None) -> None:
         with self.connect() as conn:
             conn.execute(
@@ -170,6 +221,37 @@ class StateStore:
         with self.connect() as conn:
             return [dict(row) for row in conn.execute("SELECT * FROM resources ORDER BY created_at DESC").fetchall()]
 
+    def list_commands(self, run_id: str | None = None) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            if run_id:
+                rows = conn.execute("SELECT * FROM commands WHERE run_id = ? ORDER BY started_at", (run_id,)).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM commands ORDER BY started_at DESC").fetchall()
+            return [dict(row) for row in rows]
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def pod_env(pod: dict[str, Any]) -> dict[str, str]:
+    env = pod.get("env") or pod.get("machine", {}).get("env") or []
+    if isinstance(env, dict):
+        return {str(key): str(value) for key, value in env.items()}
+    if isinstance(env, list):
+        values: dict[str, str] = {}
+        for item in env:
+            if isinstance(item, dict):
+                key = item.get("key") or item.get("name")
+                value = item.get("value")
+                if key and value is not None:
+                    values[str(key)] = str(value)
+        return values
+    return {}
+
+
+def parse_managed_name(name: str) -> dict[str, str]:
+    parts = name.split("-")
+    if len(parts) < 5 or parts[0] != "crag":
+        return {}
+    return {"workflow_hash": parts[1], "role": parts[2], "node_id": parts[3], "desired_hash": parts[4]}

@@ -15,3 +15,21 @@ def test_state_store_records_run_resource_event_and_counter(tmp_path):
     assert store.get_run("run1")["status"] == "started"
     assert store.list_resources()[0]["runpod_pod_id"] == "pod1"
     assert value == 1
+
+
+def test_state_store_recovers_remote_managed_pod(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite")
+
+    resource_id = store.record_remote_resource(
+        {
+            "id": "pod1",
+            "name": "crag-workflow-sql-node-deadbeef",
+            "desiredStatus": "RUNNING",
+            "env": {"CRAG_RUN_ID": "run1", "CRAG_ROLE": "sql", "CRAG_DESIRED_HASH": "deadbeef"},
+        }
+    )
+
+    row = store.list_resources()[0]
+    assert resource_id == "pod1"
+    assert row["run_id"] == "run1"
+    assert row["role"] == "sql"

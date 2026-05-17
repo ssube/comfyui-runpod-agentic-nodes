@@ -18,7 +18,7 @@ class FakeRunpodClient:
         return {"id": pod_id}
 
     def list_pods(self):
-        return []
+        return [{"id": "orphan", "name": "crag-workflow-agent-node-deadbeef", "desiredStatus": "RUNNING"}]
 
     def stop_pod(self, pod_id):
         self.stopped.append(pod_id)
@@ -57,3 +57,5 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
     assert result["status"] == "launched"
     assert len(runpod.created) == 1
     assert any(Path(path).name == "session.env" for path in ssh.files)
+    assert any(resource["runpod_pod_id"] == "orphan" for resource in runner.state_store.list_resources())
+    assert runner.state_store.list_commands(result["run_id"]) == []

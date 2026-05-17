@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Protocol
+
+from .config import get_runpod_api_key
 
 RUNPOD_GRAPHQL_URL = "https://api.runpod.io/graphql"
 
@@ -31,7 +32,7 @@ class RunpodClient:
 
     def __post_init__(self) -> None:
         if self.api_key is None:
-            self.api_key = os.environ.get("RUNPOD_API_KEY")
+            self.api_key = get_runpod_api_key()
 
     def create_or_deploy_pod(self, input: dict[str, Any]) -> dict[str, Any]:
         mutation = """

@@ -1,0 +1,35 @@
+from comfyui_runpod_agentic.config import get_runpod_api_key
+from comfyui_runpod_agentic.nodes import RunpodLogsNode, collect_run_logs
+from comfyui_runpod_agentic.runpod_client import RunpodClient
+from comfyui_runpod_agentic.state_store import StateStore
+
+
+def test_runpod_client_loads_token_from_env(monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "rp_test_token")
+
+    assert get_runpod_api_key() == "rp_test_token"
+    assert RunpodClient().api_key == "rp_test_token"
+
+
+def test_collect_run_logs_reads_command_log_files(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite")
+    stdout = tmp_path / "stdout.log"
+    stderr = tmp_path / "stderr.log"
+    stdout.write_text("hello\n")
+    stderr.write_text("warning\n")
+    command_id = store.start_command("run1", "resource1", "before_start", 1, "hash", str(stdout), str(stderr))
+    store.finish_command(command_id, "completed", 0)
+
+    text = collect_run_logs(store, "run1", stream="both", max_chars=20000)
+
+    assert "hello" in text
+    assert "warning" in text
+
+
+def test_logs_node_returns_empty_for_missing_run(monkeypatch, tmp_path):
+    monkeypatch.setenv("COMFYUI_USER_DIR", str(tmp_path))
+
+    logs, saved_path = RunpodLogsNode().collect("missing", "stdout", 20000, False)
+
+    assert logs == ""
+    assert saved_path == ""

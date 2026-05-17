@@ -46,6 +46,8 @@ Set the Runpod API key in the ComfyUI server environment. Do not put it in workf
 export RUNPOD_API_KEY=...
 ```
 
+The Runpod token is read only by the server-side API client. It is not exposed as a node input and should not appear in workflow JSON.
+
 Copy and adapt the examples:
 
 ```text
@@ -68,6 +70,7 @@ Core:
 - `Pod`: creates a deployment spec around the primary agent.
 - `Runpod Run`: plan/apply/stop/terminate/destroy output node.
 - `Keep Alive`: time, turns, cost, or manual policy.
+- `Runpod Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
 
 Apps and services:
 
@@ -152,7 +155,7 @@ To verify the nodes load inside a real ComfyUI process in CPU-only mode:
 scripts/e2e-comfy-cpu
 ```
 
-The script creates a temporary ComfyUI base directory, links this repo into `custom_nodes`, runs ComfyUI's quick custom-node load path, starts a CPU-only server, and checks `/object_info` for all 12 Runpod nodes.
+The script creates a temporary ComfyUI base directory, links this repo into `custom_nodes`, runs ComfyUI's quick custom-node load path, starts a CPU-only server, and checks `/object_info` for all Runpod nodes.
 
 Useful options:
 

@@ -7,3 +7,4 @@ Items that need real Runpod template details, credentials, or runtime image deci
 - Define real template IDs for `rp-agent-*`, `rp-browser-*`, `rp-llm-*`, `rp-db-*`, and `rp-vector-*`.
 - Add live integration tests behind `RUNPOD_API_KEY` and a test template ID.
 - Add richer readiness probes for HTTP services after template endpoint shapes are finalized.
+- Add direct remote pod log streaming if Runpod exposes a stable logs API for pods; current log collection reads local command logs captured by `Runpod Run`.
