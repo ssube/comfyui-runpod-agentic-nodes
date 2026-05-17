@@ -144,6 +144,26 @@ scripts/test
 
 The test suite does not require Runpod credentials. API and SSH behavior are covered through injected fakes and focused helper tests.
 
+## ComfyUI E2E Smoke Test
+
+To verify the nodes load inside a real ComfyUI process in CPU-only mode:
+
+```bash
+scripts/e2e-comfy-cpu
+```
+
+The script creates a temporary ComfyUI base directory, links this repo into `custom_nodes`, runs ComfyUI's quick custom-node load path, starts a CPU-only server, and checks `/object_info` for all 12 Runpod nodes.
+
+Useful options:
+
+```bash
+COMFYUI_E2E_DIR=/path/to/ComfyUI scripts/e2e-comfy-cpu --skip-clone
+COMFYUI_E2E_INSTALL_DEPS=1 scripts/e2e-comfy-cpu
+COMFYUI_E2E_PORT=18200 scripts/e2e-comfy-cpu
+```
+
+In restricted sandboxes, the server phase may need permission to bind a localhost port.
+
 ## Security Notes
 
 - `RUNPOD_API_KEY` is read server-side only.
