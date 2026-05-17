@@ -35,8 +35,19 @@ class SubprocessSSHClient:
         self.config = config or SSHConfig()
 
     def run(self, host: str, port: int, command: str, *, timeout_seconds: int | None = None) -> CommandResult:
-        args = self._base_args(host, port, allocate_tty=is_runpod_proxy_host(host)) + [command]
-        proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout_seconds or self.config.command_timeout_seconds, check=False)
+        if is_runpod_proxy_host(host):
+            args = self._base_args(host, port, allocate_tty=True)
+            proc = subprocess.run(
+                args,
+                input=f"{command}\nexit\n",
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds or self.config.command_timeout_seconds,
+                check=False,
+            )
+        else:
+            args = self._base_args(host, port) + [command]
+            proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout_seconds or self.config.command_timeout_seconds, check=False)
         return normalize_ssh_result(CommandResult(proc.returncode, proc.stdout, proc.stderr))
 
     def write_file(self, host: str, port: int, path: str, content: str) -> None:
@@ -44,8 +55,14 @@ class SubprocessSSHClient:
         result = self.run(host, port, mkdir)
         if result.exit_code != 0:
             raise SSHError(result.stderr)
-        args = self._base_args(host, port, allocate_tty=is_runpod_proxy_host(host)) + [f"cat > {shell_quote(path)}"]
-        proc = subprocess.run(args, input=content, capture_output=True, text=True, timeout=self.config.command_timeout_seconds, check=False)
+        if is_runpod_proxy_host(host):
+            marker = "__CRAG_FILE_CONTENT__"
+            script = f"cat > {shell_quote(path)} <<'{marker}'\n{content}\n{marker}\nexit\n"
+            args = self._base_args(host, port, allocate_tty=True)
+            proc = subprocess.run(args, input=script, capture_output=True, text=True, timeout=self.config.command_timeout_seconds, check=False)
+        else:
+            args = self._base_args(host, port) + [f"cat > {shell_quote(path)}"]
+            proc = subprocess.run(args, input=content, capture_output=True, text=True, timeout=self.config.command_timeout_seconds, check=False)
         result = normalize_ssh_result(CommandResult(proc.returncode, proc.stdout, proc.stderr))
         if result.exit_code != 0:
             raise SSHError(result.stderr or result.stdout)
@@ -102,4 +119,6 @@ def normalize_ssh_result(result: CommandResult) -> CommandResult:
     combined = result.stdout + result.stderr
     if "Your SSH client doesn't support PTY" in combined:
         return CommandResult(255, result.stdout, result.stderr or "Runpod proxy SSH requires PTY allocation.")
+    if "container not found" in combined.lower():
+        return CommandResult(255, result.stdout, result.stderr or "Runpod proxy SSH did not attach to the container.")
     return result

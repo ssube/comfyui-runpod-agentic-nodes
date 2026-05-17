@@ -83,6 +83,8 @@ class TemplateResolver:
 def load_template_id_map(path: str | Path = "defaults/runpod_template_ids.json") -> dict[str, str]:
     candidate = Path(path)
     if not candidate.exists():
+        candidate = Path(__file__).resolve().parents[1] / path
+    if not candidate.exists():
         return {}
     data = json.loads(candidate.read_text())
     if not isinstance(data, dict):

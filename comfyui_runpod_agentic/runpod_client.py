@@ -106,10 +106,16 @@ class RunpodClient:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            detail = f"{exc.code} {exc.reason}"
+            if body:
+                detail = f"{detail}: {body}"
+            raise RunpodClientError(f"Runpod API request failed: {detail}") from exc
         except urllib.error.URLError as exc:
             raise RunpodClientError(f"Runpod API request failed: {exc}") from exc
         if payload.get("errors"):
-            raise RunpodClientError(json.dumps(payload["errors"], sort_keys=True))
+            raise RunpodClientError(format_graphql_errors(payload["errors"]))
         return payload.get("data") or {}
 
 
@@ -140,3 +146,12 @@ def endpoint_with_api_key(endpoint: str, api_key: str) -> str:
     query = [(key, value) for key, value in query if key != "api_key"]
     query.append(("api_key", api_key))
     return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(query)))
+
+
+def format_graphql_errors(errors: list[dict[str, Any]]) -> str:
+    details = []
+    for error in errors:
+        path = ".".join(str(part) for part in error.get("path", [])) or "<unknown>"
+        code = (error.get("extensions") or {}).get("code") or "UNKNOWN"
+        details.append({"code": code, "message": error.get("message", ""), "path": path})
+    return json.dumps(details, sort_keys=True)

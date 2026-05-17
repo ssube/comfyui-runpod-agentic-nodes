@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
+import shlex
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 try:
@@ -80,6 +83,7 @@ class Planner:
 
         for role, spec in self._own_pod_dependencies(deployment):
             selection = self.template_resolver.resolve_app(spec.kind, spec.engine)
+            pod_contract = dependency_pod_contract(role, spec.runtime_contract)
             desired_hash = stable_hash(to_plain(spec))[:12]
             name = managed_name(workflow_hash, role, spec.meta.node_id, desired_hash)
             resources.append(
@@ -90,10 +94,10 @@ class Planner:
                     name=name,
                     template_id=selection.template_id,
                     materialization=spec.materialization,
-                    env=contract_env_for_creation(spec.runtime_contract),
-                    secrets=spec.runtime_contract.env.secrets,
-                    ports=[to_plain(port) for port in spec.runtime_contract.ports],
-                    pod_input=self._pod_input(deployment, selection.template_id, name, role, spec.meta.node_id, desired_hash, spec.runtime_contract),
+                    env=contract_env_for_creation(pod_contract),
+                    secrets=pod_contract.env.secrets,
+                    ports=[to_plain(port) for port in pod_contract.ports],
+                    pod_input=self._pod_input(deployment, selection.template_id, name, role, spec.meta.node_id, desired_hash, pod_contract),
                 )
             )
             dependency_contracts.append(spec.runtime_contract)
@@ -107,7 +111,8 @@ class Planner:
         if deployment.s3_storage:
             local_contracts.append(deployment.s3_storage.runtime_contract)
 
-        agent_contract = merge_contracts(*local_contracts, *dependency_contracts)
+        local_contract = merge_contracts(*local_contracts)
+        agent_contract = merge_contracts(local_contract, *dependency_contracts)
         agent_contract = with_env(
             agent_contract,
             {
@@ -124,6 +129,7 @@ class Planner:
             deployment.primary_app.harness,
             deployment.primary_app.required_image_capabilities,
         )
+        agent_pod_contract = replace(agent_contract, ports=local_contract.ports)
         agent_hash = stable_hash(to_plain(deployment.primary_app))[:12]
         agent_name = managed_name(workflow_hash, "agent", deployment.primary_app.meta.node_id, agent_hash)
         resources.append(
@@ -136,8 +142,8 @@ class Planner:
                 materialization="own_pod",
                 env=contract_env_for_creation(agent_contract),
                 secrets=agent_contract.env.secrets,
-                ports=[to_plain(port) for port in agent_contract.ports],
-                pod_input=self._pod_input(deployment, agent_selection.template_id, agent_name, "agent", deployment.primary_app.meta.node_id, agent_hash, agent_contract),
+                ports=[to_plain(port) for port in agent_pod_contract.ports],
+                pod_input=self._pod_input(deployment, agent_selection.template_id, agent_name, "agent", deployment.primary_app.meta.node_id, agent_hash, agent_pod_contract, install_sshd=deployment.ssh_access.install_internal_sshd),
             )
         )
 
@@ -163,6 +169,8 @@ class Planner:
         node_id: str | None,
         desired_hash: str,
         contract: RuntimeContract,
+        *,
+        install_sshd: bool = False,
     ) -> dict[str, Any]:
         hints = deployment.resource_hints
         env = contract_env_for_creation(contract)
@@ -178,7 +186,7 @@ class Planner:
             "templateId": template_id,
             "name": name,
             "env": env,
-            "ports": [to_plain(port) for port in contract.ports],
+            "ports": ensure_ssh_port([to_plain(port) for port in contract.ports]),
             "startSsh": True,
             "containerDiskInGb": hints.container_disk_gb,
             "gpuCount": hints.gpu_count,
@@ -194,6 +202,11 @@ class Planner:
         if deployment.keep_alive and deployment.keep_alive.mode == "time" and deployment.keep_alive.time_seconds:
             field_name = "stopAfter" if deployment.keep_alive.action == "stop" else "terminateAfter"
             pod_input[field_name] = (datetime.now(UTC) + timedelta(seconds=deployment.keep_alive.time_seconds)).isoformat()
+        if install_sshd:
+            public_key = read_public_key(deployment.ssh_access.private_key_path)
+            if public_key:
+                env["RUNPOD_SSH_PUBLIC_KEY"] = public_key
+            pod_input["dockerArgs"] = internal_sshd_command()
         return pod_input
 
     def _actions(self, resources: list[ResourcePlan], deployment: DeploymentSpec) -> list[PlanAction]:
@@ -226,6 +239,72 @@ def contract_env_for_creation(contract: RuntimeContract) -> dict[str, str]:
     for secret in contract.env.secrets:
         env[secret.env_var] = secret_placeholder(secret)
     return env
+
+
+def dependency_pod_contract(role: str, contract: RuntimeContract) -> RuntimeContract:
+    env = dict(contract.env.values)
+    if role == "llm":
+        if env.get("LLM_PROVIDER") == "ollama":
+            env["OLLAMA_HOST"] = "0.0.0.0:11434"
+            env.pop("OPENAI_BASE_URL", None)
+        elif env.get("LLM_PROVIDER") == "vllm":
+            env.pop("OPENAI_BASE_URL", None)
+    elif role == "browser":
+        env.pop("NEKO_URL", None)
+        env.pop("PLAYWRIGHT_WS_ENDPOINT", None)
+    elif role == "sql":
+        env.pop("DATABASE_URL", None)
+    elif role == "vector":
+        env.pop("VECTOR_URL", None)
+    return replace(contract, env=replace(contract.env, values=env))
+
+
+def ensure_ssh_port(ports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    for port in ports:
+        if int(port.get("container_port") or port.get("privatePort") or 0) == 22:
+            return ports
+    return [*ports, {"name": "ssh", "container_port": 22, "protocol": "tcp", "public": True}]
+
+
+def read_public_key(private_key_path: str) -> str | None:
+    pub_path = Path(private_key_path).expanduser().with_suffix(Path(private_key_path).suffix + ".pub")
+    if pub_path.exists():
+        return pub_path.read_text().strip()
+    return None
+
+
+def internal_sshd_command() -> str:
+    script = r"""
+set -e
+if ! command -v sshd >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache openssh-server
+  else
+    echo "No supported package manager found for installing openssh-server" >&2
+    exit 1
+  fi
+fi
+mkdir -p /run/sshd /root/.ssh
+chmod 700 /root/.ssh
+touch /root/.ssh/authorized_keys
+if [ -n "${RUNPOD_SSH_PUBLIC_KEY:-}" ] && ! grep -qxF "$RUNPOD_SSH_PUBLIC_KEY" /root/.ssh/authorized_keys; then
+  printf '%s\n' "$RUNPOD_SSH_PUBLIC_KEY" >> /root/.ssh/authorized_keys
+fi
+chmod 600 /root/.ssh/authorized_keys
+ssh-keygen -A
+if [ -f /etc/ssh/sshd_config ]; then
+  sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+  sed -i 's/^#\?PubkeyAuthentication .*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+fi
+/usr/sbin/sshd
+sleep infinity
+""".strip()
+    encoded = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    command = f"echo {encoded} | base64 -d > /tmp/runpod-agentic-sshd.sh && bash /tmp/runpod-agentic-sshd.sh"
+    return "bash -lc " + shlex.quote(command)
 
 
 def runtime_config_paths(workspace_path: str) -> dict[str, str]:

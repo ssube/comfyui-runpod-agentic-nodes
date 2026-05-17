@@ -229,6 +229,14 @@ class StateStore:
                 rows = conn.execute("SELECT * FROM commands ORDER BY started_at DESC").fetchall()
             return [dict(row) for row in rows]
 
+    def list_events(self, run_id: str | None = None) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            if run_id:
+                rows = conn.execute("SELECT * FROM events WHERE run_id = ? ORDER BY timestamp", (run_id,)).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM events ORDER BY timestamp DESC").fetchall()
+            return [dict(row) for row in rows]
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()

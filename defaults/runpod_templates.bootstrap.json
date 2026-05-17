@@ -1,66 +1,70 @@
 {
   "templates": [
     {
+      "containerDiskInGb": 20,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
       "key": "rp-agent-pi",
       "name": "crag-agent-pi",
-      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
-      "containerDiskInGb": 20,
-      "volumeInGb": 10,
-      "volumeMountPath": "/workspace",
-      "dockerArgs": "sleep infinity",
       "ports": "22/tcp",
-      "readme": "CRAG agent template placeholder. Replace with an image containing /usr/local/bin/runpod-agent-launch."
+      "readme": "CRAG agent template placeholder. Replace with an image containing /usr/local/bin/runpod-agent-launch.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/workspace"
     },
     {
+      "containerDiskInGb": 30,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
       "key": "rp-agent-opencode",
       "name": "crag-agent-opencode",
-      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
-      "containerDiskInGb": 30,
-      "volumeInGb": 10,
-      "volumeMountPath": "/workspace",
-      "dockerArgs": "sleep infinity",
       "ports": "22/tcp",
-      "readme": "CRAG OpenCode agent template placeholder. Bake OpenCode and runpod-agent-launch before production use."
+      "readme": "CRAG OpenCode agent template placeholder. Bake OpenCode and runpod-agent-launch before production use.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/workspace"
     },
     {
+      "containerDiskInGb": 10,
+      "dockerArgs": "sleep infinity",
+      "imageName": "mcr.microsoft.com/playwright:v1.56.1-noble",
       "key": "rp-browser-playwright",
       "name": "crag-browser-playwright",
-      "imageName": "mcr.microsoft.com/playwright:v1.56.1-noble",
-      "containerDiskInGb": 10,
-      "volumeInGb": 0,
-      "dockerArgs": "sleep infinity",
       "ports": "3000/http,22/tcp",
-      "readme": "CRAG Playwright browser placeholder. Add a websocket server command before production use."
+      "readme": "CRAG Playwright browser placeholder. Add a websocket server command before production use.",
+      "volumeInGb": 0
     },
     {
+      "containerDiskInGb": 10,
+      "dockerArgs": "",
+      "imageName": "ghcr.io/m1k1o/neko/chromium:latest",
+      "key": "rp-browser-neko",
+      "name": "crag-browser-neko",
+      "ports": "8080/http,22/tcp",
+      "readme": "CRAG Neko browser template.",
+      "volumeInGb": 0
+    },
+    {
+      "containerDiskInGb": 20,
+      "dockerArgs": "serve",
+      "imageName": "ollama/ollama:0.12.10",
       "key": "rp-llm-ollama",
       "name": "crag-llm-ollama",
-      "imageName": "ollama/ollama:0.12.13",
-      "containerDiskInGb": 20,
-      "volumeInGb": 20,
-      "volumeMountPath": "/root/.ollama",
-      "dockerArgs": "serve",
       "ports": "11434/http,22/tcp",
-      "readme": "CRAG Ollama LLM server template."
+      "readme": "CRAG Ollama LLM server template.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/root/.ollama"
     },
     {
+      "containerDiskInGb": 10,
+      "imageName": "qdrant/qdrant:v1.16.2",
       "key": "rp-vector-qdrant",
       "name": "crag-vector-qdrant",
-      "imageName": "qdrant/qdrant:v1.16.2",
-      "containerDiskInGb": 10,
-      "volumeInGb": 10,
-      "volumeMountPath": "/qdrant/storage",
       "ports": "6333/http,22/tcp",
-      "readme": "CRAG Qdrant vector database template."
+      "readme": "CRAG Qdrant vector database template.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/qdrant/storage"
     },
     {
-      "key": "rp-db-postgres",
-      "name": "crag-db-postgres",
-      "imageName": "postgres:17.7",
       "containerDiskInGb": 10,
-      "volumeInGb": 10,
-      "volumeMountPath": "/var/lib/postgresql/data",
-      "ports": "5432/tcp,22/tcp",
       "env": [
         {
           "key": "POSTGRES_DB",
@@ -71,7 +75,13 @@
           "value": "app"
         }
       ],
-      "readme": "CRAG Postgres template. Provide POSTGRES_PASSWORD via Runpod secret/env at deploy time."
+      "imageName": "postgres:17.7",
+      "key": "rp-db-postgres",
+      "name": "crag-db-postgres",
+      "ports": "5432/tcp,22/tcp",
+      "readme": "CRAG Postgres template. Provide POSTGRES_PASSWORD via Runpod secret/env at deploy time.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/var/lib/postgresql/data"
     }
   ]
 }

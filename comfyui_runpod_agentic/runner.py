@@ -59,11 +59,31 @@ class RunpodRunner:
         created: dict[str, dict[str, Any]] = {}
         resource_ids: dict[str, str] = {}
         for resource in plan.resources:
-            pod = self.runpod_client.create_or_deploy_pod(resource.pod_input)
+            pending_resource_id = self.state_store.record_resource(plan.run_id, resource, status="creating")
+            self.state_store.add_event(
+                plan.run_id,
+                "pod_create_request",
+                resource.name,
+                resource_id=pending_resource_id,
+                payload=sanitize_pod_input(resource.pod_input),
+            )
+            try:
+                pod = self.runpod_client.create_or_deploy_pod(resource.pod_input)
+            except Exception as exc:
+                self.state_store.add_event(
+                    plan.run_id,
+                    "pod_create_failed",
+                    f"{resource.name}: {exc}",
+                    resource_id=pending_resource_id,
+                    payload={"role": resource.role, "template_id": resource.template_id, "input": sanitize_pod_input(resource.pod_input)},
+                )
+                raise
             created[resource.name] = pod
             resource_id = self.state_store.record_resource(plan.run_id, resource, pod, status=pod.get("desiredStatus", "created"))
             resource_ids[resource.name] = resource_id
             self.state_store.add_event(plan.run_id, "pod_created", resource.name, resource_id=resource_id, payload={"pod_id": pod.get("id")})
+            if resource.role != "agent":
+                created[resource.name] = self._wait_dependency_ready(resource, pod, plan.run_id, resource_id)
 
         agent = next(resource for resource in plan.resources if resource.role == "agent")
         resolved_contract = resolve_dependency_endpoints(plan, created)
@@ -106,6 +126,24 @@ class RunpodRunner:
         self.state_store.add_event(plan.run_id, "agent_launch", launch, payload={"exit_code": result.exit_code})
         if result.exit_code != 0:
             raise RuntimeError(f"Agent launch failed with exit code {result.exit_code}.")
+
+    def _wait_dependency_ready(self, resource, pod: dict[str, Any], run_id: str, resource_id: str, timeout_seconds: int = 300, interval_seconds: int = 5) -> dict[str, Any]:
+        pod_id = pod.get("id")
+        wants_public_endpoint = any(port.get("public") for port in resource.ports)
+        deadline = time.monotonic() + timeout_seconds
+        last_status = pod.get("desiredStatus") or "unknown"
+        while time.monotonic() < deadline:
+            if wants_public_endpoint and public_http_endpoint(pod):
+                self.state_store.add_event(run_id, "dependency_ready", resource.name, resource_id=resource_id, payload={"pod_id": pod_id})
+                return pod
+            if not wants_public_endpoint and (pod.get("runtime") or {}).get("ports"):
+                self.state_store.add_event(run_id, "dependency_ready", resource.name, resource_id=resource_id, payload={"pod_id": pod_id})
+                return pod
+            if pod_id:
+                pod = self.runpod_client.get_pod(pod_id) or pod
+                last_status = pod.get("desiredStatus") or last_status
+            time.sleep(interval_seconds)
+        raise RuntimeError(f"Timed out waiting for dependency {resource.role} pod {pod_id} readiness; last status: {last_status}.")
 
     def _write_runtime_files(self, plan: DeploymentPlan, host: str, port: int) -> None:
         workspace = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"].get("WORKSPACE_DIR", "/workspace")
@@ -186,9 +224,15 @@ class RunpodRunner:
             if resource.get("run_id") != plan.run_id or not resource.get("runpod_pod_id"):
                 continue
             if terminate:
-                self.runpod_client.terminate_pod(resource["runpod_pod_id"])
+                try:
+                    self.runpod_client.terminate_pod(resource["runpod_pod_id"])
+                except Exception as exc:
+                    self.state_store.add_event(plan.run_id, "cleanup_terminate_failed", str(exc), resource_id=resource.get("id"))
             else:
-                self.runpod_client.stop_pod(resource["runpod_pod_id"])
+                try:
+                    self.runpod_client.stop_pod(resource["runpod_pod_id"])
+                except Exception as exc:
+                    self.state_store.add_event(plan.run_id, "cleanup_stop_failed", str(exc), resource_id=resource.get("id"))
 
     def reconcile_managed_pods(self, run_id: str | None = None) -> list[dict[str, Any]]:
         pods = [pod for pod in self.runpod_client.list_pods() if str(pod.get("name", "")).startswith("crag-")]
@@ -205,6 +249,25 @@ def stable_command_hash(command: str) -> str:
     import hashlib
 
     return hashlib.sha256(command.encode("utf-8")).hexdigest()
+
+
+def sanitize_pod_input(input: dict[str, Any]) -> dict[str, Any]:
+    redacted = json.loads(json.dumps(input, default=str))
+    env = redacted.get("env")
+    if isinstance(env, dict):
+        for key in list(env):
+            if is_sensitive_key(key):
+                env[key] = "<redacted>"
+    elif isinstance(env, list):
+        for item in env:
+            if isinstance(item, dict) and is_sensitive_key(str(item.get("key", ""))):
+                item["value"] = "<redacted>"
+    return redacted
+
+
+def is_sensitive_key(key: str) -> bool:
+    upper = key.upper()
+    return any(token in upper for token in ("KEY", "TOKEN", "SECRET", "PASSWORD"))
 
 
 def resolve_dependency_endpoints(plan: DeploymentPlan, pods: dict[str, dict[str, Any]]) -> RuntimeContract:

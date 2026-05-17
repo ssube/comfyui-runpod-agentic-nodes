@@ -1,4 +1,16 @@
-from comfyui_runpod_agentic.runpod_client import clean_none, endpoint_with_api_key, normalize_pod_input
+import io
+import urllib.error
+
+import pytest
+
+from comfyui_runpod_agentic.runpod_client import (
+    RunpodClient,
+    RunpodClientError,
+    clean_none,
+    endpoint_with_api_key,
+    format_graphql_errors,
+    normalize_pod_input,
+)
 from comfyui_runpod_agentic.ssh_client import CommandResult, extract_ssh_endpoint, normalize_ssh_result, runpod_proxy_ssh_endpoint
 
 
@@ -22,10 +34,39 @@ def test_normalize_ssh_result_rejects_runpod_pty_error():
     assert result.exit_code == 255
 
 
+def test_normalize_ssh_result_rejects_container_not_found():
+    result = normalize_ssh_result(CommandResult(0, "container not found", ""))
+
+    assert result.exit_code == 255
+
+
 def test_endpoint_with_api_key_uses_query_parameter():
     url = endpoint_with_api_key("https://api.runpod.io/graphql?x=1", "token")
 
     assert url == "https://api.runpod.io/graphql?x=1&api_key=token"
+
+
+def test_graphql_http_error_includes_response_body(monkeypatch):
+    def raise_http_error(*_args, **_kwargs):
+        raise urllib.error.HTTPError(
+            "https://api.runpod.io/graphql",
+            400,
+            "Bad Request",
+            {},
+            io.BytesIO(b'{"errors":[{"message":"bad query"}]}'),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", raise_http_error)
+
+    with pytest.raises(RunpodClientError, match="bad query"):
+        RunpodClient(api_key="token")._graphql("query Bad", {})
+
+
+def test_format_graphql_errors_preserves_path_and_code():
+    message = format_graphql_errors([{"message": "Something went wrong", "path": ["podFindAndDeployOnDemand"], "extensions": {"code": "INTERNAL_SERVER_ERROR"}}])
+
+    assert "podFindAndDeployOnDemand" in message
+    assert "INTERNAL_SERVER_ERROR" in message
 
 
 def test_normalize_pod_input_converts_env_and_ports():

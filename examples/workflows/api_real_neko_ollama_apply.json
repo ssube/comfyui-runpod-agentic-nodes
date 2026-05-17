@@ -1,0 +1,111 @@
+{
+  "1": {
+    "class_type": "RunpodBrowser",
+    "inputs": {
+      "browser": "Neko",
+      "browser_engine": "chromium",
+      "placement": "own_pod"
+    }
+  },
+  "2": {
+    "class_type": "RunpodLLMServer",
+    "inputs": {
+      "api_auth_mode": "none",
+      "api_key_secret_name": "",
+      "engine": "Ollama",
+      "hf_token_secret_name": "",
+      "model": "smoke",
+      "placement": "own_pod"
+    }
+  },
+  "3": {
+    "class_type": "RunpodAgent",
+    "inputs": {
+      "browser": [
+        "1",
+        0
+      ],
+      "harness": "Pi",
+      "llm_server": [
+        "2",
+        0
+      ],
+      "model": "manual-real-api-smoke",
+      "startup_mode": "manual",
+      "workspace_path": "/workspace"
+    }
+  },
+  "4": {
+    "class_type": "RunpodSSHCommand",
+    "inputs": {
+      "command": "echo crag-api-real-smoke && python --version && pwd && test -d /workspace",
+      "failure_policy": "fail",
+      "order": 0,
+      "phase": "before_start",
+      "retry_count": 0
+    }
+  },
+  "5": {
+    "class_type": "RunpodKeepAlive",
+    "inputs": {
+      "action": "stop",
+      "cost_limit_usd": 0.0,
+      "idle_grace_seconds": 0,
+      "mode": "time",
+      "time_unit": "minutes",
+      "time_value": 10,
+      "turn_limit": 0
+    }
+  },
+  "6": {
+    "class_type": "RunpodSSHAccess",
+    "inputs": {
+      "install_internal_sshd": true,
+      "internal_port": 22,
+      "mode": "runpod_proxy",
+      "private_key_path": "~/.ssh/id_ed25519",
+      "proxy_key_suffix": "64410ecc",
+      "username": "root"
+    }
+  },
+  "7": {
+    "class_type": "RunpodPod",
+    "inputs": {
+      "app": [
+        "3",
+        0
+      ],
+      "cloud_type": "COMMUNITY",
+      "commands": [
+        "4",
+        0
+      ],
+      "container_disk_gb": 20,
+      "expose_public_ip": true,
+      "gpu_count": 1,
+      "gpu_type_id": "NVIDIA GeForce RTX 3090",
+      "keep_alive": [
+        "5",
+        0
+      ],
+      "reuse_policy": "always_create",
+      "ssh_access": [
+        "6",
+        0
+      ],
+      "volume_gb": 0
+    }
+  },
+  "8": {
+    "class_type": "RunpodRun",
+    "inputs": {
+      "deployment": [
+        "7",
+        0
+      ],
+      "log_level": "info",
+      "mode": "apply",
+      "on_error": "terminate_created"
+    }
+  }
+}

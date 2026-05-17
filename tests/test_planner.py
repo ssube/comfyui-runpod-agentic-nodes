@@ -5,8 +5,10 @@ from comfyui_runpod_agentic.nodes import (
     RunpodBrowserNode,
     RunpodKeepAliveNode,
     RunpodLLMApiNode,
+    RunpodLLMServerNode,
     RunpodPodNode,
     RunpodSQLDatabaseNode,
+    RunpodSSHAccessNode,
     RunpodSSHCommandNode,
     RunpodVectorDatabaseNode,
 )
@@ -40,3 +42,28 @@ def test_plan_is_json_serializable():
 
     assert "WRITE_RUNTIME_CONFIG" in encoded
     assert "ANTHROPIC_API_KEY" in encoded
+
+
+def test_ollama_dependency_binds_to_local_interface_but_agent_gets_placeholder(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_ENV_FILE", str(tmp_path / "missing.env"))
+    monkeypatch.delenv("RUNPOD_SSH_PRIVATE_KEY_PATH", raising=False)
+    key_path = tmp_path / "id_ed25519"
+    key_path.write_text("private")
+    key_path.with_suffix(".pub").write_text("ssh-ed25519 test-key")
+    browser = RunpodBrowserNode().build("Neko", "own_pod", "chromium")[0]
+    llm = RunpodLLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
+    agent = RunpodAgentNode().build("Pi", "model", "manual", browser=browser, llm_server=llm)[0]
+    ssh_access = RunpodSSHAccessNode().build("runpod_proxy", "root", str(key_path), "suffix", 22, True)[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0, ssh_access=ssh_access)[0]
+
+    plan = Planner().build(deployment)
+
+    llm_resource = next(resource for resource in plan.resources if resource.role == "llm")
+    agent_resource = next(resource for resource in plan.resources if resource.role == "agent")
+    assert llm_resource.pod_input["env"]["OLLAMA_HOST"] == "0.0.0.0:11434"
+    assert any(port["container_port"] == 22 for port in llm_resource.pod_input["ports"])
+    assert agent_resource.pod_input["ports"] == [{"name": "ssh", "container_port": 22, "protocol": "tcp", "public": True}]
+    assert agent_resource.pod_input["env"]["RUNPOD_SSH_PUBLIC_KEY"] == "ssh-ed25519 test-key"
+    assert "base64 -d" in agent_resource.pod_input["dockerArgs"]
+    assert "/tmp/runpod-agentic-sshd.sh" in agent_resource.pod_input["dockerArgs"]
+    assert plan.runtime_contract.env.values["OLLAMA_HOST"] == "crag://llm/ollama"
