@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .config import get_ssh_env_config
 from .planner import Planner
 from .runner import default_state_path
 from .specs import (
@@ -22,6 +23,7 @@ from .specs import (
     SecretRef,
     SpecMeta,
     SQLDatabaseSpec,
+    SSHAccessPolicy,
     SSHCommand,
     SSHCommandSpec,
     VectorDatabaseSpec,
@@ -37,6 +39,7 @@ from .types import (
     RUNPOD_KEEPALIVE_POLICY,
     RUNPOD_LLM_API,
     RUNPOD_RUN_RESULT,
+    RUNPOD_SSH_ACCESS_POLICY,
     RUNPOD_STORAGE_NETWORK,
     RUNPOD_STORAGE_S3,
 )
@@ -275,7 +278,7 @@ class RunpodAgentNode:
                 if spec.kind == "llm_server":
                     raise ValidationError("LLM Server same_pod materialization is not supported in the MVP.")
                 capabilities.extend(spec.required_image_capabilities)
-        contract = RuntimeContract(EnvPatch({"AGENT_HARNESS": norm(harness), "AGENT_MODEL": model, "WORKSPACE_DIR": workspace_path}))
+        contract = RuntimeContract(EnvPatch({"AGENT_HARNESS": norm(harness), "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "WORKSPACE_DIR": workspace_path}))
         return (AgentSpec("agent", norm(harness), model, startup_mode, workspace_path, browser, llm_api, llm_server, sql_database, vector_database, contract, capabilities, None, meta(node_id, harness)),)
 
 
@@ -341,6 +344,41 @@ class RunpodKeepAliveNode:
         return (KeepAlivePolicy(mode, action, int(time_value) * multiplier if mode == "time" else None, int(turn_limit) or None, float(cost_limit_usd) or None, int(idle_grace_seconds) or None, meta(node_id, "Keep Alive")),)
 
 
+class RunpodSSHAccessNode:
+    CATEGORY = "Runpod/Core"
+    RETURN_TYPES = (RUNPOD_SSH_ACCESS_POLICY,)
+    RETURN_NAMES = ("ssh_access",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mode": (["runpod_proxy", "internal_sshd"],),
+                "username": ("STRING", {"default": "root"}),
+                "private_key_path": ("STRING", {"default": "~/.ssh/id_ed25519"}),
+                "proxy_key_suffix": ("STRING", {"default": ""}),
+                "internal_port": ("INT", {"default": 22, "min": 1, "max": 65535}),
+                "install_internal_sshd": ("BOOLEAN", {"default": False}),
+            },
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, mode: str, username: str, private_key_path: str, proxy_key_suffix: str = "", internal_port: int = 22, install_internal_sshd: bool = False, node_id: str | None = None):
+        env_config = get_ssh_env_config()
+        return (
+            SSHAccessPolicy(
+                mode,
+                username,
+                env_config.get("private_key_path") or private_key_path,
+                proxy_key_suffix or env_config.get("proxy_suffix"),
+                int(internal_port),
+                bool(install_internal_sshd),
+                meta(node_id, "SSH Access"),
+            ),
+        )
+
+
 class RunpodPodNode:
     CATEGORY = "Runpod/Core"
     RETURN_TYPES = (RUNPOD_DEPLOYMENT_SPEC,)
@@ -351,13 +389,13 @@ class RunpodPodNode:
     def INPUT_TYPES(cls):
         return {
             "required": {"app": (RUNPOD_APP_AGENT,), "gpu_type_id": ("STRING", {"default": ""}), "gpu_count": ("INT", {"default": 1, "min": 0}), "cloud_type": (["auto", "SECURE", "COMMUNITY"],), "container_disk_gb": ("INT", {"default": 40, "min": 5}), "volume_gb": ("INT", {"default": 0, "min": 0}), "expose_public_ip": ("BOOLEAN", {"default": True}), "reuse_policy": (["reuse_matching", "always_create", "resume_stopped"],)},
-            "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,), "s3_storage": (RUNPOD_STORAGE_S3,), "commands": (RUNPOD_COMMAND_SSH,), "keep_alive": (RUNPOD_KEEPALIVE_POLICY,)},
+            "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,), "s3_storage": (RUNPOD_STORAGE_S3,), "commands": (RUNPOD_COMMAND_SSH,), "keep_alive": (RUNPOD_KEEPALIVE_POLICY,), "ssh_access": (RUNPOD_SSH_ACCESS_POLICY,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, app: AgentSpec, gpu_type_id: str = "", gpu_count: int = 1, cloud_type: str = "auto", container_disk_gb: int = 40, volume_gb: int = 0, expose_public_ip: bool = True, reuse_policy: str = "reuse_matching", network_storage=None, s3_storage=None, commands=None, keep_alive=None, node_id: str | None = None):
+    def build(self, app: AgentSpec, gpu_type_id: str = "", gpu_count: int = 1, cloud_type: str = "auto", container_disk_gb: int = 40, volume_gb: int = 0, expose_public_ip: bool = True, reuse_policy: str = "reuse_matching", network_storage=None, s3_storage=None, commands=None, keep_alive=None, ssh_access=None, node_id: str | None = None):
         hints = PodResourceHints(gpu_type_id or None, int(gpu_count), None if cloud_type == "auto" else cloud_type, int(container_disk_gb), int(volume_gb) or None, bool(expose_public_ip), int(gpu_count) == 0)
-        deployment = DeploymentSpec(app, network_storage, s3_storage, commands, keep_alive, hints, reuse_policy, meta(node_id, "Pod"))
+        deployment = DeploymentSpec(app, network_storage, s3_storage, commands, keep_alive, ssh_access or SSHAccessPolicy(), hints, reuse_policy, meta(node_id, "Pod"))
         validate_deployment(deployment, mode="plan", require_api_key=False)
         return (deployment,)
 
@@ -449,6 +487,7 @@ NODE_CLASSES = [
     RunpodS3StorageNode,
     RunpodSSHCommandNode,
     RunpodKeepAliveNode,
+    RunpodSSHAccessNode,
     RunpodPodNode,
     RunpodRunNode,
     RunpodLogsNode,

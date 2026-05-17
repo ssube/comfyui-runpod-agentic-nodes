@@ -1,4 +1,4 @@
-from comfyui_runpod_agentic.config import get_runpod_api_key
+from comfyui_runpod_agentic.config import get_runpod_api_key, get_ssh_env_config
 from comfyui_runpod_agentic.nodes import RunpodLogsNode, collect_run_logs
 from comfyui_runpod_agentic.runpod_client import RunpodClient
 from comfyui_runpod_agentic.state_store import StateStore
@@ -19,6 +19,18 @@ def test_runpod_client_loads_token_from_env_file(monkeypatch, tmp_path):
 
     assert get_runpod_api_key() == "rp_file_token"
     assert RunpodClient().api_key == "rp_file_token"
+
+
+def test_ssh_config_loads_proxy_suffix_from_env_file(monkeypatch, tmp_path):
+    env_file = tmp_path / "runpod.env"
+    env_file.write_text("RUNPOD_SSH_PROXY_SUFFIX=64410ecc\nRUNPOD_SSH_PRIVATE_KEY_PATH=/tmp/key\n")
+    monkeypatch.setenv("RUNPOD_ENV_FILE", str(env_file))
+    monkeypatch.delenv("RUNPOD_SSH_PROXY_SUFFIX", raising=False)
+
+    values = get_ssh_env_config()
+
+    assert values["proxy_suffix"] == "64410ecc"
+    assert values["private_key_path"] == "/tmp/key"
 
 
 def test_collect_run_logs_reads_command_log_files(tmp_path):

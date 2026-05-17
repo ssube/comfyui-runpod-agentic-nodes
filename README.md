@@ -167,6 +167,24 @@ COMFYUI_E2E_PORT=18200 scripts/e2e-comfy-cpu
 
 In restricted sandboxes, the server phase may need permission to bind a localhost port.
 
+## Live Runpod Smoke Test
+
+After `RUNPOD_API_KEY` and `RUNPOD_SSH_PROXY_SUFFIX` are present in `.env.d/runpod.env`, run a minimal real pod workflow:
+
+```bash
+scripts/run-live-smoke \
+  --cloud-type COMMUNITY \
+  --gpu-type-id "NVIDIA GeForce RTX 3090"
+```
+
+The live smoke creates one agent pod, connects through Runpod proxy SSH, runs a small command, writes runtime config files, and terminates the pod by default. Use `--cleanup stop` or `--cleanup none` only when you intentionally want to inspect the pod afterward.
+
+Clean up any managed pods by prefix:
+
+```bash
+scripts/cleanup-runpod-pods --action terminate
+```
+
 ## Creating Runpod Templates
 
 Template creation is scripted and repeatable:

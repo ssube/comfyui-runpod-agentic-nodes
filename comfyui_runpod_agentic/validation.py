@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
-
 try:
+    from .config import get_runpod_api_key
     from .specs import DeploymentSpec, KeepAlivePolicy, SSHCommandSpec
 except ImportError:
+    from config import get_runpod_api_key
     from specs import DeploymentSpec, KeepAlivePolicy, SSHCommandSpec
 
 
@@ -37,7 +37,7 @@ def validate_deployment(deployment: DeploymentSpec, *, mode: str = "plan", requi
         warnings.append("Cost keep-alive is estimated from pod runtime and cost/hour.")
     if deployment.ssh_commands:
         warnings.extend(validate_commands(deployment.ssh_commands))
-    if mode in {"apply", "apply_and_wait", "stop", "terminate", "destroy"} and require_api_key and not os.environ.get("RUNPOD_API_KEY"):
+    if mode in {"apply", "apply_and_wait", "stop", "terminate", "destroy"} and require_api_key and not get_runpod_api_key():
         raise ValidationError(f"Run mode {mode} requires RUNPOD_API_KEY in the server environment.")
     return warnings
 

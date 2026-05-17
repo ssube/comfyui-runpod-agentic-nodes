@@ -10,6 +10,7 @@ from .nodes import (
     RunpodRunNode,
     RunpodS3StorageNode,
     RunpodSQLDatabaseNode,
+    RunpodSSHAccessNode,
     RunpodSSHCommandNode,
     RunpodVectorDatabaseNode,
 )
@@ -25,6 +26,7 @@ NODE_CLASS_MAPPINGS = {
     "RunpodS3Storage": RunpodS3StorageNode,
     "RunpodSSHCommand": RunpodSSHCommandNode,
     "RunpodKeepAlive": RunpodKeepAliveNode,
+    "RunpodSSHAccess": RunpodSSHAccessNode,
     "RunpodPod": RunpodPodNode,
     "RunpodRun": RunpodRunNode,
     "RunpodLogs": RunpodLogsNode,
@@ -41,6 +43,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RunpodS3Storage": "S3 Storage",
     "RunpodSSHCommand": "SSH Command",
     "RunpodKeepAlive": "Keep Alive",
+    "RunpodSSHAccess": "SSH Access",
     "RunpodPod": "Pod",
     "RunpodRun": "Runpod Run",
     "RunpodLogs": "Runpod Logs",

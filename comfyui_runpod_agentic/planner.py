@@ -13,13 +13,14 @@ try:
         DeploymentSpec,
         RuntimeContract,
         SecretRef,
+        SSHAccessPolicy,
         to_plain,
     )
     from .template_resolver import TemplateResolver
     from .validation import validate_deployment
 except ImportError:
     from runtime_contracts import merge_contracts, secret_placeholder, with_env
-    from specs import DeploymentSpec, RuntimeContract, SecretRef, to_plain
+    from specs import DeploymentSpec, RuntimeContract, SecretRef, SSHAccessPolicy, to_plain
     from template_resolver import TemplateResolver
     from validation import validate_deployment
 
@@ -57,6 +58,7 @@ class DeploymentPlan:
     mode: str
     resources: list[ResourcePlan]
     runtime_contract: RuntimeContract
+    ssh_access: SSHAccessPolicy
     actions: list[PlanAction]
     warnings: list[str] = field(default_factory=list)
 
@@ -140,7 +142,7 @@ class Planner:
         )
 
         actions = self._actions(resources, deployment)
-        return DeploymentPlan(run_id, workflow_hash, deployment_hash, mode, resources, agent_contract, actions, warnings)
+        return DeploymentPlan(run_id, workflow_hash, deployment_hash, mode, resources, agent_contract, deployment.ssh_access, actions, warnings)
 
     def _own_pod_dependencies(self, deployment: DeploymentSpec) -> list[tuple[str, Any]]:
         app = deployment.primary_app

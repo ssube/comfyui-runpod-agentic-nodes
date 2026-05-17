@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -40,8 +41,9 @@ class TemplateSelection:
 
 
 class TemplateResolver:
-    def __init__(self, config: dict[str, Any] | None = None):
+    def __init__(self, config: dict[str, Any] | None = None, template_ids: dict[str, str] | None = None):
         self.config = config or DEFAULT_TEMPLATE_CONFIG
+        self.template_ids = template_ids if template_ids is not None else load_template_id_map()
 
     @classmethod
     def from_file(cls, path: str | Path) -> TemplateResolver:
@@ -57,7 +59,7 @@ class TemplateResolver:
             raise TemplateResolutionError(f"No agent template configured for harness {harness}.")
         capabilities = capabilities or []
         if not capabilities:
-            return TemplateSelection(template_id=entry["default"])
+            return TemplateSelection(template_id=self._resolve_id(entry["default"]))
         capability_templates = entry.get("capabilities", {})
         missing = [capability for capability in capabilities if capability not in capability_templates]
         if missing:
@@ -66,10 +68,23 @@ class TemplateResolver:
             )
         if len(capabilities) > 1:
             raise TemplateResolutionError("Multiple same-pod capabilities require an explicit combined template.")
-        return TemplateSelection(template_id=capability_templates[capabilities[0]])
+        return TemplateSelection(template_id=self._resolve_id(capability_templates[capabilities[0]]))
 
     def resolve_app(self, kind: str, engine: str) -> TemplateSelection:
         template_id = self.config.get("app_templates", {}).get(kind, {}).get(engine)
         if not template_id:
             raise TemplateResolutionError(f"No template configured for {kind}/{engine}.")
-        return TemplateSelection(template_id=template_id)
+        return TemplateSelection(template_id=self._resolve_id(template_id))
+
+    def _resolve_id(self, key_or_id: str) -> str:
+        return self.template_ids.get(key_or_id, key_or_id)
+
+
+def load_template_id_map(path: str | Path = "defaults/runpod_template_ids.json") -> dict[str, str]:
+    candidate = Path(path)
+    if not candidate.exists():
+        return {}
+    data = json.loads(candidate.read_text())
+    if not isinstance(data, dict):
+        raise TemplateResolutionError(f"Template ID map must be a JSON object: {candidate}")
+    return {str(key): str(value) for key, value in data.items()}

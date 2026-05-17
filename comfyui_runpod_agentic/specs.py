@@ -177,6 +177,17 @@ class KeepAlivePolicy:
 
 
 @dataclass(frozen=True)
+class SSHAccessPolicy:
+    mode: Literal["runpod_proxy", "internal_sshd"] = "runpod_proxy"
+    username: str = "root"
+    private_key_path: str = "~/.ssh/id_ed25519"
+    proxy_key_suffix: str | None = None
+    internal_port: int = 22
+    install_internal_sshd: bool = False
+    meta: SpecMeta = field(default_factory=SpecMeta)
+
+
+@dataclass(frozen=True)
 class PodResourceHints:
     gpu_type_id: str | None
     gpu_count: int
@@ -194,6 +205,7 @@ class DeploymentSpec:
     s3_storage: S3StorageSpec | None
     ssh_commands: SSHCommandSpec | None
     keep_alive: KeepAlivePolicy | None
+    ssh_access: SSHAccessPolicy
     resource_hints: PodResourceHints
     reuse_policy: Literal["reuse_matching", "always_create", "resume_stopped"]
     meta: SpecMeta = field(default_factory=SpecMeta)

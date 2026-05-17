@@ -42,7 +42,7 @@ class RunpodClient:
           podFindAndDeployOnDemand(input: $input) { id name desiredStatus runtime { uptimeInSeconds ports { ip isIpPublic privatePort publicPort type } } }
         }
         """
-        data = self._graphql(mutation, {"input": clean_none(input)})
+        data = self._graphql(mutation, {"input": normalize_pod_input(clean_none(input))})
         return data["podFindAndDeployOnDemand"]
 
     def get_pod(self, pod_id: str) -> dict[str, Any]:
@@ -119,6 +119,19 @@ def clean_none(value: Any) -> Any:
     if isinstance(value, list):
         return [clean_none(item) for item in value]
     return value
+
+
+def normalize_pod_input(input: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(input)
+    env = normalized.get("env")
+    if isinstance(env, dict):
+        normalized["env"] = [{"key": key, "value": value} for key, value in sorted(env.items())]
+    ports = normalized.get("ports")
+    if ports == []:
+        normalized.pop("ports", None)
+    elif isinstance(ports, list):
+        normalized["ports"] = ",".join(f"{port['container_port']}/{port.get('protocol', 'http')}" for port in ports)
+    return normalized
 
 
 def endpoint_with_api_key(endpoint: str, api_key: str) -> str:

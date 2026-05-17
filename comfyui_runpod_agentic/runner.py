@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,7 @@ from .planner import DeploymentPlan, Planner
 from .runpod_client import RunpodClient, RunpodClientProtocol
 from .runtime_contracts import with_env
 from .specs import DeploymentSpec, RuntimeContract, to_plain
-from .ssh_client import SSHClientProtocol, SubprocessSSHClient, extract_ssh_endpoint
+from .ssh_client import SSHClientProtocol, SSHConfig, SubprocessSSHClient, extract_ssh_endpoint, runpod_proxy_ssh_endpoint
 from .state_store import StateStore
 from .validation import validate_deployment
 
@@ -39,7 +40,7 @@ class RunpodRunner:
     def run(self, deployment: DeploymentSpec, *, mode: str, prompt: Any = None, on_error: str = "stop_created") -> dict[str, Any]:
         validate_deployment(deployment, mode=mode, require_api_key=True)
         plan = self.planner.build(deployment, mode=mode, prompt=prompt)
-        self.reconcile_managed_pods(plan.run_id)
+        self.reconcile_managed_pods()
         self.state_store.record_run(plan.run_id, plan.workflow_hash, plan.deployment_hash, mode, "started")
         try:
             if mode in {"stop", "terminate", "destroy"}:
@@ -68,7 +69,8 @@ class RunpodRunner:
         resolved_contract = resolve_dependency_endpoints(plan, created)
         plan = replace(plan, runtime_contract=resolved_contract)
         agent_pod = created[agent.name]
-        host, port = extract_ssh_endpoint(agent_pod)
+        host, port = self._wait_ssh_endpoint(agent_pod, plan)
+        self._wait_ssh_ready(host, port)
         self._run_agent_ssh_steps(plan, host, port, resource_ids.get(agent.name))
         status = "waiting" if wait else "launched"
         return {"run_id": plan.run_id, "status": status, "pods": {name: pod.get("id") for name, pod in created.items()}, "plan": plan.to_dict()}
@@ -97,6 +99,9 @@ class RunpodRunner:
                 raise RuntimeError(f"SSH command failed with exit code {result.exit_code}: {command}")
         self._write_runtime_files(plan, host, port)
         launch = self._launch_command(plan)
+        if not launch:
+            self.state_store.add_event(plan.run_id, "agent_launch_skipped", "manual startup mode")
+            return
         result = self.ssh_client.run(host, port, launch)
         self.state_store.add_event(plan.run_id, "agent_launch", launch, payload={"exit_code": result.exit_code})
         if result.exit_code != 0:
@@ -119,8 +124,45 @@ class RunpodRunner:
         prefix = f"{int(detail['order']):04d}-{detail['phase']}-{stable_command_hash(detail['command'])[:12]}"
         return {"stdout": base / f"{prefix}.stdout.log", "stderr": base / f"{prefix}.stderr.log"}
 
+    def _wait_ssh_endpoint(self, pod: dict[str, Any], plan: DeploymentPlan, timeout_seconds: int = 180, interval_seconds: int = 5) -> tuple[str, int]:
+        pod_id = pod.get("id")
+        deadline = time.monotonic() + timeout_seconds
+        last_error: Exception | None = None
+        while time.monotonic() < deadline:
+            if plan.ssh_access.mode == "runpod_proxy":
+                try:
+                    self._configure_ssh_client(plan)
+                    return runpod_proxy_ssh_endpoint(pod, plan.ssh_access.proxy_key_suffix)
+                except Exception as exc:
+                    last_error = exc
+            try:
+                return extract_ssh_endpoint(pod)
+            except Exception as exc:
+                last_error = exc
+            if pod_id:
+                pod = self.runpod_client.get_pod(pod_id)
+            time.sleep(interval_seconds)
+        raise RuntimeError(f"Timed out waiting for SSH endpoint on pod {pod_id}: {last_error}")
+
+    def _configure_ssh_client(self, plan: DeploymentPlan) -> None:
+        if isinstance(self.ssh_client, SubprocessSSHClient):
+            self.ssh_client.config = SSHConfig(username=plan.ssh_access.username, private_key_path=plan.ssh_access.private_key_path)
+
+    def _wait_ssh_ready(self, host: str, port: int, timeout_seconds: int = 180, interval_seconds: int = 5) -> None:
+        deadline = time.monotonic() + timeout_seconds
+        last_result: Any = None
+        while time.monotonic() < deadline:
+            last_result = self.ssh_client.run(host, port, "true", timeout_seconds=20)
+            if last_result.exit_code == 0:
+                return
+            time.sleep(interval_seconds)
+        stderr = getattr(last_result, "stderr", "")
+        raise RuntimeError(f"Timed out waiting for SSH readiness on {host}:{port}: {stderr}")
+
     def _launch_command(self, plan: DeploymentPlan) -> str:
         agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
+        if agent_env.get("AGENT_STARTUP_MODE") == "manual":
+            return ""
         workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
         harness = agent_env.get("AGENT_HARNESS", "agent")
         return f"cd {workspace} && test -x /usr/local/bin/runpod-agent-launch && nohup /usr/local/bin/runpod-agent-launch {harness} > .runpod_agentic/agent.log 2>&1 &"
