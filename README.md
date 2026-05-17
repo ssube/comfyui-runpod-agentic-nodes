@@ -1,0 +1,152 @@
+# ComfyUI Runpod Agentic Nodes
+
+Custom ComfyUI nodes for designing and running agentic systems on Runpod. The nodes build a typed deployment graph for agents, browsers, LLMs, databases, storage, commands, and keep-alive policy.
+
+The package follows one core rule: all nodes are declarative except `Runpod Run`. In `plan` mode, `Runpod Run` produces an ordered deployment plan and never calls Runpod. In apply modes, it uses injectable Runpod, SSH, and SQLite state abstractions so behavior can be tested and mocked.
+
+## Status
+
+This is an MVP implementation with:
+
+- 12 ComfyUI node classes and registration mappings.
+- Dataclass specs for the requested resource model.
+- Template resolution with example YAML config.
+- Planner for dependency extraction, materialization ordering, runtime contracts, and keep-alive lifecycle timestamps.
+- Runpod GraphQL client abstraction.
+- SSH command/file abstraction with endpoint extraction tests.
+- SQLite state ledger for runs, resources, events, and counters.
+- Route handler logic for resources, runs, pod lifecycle, cleanup, and turn counting.
+- Offline unit tests using fake Runpod and SSH clients.
+
+## Installation
+
+Clone this repository into ComfyUI's custom nodes directory:
+
+```bash
+cd ComfyUI/custom_nodes
+git clone <repo-url> comfyui-runpod-agentic
+cd comfyui-runpod-agentic
+python -m pip install -r requirements.txt
+```
+
+For development:
+
+```bash
+python -m pip install -e .[dev]
+scripts/test
+scripts/lint
+scripts/build
+```
+
+## Configuration
+
+Set the Runpod API key in the ComfyUI server environment. Do not put it in workflow widgets.
+
+```bash
+export RUNPOD_API_KEY=...
+```
+
+Copy and adapt the examples:
+
+```text
+defaults/config.example.yaml
+defaults/templates.example.yaml
+```
+
+The default state DB path is:
+
+```text
+ComfyUI/user/runpod-agentic/state.sqlite
+```
+
+When running outside ComfyUI, set `COMFYUI_USER_DIR` to control that location.
+
+## Node Overview
+
+Core:
+
+- `Pod`: creates a deployment spec around the primary agent.
+- `Runpod Run`: plan/apply/stop/terminate/destroy output node.
+- `Keep Alive`: time, turns, cost, or manual policy.
+
+Apps and services:
+
+- `Agent`: composition point for browser, LLM, SQL, and vector resources.
+- `Browser`: Neko or Playwright.
+- `LLM Server`: Ollama or vLLM own-pod service.
+- `LLM API`: Codex/OpenAI, Claude/Anthropic, or Ollama Cloud env contract.
+- `SQL Database`: Postgres, MySQL, or SQLite.
+- `Vector Database`: Chroma or Qdrant.
+- `Network Storage` and `S3 Storage`.
+- `SSH Command`: declarative command chain executed by `Runpod Run`.
+
+## Example Workflows
+
+### Claude API, Postgres, Qdrant, Playwright, Setup Command
+
+```text
+LLM API(provider=Claude, model=claude-sonnet, secret=anthropic_key)
+SQL Database(engine=Postgres, database=app, username=app, secret=pg_password)
+Vector Database(engine=Qdrant, collection=docs)
+Browser(browser=Playwright, placement=same_pod)
+Agent(harness=OpenCode, model=claude-sonnet)
+SSH Command(phase=before_start, command="pip install -e /workspace/tools")
+Network Storage(volume_id=..., mount=/workspace)
+Keep Alive(mode=time, value=30 minutes, action=stop)
+Pod(app=Agent, network_storage=Network Storage, commands=SSH Command, keep_alive=Keep Alive)
+Runpod Run(mode=plan or apply_and_wait)
+```
+
+Plan order:
+
+```text
+CREATE_OR_RESUME sql
+CREATE_OR_RESUME vector
+WAIT_READY sql
+WAIT_READY vector
+RESOLVE_DEPENDENCY_CONTRACTS
+CREATE_OR_RESUME agent
+WAIT_SSH agent
+RUN_SSH_COMMAND before_start
+WRITE_RUNTIME_CONFIG
+LAUNCH_AGENT
+MONITOR_KEEP_ALIVE
+```
+
+### Self-hosted vLLM
+
+```text
+LLM Server(engine=vLLM, model=Qwen/Qwen3-0.6B, placement=own_pod)
+Agent(harness=Codex, llm_server=LLM Server)
+Pod(app=Agent)
+Runpod Run(mode=apply)
+```
+
+The planner creates the vLLM pod first, then injects OpenAI-compatible endpoint variables into the agent runtime contract.
+
+### SQLite and S3
+
+```text
+SQL Database(engine=SQLite, sqlite_path=/workspace/db/app.sqlite)
+S3 Storage(endpoint=..., bucket=..., access_key_secret=s3_access, secret_key_secret=s3_secret)
+Agent(harness=Pi, sql_database=SQLite)
+Pod(app=Agent, s3_storage=S3)
+Runpod Run(mode=apply)
+```
+
+SQLite is `file_only`, so no database pod is created.
+
+## Testing
+
+```bash
+scripts/test
+```
+
+The test suite does not require Runpod credentials. API and SSH behavior are covered through injected fakes and focused helper tests.
+
+## Security Notes
+
+- `RUNPOD_API_KEY` is read server-side only.
+- Secret refs are represented as Runpod secret placeholders in env contracts.
+- Route handlers do not accept arbitrary shell commands.
+- Runtime env redaction helpers cover names containing `KEY`, `TOKEN`, `SECRET`, or `PASSWORD`.

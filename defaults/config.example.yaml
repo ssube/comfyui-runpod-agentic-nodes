@@ -1,0 +1,9 @@
+runpod:
+  api_key_env: RUNPOD_API_KEY
+state:
+  sqlite_path: user/runpod-agentic/state.sqlite
+ssh:
+  username: root
+  private_key_path: ~/.ssh/id_ed25519
+  connect_timeout_seconds: 120
+  command_timeout_seconds: 1800

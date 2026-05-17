@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "comfyui-runpod-agentic"
+version = "0.1.0"
+description = "ComfyUI custom nodes for declarative Runpod agentic deployments."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "ssube" }]
+dependencies = [
+  "PyYAML>=6.0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.8",
+  "build>=1.2",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["comfyui_runpod_agentic"]
+include = [
+  "__init__.py",
+  "defaults/*.yaml",
+  "web/*.js",
+]
+
+[tool.hatch.build.targets.wheel.force-include]
+"__init__.py" = "__init__.py"
+"defaults" = "defaults"
+"web" = "web"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

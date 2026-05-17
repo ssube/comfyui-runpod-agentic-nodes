@@ -1,0 +1,32 @@
+agent_templates:
+  codex:
+    default: rp-agent-codex
+    capabilities:
+      playwright: rp-agent-codex-playwright
+  claude:
+    default: rp-agent-claude
+    capabilities:
+      playwright: rp-agent-claude-playwright
+  opencode:
+    default: rp-agent-opencode
+    capabilities:
+      playwright: rp-agent-opencode-playwright
+  hermes:
+    default: rp-agent-hermes
+    capabilities: {}
+  pi:
+    default: rp-agent-pi
+    capabilities: {}
+app_templates:
+  browser:
+    playwright: rp-browser-playwright
+    neko: rp-browser-neko
+  llm_server:
+    ollama: rp-llm-ollama
+    vllm: rp-llm-vllm
+  sql_database:
+    postgres: rp-db-postgres
+    mysql: rp-db-mysql
+  vector_database:
+    chroma: rp-vector-chroma
+    qdrant: rp-vector-qdrant
