@@ -96,7 +96,11 @@ class RunpodClient:
         request = urllib.request.Request(
             endpoint_with_api_key(self.endpoint, self.api_key),
             data=body,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "comfyui-runpod-agentic/0.1 (+https://github.com/ssube/runpod-sandbox-nodes)",
+            },
             method="POST",
         )
         try:

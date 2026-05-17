@@ -21,6 +21,8 @@ def save_templates(spec_path: Path, map_path: Path, *, client: RunpodClient | No
         key = template_key(template)
         payload = dict(template)
         payload.pop("key", None)
+        payload.setdefault("env", [])
+        payload.setdefault("dockerArgs", "")
         if key in existing and "id" not in payload:
             payload["id"] = existing[key]
         if dry_run:

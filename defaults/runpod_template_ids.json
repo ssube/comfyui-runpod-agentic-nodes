@@ -1,0 +1,8 @@
+{
+  "rp-agent-opencode": "z82nvevxq2",
+  "rp-agent-pi": "x5833iirmd",
+  "rp-browser-playwright": "zkgp12ilso",
+  "rp-db-postgres": "x0n6tjs979",
+  "rp-llm-ollama": "hdo2aay2fn",
+  "rp-vector-qdrant": "e4sy29k13o"
+}
