@@ -226,6 +226,8 @@ class Planner:
             actions.append(PlanAction("RESOLVE_DEPENDENCY_CONTRACTS", detail={"resources": [resource.name for resource in deps]}))
         actions.append(PlanAction("CREATE_OR_RESUME", "agent", agent.name, {"template_id": agent.template_id}))
         actions.append(PlanAction("WAIT_SSH", "agent", agent.name))
+        if deployment.primary_app.sql_database and deployment.primary_app.sql_database.engine == "sqlite":
+            actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, {"command": local_sql_setup_command(deployment.primary_app.sql_database), "phase": "before_start", "order": -20000, "failure_policy": "fail", "retry_count": 0, "command_hash": stable_hash(to_plain(deployment.primary_app.sql_database))[:12]}))
         for index, skill in enumerate(deployment.primary_app.skills.skills if deployment.primary_app.skills else []):
             actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, {"command": skill_install_command(skill), "phase": "before_start", "order": -10000 + index, "failure_policy": "fail", "retry_count": 0, "command_hash": stable_hash(to_plain(skill))[:12]}))
         for command in sorted((deployment.ssh_commands.commands if deployment.ssh_commands else []), key=lambda item: item.order):
@@ -362,6 +364,33 @@ def skill_install_command(skill: SkillSource) -> str:
             ]
         )
     return "\n".join(lines)
+
+
+def local_sql_setup_command(sql_database) -> str:
+    path = sql_database.runtime_contract.env.values.get("DATABASE_PATH") or sql_database.runtime_contract.env.values.get("DATABASE_URL", "").removeprefix("sqlite:///")
+    if not path:
+        path = f"/workspace/db/{sql_database.database_name}.sqlite"
+    return "\n".join(
+        [
+            "set -e",
+            "if ! command -v sqlite3 >/dev/null 2>&1; then",
+            "  if command -v apt-get >/dev/null 2>&1; then",
+            "    apt-get update",
+            "    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sqlite3 libsqlite3-0",
+            "  elif command -v apk >/dev/null 2>&1; then",
+            "    apk add --no-cache sqlite-libs sqlite",
+            "  elif command -v dnf >/dev/null 2>&1; then",
+            "    dnf install -y sqlite",
+            "  else",
+            "    echo 'sqlite3 is required for local SQL but no supported package manager was found' >&2",
+            "    exit 1",
+            "  fi",
+            "fi",
+            f"mkdir -p \"$(dirname {shlex.quote(path)})\"",
+            f"touch {shlex.quote(path)}",
+            f"sqlite3 {shlex.quote(path)} 'PRAGMA user_version;'",
+        ]
+    )
 
 
 def shell_path_fragment(path: str) -> str:

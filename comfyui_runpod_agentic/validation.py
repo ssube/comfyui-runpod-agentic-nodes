@@ -22,8 +22,10 @@ def validate_deployment(deployment: DeploymentSpec, *, mode: str = "plan", requi
     if app.llm_server and app.llm_server.materialization == "same_pod":
         raise ValidationError("LLM Server same_pod materialization is not supported in the MVP.")
     if app.sql_database and app.sql_database.engine == "sqlite":
-        url = app.sql_database.runtime_contract.env.values.get("DATABASE_URL", "")
-        path = url.removeprefix("sqlite:///")
+        path = app.sql_database.runtime_contract.env.values.get("DATABASE_PATH", "")
+        if not path:
+            url = app.sql_database.runtime_contract.env.values.get("DATABASE_URL", "")
+            path = url.removeprefix("sqlite:///")
         if path and not path.startswith(app.workspace_path):
             raise ValidationError("SQLite path must be inside the agent workspace path.")
         if deployment.network_storage is None:

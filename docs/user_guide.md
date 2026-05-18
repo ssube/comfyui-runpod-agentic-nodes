@@ -79,7 +79,7 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
    Use `Runpod LLM API` for hosted APIs or `Runpod LLM Server` for self-hosted Ollama/vLLM. Both output the generic `RUNPOD_LLM` type and connect to `Runpod Agent.llm`.
 
 3. Add optional tools and state.
-   Add `Browser`, `SQL Database`, `Vector Database`, `MCP Server`, `Skill`, or `Skill Framework` nodes, then connect them to the agent.
+   Add `Browser`, `Remote SQL Database`, `Local SQL Database`, `Vector Database`, `MCP Server`, `Skill`, or `Skill Framework` nodes, then connect them to the agent.
 
 4. Add storage where persistence is needed.
    Connect `Network Storage` directly to the pod or to service nodes that run in their own pods. Service-specific storage is separate from the agent pod's workspace storage.
@@ -343,19 +343,20 @@ Use Ollama for Ollama-compatible workflows and vLLM for OpenAI-compatible servin
 
 ## Data Nodes
 
-### Runpod SQL Database
+### Runpod Remote SQL Database
 
-`Runpod SQL Database` provides SQL state.
+`Runpod Remote SQL Database` provides server-style SQL state through Postgres or MySQL.
 
 Inputs:
 
 | Input | Choices / Type | Use |
 | --- | --- | --- |
-| `engine` | `Postgres`, `MySQL`, `SQLite` | Database engine. |
-| `database_name` | string | Database name for server engines. |
-| `username` | string | Database username for server engines. |
-| `password_secret_name` | string | Secret name for the DB password. |
-| `sqlite_path` | string | SQLite DB path when `engine=SQLite`. |
+| `engine` | `Postgres`, `MySQL` | Remote database engine. |
+| `connection_mode` | `own_pod`, `env_only` | Create a DB pod or inject an existing connection from server env. |
+| `database_name` | string | Database name. |
+| `username` | string | Database username. |
+| `password_secret_name` | string | Runpod secret name for own-pod DB password. |
+| `database_url_env_var` | string | Server env var to map into pod `DATABASE_URL` when `connection_mode=env_only`. |
 | `network_storage` | `RUNPOD_STORAGE_NETWORK` | Optional storage for own-pod DB engines. |
 
 Output:
@@ -364,7 +365,27 @@ Output:
 | --- | --- |
 | `sql_database` | `RUNPOD_APP_SQL_DATABASE` |
 
-Postgres and MySQL create service pods. SQLite is `file_only`, so no database pod is created; put the SQLite path under the agent workspace if it must persist with workspace storage.
+Use `own_pod` when CRAG should create a managed Postgres/MySQL pod. Use `env_only` when the database already exists and the ComfyUI server has a connection string such as `APP_DATABASE_URL`; the runner injects that value into the agent pod as `DATABASE_URL`.
+
+### Runpod Local SQL Database
+
+`Runpod Local SQL Database` provides file-backed SQLite state in the agent workspace.
+
+Inputs:
+
+| Input | Choices / Type | Use |
+| --- | --- | --- |
+| `engine` | `SQLite` | Local database engine. |
+| `database_name` | string | Logical database name. |
+| `database_path` | string | SQLite DB path inside the agent pod. |
+
+Output:
+
+| Output | Type |
+| --- | --- |
+| `sql_database` | `RUNPOD_APP_SQL_DATABASE` |
+
+SQLite is `file_only`, so no database pod is created. The planner queues a `before_start` setup command that installs `sqlite3` when needed, creates the containing directory, touches the DB file, and verifies the file with `PRAGMA user_version;`. Keep the path under the agent workspace if it must persist with workspace storage.
 
 ### Runpod Vector Database
 
@@ -486,7 +507,7 @@ Where you connect the node determines where the volume is mounted:
 | `Runpod Pod.network_storage` | Agent pod workspace/storage. |
 | `Runpod Browser.network_storage` | Browser service pod storage. |
 | `Runpod LLM Server.network_storage` | LLM service pod storage. |
-| `Runpod SQL Database.network_storage` | SQL service pod storage. |
+| `Runpod Remote SQL Database.network_storage` | SQL service pod storage. |
 | `Runpod Vector Database.network_storage` | Vector service pod storage. |
 
 ### Runpod S3 Storage
@@ -574,9 +595,9 @@ The LLM server starts before the agent. Use `hf_token_secret_name` for private H
 ### Stateful Research Agent
 
 ```text
-Network Storage(postgres-data) -> SQL Database.network_storage
+Network Storage(postgres-data) -> Remote SQL Database.network_storage
 Network Storage(qdrant-data) -> Vector Database.network_storage
-Runpod SQL Database(Postgres) -> Agent.sql_database
+Runpod Remote SQL Database(Postgres) -> Agent.sql_database
 Runpod Vector Database(Qdrant) -> Agent.vector_database
 Runpod Browser(Playwright, same_pod) -> Agent.browser
 Runpod LLM API(Claude) -> Agent.llm

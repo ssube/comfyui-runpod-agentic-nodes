@@ -6,9 +6,10 @@ from comfyui_runpod_agentic.nodes import (
     RunpodKeepAliveNode,
     RunpodLLMApiNode,
     RunpodLLMServerNode,
+    RunpodLocalSQLDatabaseNode,
     RunpodNetworkStorageNode,
     RunpodPodNode,
-    RunpodSQLDatabaseNode,
+    RunpodRemoteSQLDatabaseNode,
     RunpodSSHAccessNode,
     RunpodSSHCommandNode,
     RunpodVectorDatabaseNode,
@@ -18,7 +19,7 @@ from comfyui_runpod_agentic.planner import Planner
 
 def build_deployment():
     llm = RunpodLLMApiNode().build("Claude", "claude-sonnet", "anthropic_key")[0]
-    sql = RunpodSQLDatabaseNode().build("Postgres", "app", "app", "pg_password")[0]
+    sql = RunpodRemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", "pg_password")[0]
     vector = RunpodVectorDatabaseNode().build("Qdrant", "docs")[0]
     browser = RunpodBrowserNode().build("Playwright", "same_pod", "chromium")[0]
     agent = RunpodAgentNode().build("OpenCode", "claude-sonnet", "wait_for_commands", browser=browser, llm=llm, sql_database=sql, vector_database=vector, node_id="agent1")[0]
@@ -74,7 +75,7 @@ def test_ollama_dependency_binds_to_local_interface_but_agent_gets_placeholder(t
 
 def test_dependency_pods_use_their_own_network_storage():
     storage = RunpodNetworkStorageNode().build("vol-sql", "/var/lib/postgresql/data")[0]
-    sql = RunpodSQLDatabaseNode().build("Postgres", "app", "app", "pg_password", network_storage=storage)[0]
+    sql = RunpodRemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", "pg_password", network_storage=storage)[0]
     agent = RunpodAgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
     deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
 
@@ -85,3 +86,28 @@ def test_dependency_pods_use_their_own_network_storage():
     assert sql_resource.pod_input["networkVolumeId"] == "vol-sql"
     assert sql_resource.pod_input["volumeMountPath"] == "/var/lib/postgresql/data"
     assert "networkVolumeId" not in agent_resource.pod_input
+
+
+def test_local_sql_adds_sqlite_setup_before_user_commands():
+    sql = RunpodLocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
+    agent = RunpodAgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
+    commands = RunpodSSHCommandNode().build("echo user", "before_start", 10, "fail")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0, commands=commands)[0]
+
+    plan = Planner().build(deployment)
+
+    setup = [action for action in plan.actions if action.action == "RUN_SSH_COMMAND" and "sqlite3" in action.detail["command"]]
+    assert setup
+    assert setup[0].detail["order"] == -20000
+    assert setup[0].detail["phase"] == "before_start"
+
+
+def test_remote_env_sql_does_not_create_dependency_pod():
+    sql = RunpodRemoteSQLDatabaseNode().build("Postgres", "env_only", "app", "app", database_url_env_var="APP_DATABASE_URL")[0]
+    agent = RunpodAgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+
+    plan = Planner().build(deployment)
+
+    assert [resource.role for resource in plan.resources] == ["agent"]
+    assert plan.resources[0].pod_input["env"]["DATABASE_URL"] == "${APP_DATABASE_URL}"

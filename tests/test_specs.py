@@ -4,12 +4,13 @@ from comfyui_runpod_agentic.nodes import (
     RunpodBrowserNode,
     RunpodLLMApiNode,
     RunpodLLMServerNode,
+    RunpodLocalSQLDatabaseNode,
     RunpodMCPServerNode,
     RunpodNetworkStorageNode,
     RunpodPodNode,
+    RunpodRemoteSQLDatabaseNode,
     RunpodSkillFrameworkNode,
     RunpodSkillNode,
-    RunpodSQLDatabaseNode,
 )
 from comfyui_runpod_agentic.validation import ValidationError
 
@@ -17,6 +18,9 @@ from comfyui_runpod_agentic.validation import ValidationError
 def test_user_facing_core_node_names():
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPod"] == "Runpod Pod"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRun"] == "Run on Runpod"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRemoteSQLDatabase"] == "Remote SQL Database"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodLocalSQLDatabase"] == "Local SQL Database"
+    assert "RunpodSQLDatabase" not in NODE_DISPLAY_NAME_MAPPINGS
 
 
 def test_agent_accepts_generic_llm_sources():
@@ -29,9 +33,10 @@ def test_agent_accepts_generic_llm_sources():
 
 
 def test_sqlite_contract_is_file_only():
-    spec = RunpodSQLDatabaseNode().build("SQLite", "app", "app", sqlite_path="/workspace/db/app.sqlite")[0]
+    spec = RunpodLocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
 
     assert spec.materialization == "file_only"
+    assert spec.runtime_contract.env.values["DATABASE_PATH"] == "/workspace/db/app.sqlite"
     assert spec.runtime_contract.env.values["DATABASE_URL"] == "sqlite:////workspace/db/app.sqlite"
 
 
@@ -47,7 +52,7 @@ def test_service_nodes_accept_network_storage():
     storage = RunpodNetworkStorageNode().build("vol-123", "/data")[0]
     browser = RunpodBrowserNode().build("Neko", "own_pod", "chromium", network_storage=storage)[0]
     llm = RunpodLLMServerNode().build("Ollama", "llama3.2", "own_pod", "none", network_storage=storage)[0]
-    sql = RunpodSQLDatabaseNode().build("Postgres", "app", "app", network_storage=storage)[0]
+    sql = RunpodRemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", network_storage=storage)[0]
 
     assert browser.network_storage == storage
     assert llm.network_storage == storage
@@ -75,7 +80,7 @@ def test_agent_accepts_chainable_skills():
 
 
 def test_pod_validation_rejects_sqlite_outside_workspace():
-    db = RunpodSQLDatabaseNode().build("SQLite", "app", "app", sqlite_path="/tmp/app.sqlite")[0]
+    db = RunpodLocalSQLDatabaseNode().build("SQLite", "app", "/tmp/app.sqlite")[0]
     agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", sql_database=db)[0]
 
     try:
@@ -84,3 +89,13 @@ def test_pod_validation_rejects_sqlite_outside_workspace():
         assert "SQLite path" in str(exc)
     else:
         raise AssertionError("expected ValidationError")
+
+
+def test_remote_sql_env_only_injects_database_url_from_server_env():
+    spec = RunpodRemoteSQLDatabaseNode().build("Postgres", "env_only", "app", "app", database_url_env_var="APP_DATABASE_URL")[0]
+
+    assert spec.materialization == "env_only"
+    assert spec.template_key is None
+    assert spec.runtime_contract.env.secrets[0].name == "APP_DATABASE_URL"
+    assert spec.runtime_contract.env.secrets[0].env_var == "DATABASE_URL"
+    assert spec.runtime_contract.env.secrets[0].provider == "server_env"

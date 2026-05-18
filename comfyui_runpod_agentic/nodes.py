@@ -223,7 +223,7 @@ class RunpodLLMApiNode:
         return (LLMApiSpec("llm_api", provider_id, model, api_format, base_url, RuntimeContract(EnvPatch(values, [secret] if secret else [])), secret, meta(node_id, provider)),)
 
 
-class RunpodSQLDatabaseNode:
+class RunpodRemoteSQLDatabaseNode:
     CATEGORY = "Runpod/Database"
     RETURN_TYPES = (RUNPOD_APP_SQL_DATABASE,)
     RETURN_NAMES = ("sql_database",)
@@ -233,27 +233,63 @@ class RunpodSQLDatabaseNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "engine": (["Postgres", "MySQL", "SQLite"],),
+                "engine": (["Postgres", "MySQL"],),
+                "connection_mode": (["own_pod", "env_only"],),
                 "database_name": ("STRING", {"default": "app"}),
                 "username": ("STRING", {"default": "app"}),
                 "password_secret_name": ("STRING", {"default": ""}),
-                "sqlite_path": ("STRING", {"default": "/workspace/db/app.sqlite"}),
+                "database_url_env_var": ("STRING", {"default": "DATABASE_URL"}),
             },
             "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, engine: str, database_name: str, username: str, password_secret_name: str = "", sqlite_path: str = "/workspace/db/app.sqlite", network_storage=None, node_id: str | None = None):
+    def build(self, engine: str, connection_mode: str, database_name: str, username: str, password_secret_name: str = "", database_url_env_var: str = "DATABASE_URL", network_storage=None, node_id: str | None = None):
         db_engine = norm(engine)
-        if db_engine == "sqlite":
-            contract = RuntimeContract(EnvPatch({"DATABASE_KIND": "sqlite", "DATABASE_URL": f"sqlite:///{sqlite_path}"}))
-            return (SQLDatabaseSpec("sql_database", "sqlite", "file_only", database_name, None, None, contract, None, network_storage, meta(node_id, engine)),)
+        if db_engine not in {"postgres", "mysql"}:
+            raise ValidationError("Remote SQL Database supports Postgres and MySQL. Use Local SQL Database for SQLite.")
+        mode = norm(connection_mode)
+        if mode == "env_only":
+            url_secret = SecretRef(database_url_env_var.strip() or "DATABASE_URL", "DATABASE_URL", "server_env")
+            values = {
+                "DATABASE_KIND": db_engine,
+                "DATABASE_NAME": database_name,
+                "DATABASE_USER": username,
+            }
+            contract = RuntimeContract(EnvPatch(values, [url_secret]))
+            return (SQLDatabaseSpec("sql_database", db_engine, "env_only", database_name, username, url_secret, contract, None, None, meta(node_id, f"{engine} Env")),)
         secret = SecretRef(password_secret_name, "DATABASE_PASSWORD") if password_secret_name else None
         contract = RuntimeContract(
             EnvPatch({"DATABASE_KIND": db_engine, "DATABASE_URL": f"crag://sql/{db_engine}/{database_name}", "DATABASE_NAME": database_name, "DATABASE_USER": username}, [secret] if secret else []),
             [PortSpec(db_engine, 5432 if db_engine == "postgres" else 3306, "tcp", False)],
         )
         return (SQLDatabaseSpec("sql_database", db_engine, "own_pod", database_name, username, secret, contract, f"rp-db-{db_engine}", network_storage, meta(node_id, engine)),)
+
+
+class RunpodLocalSQLDatabaseNode:
+    CATEGORY = "Runpod/Database"
+    RETURN_TYPES = (RUNPOD_APP_SQL_DATABASE,)
+    RETURN_NAMES = ("sql_database",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "engine": (["SQLite"],),
+                "database_name": ("STRING", {"default": "app"}),
+                "database_path": ("STRING", {"default": "/workspace/db/app.sqlite"}),
+            },
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, engine: str, database_name: str, database_path: str = "/workspace/db/app.sqlite", node_id: str | None = None):
+        db_engine = norm(engine)
+        if db_engine != "sqlite":
+            raise ValidationError("Local SQL Database only supports SQLite.")
+        path = database_path.strip() or "/workspace/db/app.sqlite"
+        contract = RuntimeContract(EnvPatch({"DATABASE_KIND": "sqlite", "DATABASE_URL": f"sqlite:///{path}", "DATABASE_PATH": path, "DATABASE_NAME": database_name}))
+        return (SQLDatabaseSpec("sql_database", "sqlite", "file_only", database_name, None, None, contract, None, None, meta(node_id, "SQLite")),)
 
 
 class RunpodVectorDatabaseNode:
@@ -669,7 +705,8 @@ NODE_CLASSES = [
     RunpodBrowserNode,
     RunpodLLMServerNode,
     RunpodLLMApiNode,
-    RunpodSQLDatabaseNode,
+    RunpodLocalSQLDatabaseNode,
+    RunpodRemoteSQLDatabaseNode,
     RunpodVectorDatabaseNode,
     RunpodMCPServerNode,
     RunpodSkillFrameworkNode,

@@ -124,7 +124,8 @@ Apps and services:
 - `MCP Server`: chainable stdio/http/sse MCP server definitions exposed to the agent as `MCP_SERVERS_JSON` and `.runpod_agentic/mcp_servers.json`.
 - `Skill`: chainable GitHub skill download into the agent workspace.
 - `Skill Framework`: chainable preset installer for popular skill frameworks such as Superpowers.
-- `SQL Database`: Postgres, MySQL, or SQLite.
+- `Remote SQL Database`: Postgres/MySQL through a provisioned pod or existing `DATABASE_URL` env.
+- `Local SQL Database`: SQLite file path plus startup setup for the agent pod.
 - `Vector Database`: Chroma or Qdrant.
 - `Network Storage` and `S3 Storage`.
 - `SSH Command`: declarative command chain executed by `Run on Runpod`.
@@ -137,7 +138,7 @@ Apps and services:
 LLM API(provider=Claude, model=claude-sonnet, secret=anthropic_key)
 MCP Server(name=filesystem, transport=stdio, command=npx, args="-y @modelcontextprotocol/server-filesystem /workspace")
 Skill Framework(framework=Superpowers, target_root=/workspace/.codex/skills)
-SQL Database(engine=Postgres, database=app, username=app, secret=pg_password)
+Remote SQL Database(engine=Postgres, connection_mode=own_pod, database=app, username=app, secret=pg_password)
 Vector Database(engine=Qdrant, collection=docs)
 Browser(browser=Playwright, placement=same_pod)
 Agent(harness=OpenCode, model=claude-sonnet, system_prompt="Follow repository conventions.", mcp_servers=MCP Server)
@@ -178,14 +179,14 @@ The planner creates the vLLM pod first, then injects OpenAI-compatible endpoint 
 ### SQLite and S3
 
 ```text
-SQL Database(engine=SQLite, sqlite_path=/workspace/db/app.sqlite)
+Local SQL Database(engine=SQLite, database_path=/workspace/db/app.sqlite)
 S3 Storage(endpoint=..., bucket=..., access_key_secret=s3_access, secret_key_secret=s3_secret)
 Agent(harness=Pi, sql_database=SQLite)
 Runpod Pod(app=Agent, s3_storage=S3)
 Run on Runpod(mode=apply)
 ```
 
-SQLite is `file_only`, so no database pod is created.
+SQLite is `file_only`, so no database pod is created. The runner queues a setup command to install `sqlite3` when needed and initialize the file path before the agent launches.
 
 ## Testing
 

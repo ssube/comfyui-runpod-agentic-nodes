@@ -223,7 +223,7 @@
     },
     {
       "id": 5,
-      "type": "RunpodSQLDatabase",
+      "type": "RunpodRemoteSQLDatabase",
       "pos": [
         540,
         650
@@ -253,14 +253,15 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodSQLDatabase"
+        "Node name for S&R": "RunpodRemoteSQLDatabase"
       },
       "widgets_values": [
         "Postgres",
+        "own_pod",
         "app",
         "app",
         "pg_password",
-        "/workspace/db/app.sqlite"
+        "DATABASE_URL"
       ]
     },
     {
