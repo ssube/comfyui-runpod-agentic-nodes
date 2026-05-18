@@ -243,6 +243,18 @@ Clean up any managed pods by prefix:
 scripts/cleanup-runpod-pods --action terminate
 ```
 
+Validate the live Runpod GraphQL input types used by the CRAG nodes:
+
+```bash
+scripts/check-runpod-schema --json
+```
+
+Opt-in pytest live checks are also available. The schema check only needs `RUNPOD_API_KEY`; creating a real pod additionally requires `RUNPOD_LIVE_CREATE_POD=1`, `RUNPOD_TEST_TEMPLATE_ID`, and `RUNPOD_TEST_GPU_TYPE_ID`.
+
+```bash
+RUNPOD_LIVE_TESTS=1 scripts/test tests/test_runpod_live.py
+```
+
 ## Creating Runpod Templates
 
 Template creation is scripted and repeatable:
@@ -260,6 +272,8 @@ Preview sanitized inputs without calling Runpod:
 ```bash
 scripts/create-runpod-templates --dry-run
 ```
+
+Agent templates should either bake `/usr/local/bin/runpod-agent-launch` into the image or set `CRAG_AGENT_LAUNCH_COMMAND` in the ComfyUI server environment to the command that starts the runtime supervisor.
 
 ## Security Notes
 

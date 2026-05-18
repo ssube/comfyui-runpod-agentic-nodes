@@ -10,6 +10,7 @@ from comfyui_runpod_agentic.runpod_client import (
     endpoint_with_api_key,
     format_graphql_errors,
     normalize_pod_input,
+    normalize_template_rest_input,
 )
 from comfyui_runpod_agentic.ssh_client import CommandResult, extract_ssh_endpoint, normalize_ssh_result, runpod_proxy_ssh_endpoint
 
@@ -79,3 +80,18 @@ def test_normalize_pod_input_converts_env_and_ports():
 
     assert data["env"] == [{"key": "A", "value": "1"}, {"key": "B", "value": "2"}]
     assert data["ports"] == "8000/http,22/tcp"
+
+
+def test_normalize_template_rest_input_converts_legacy_graphql_shape():
+    data = normalize_template_rest_input(
+        {
+            "env": [{"key": "RUNPOD_TOKEN", "value": "secret"}],
+            "ports": "22/tcp,3000/http",
+            "dockerArgs": "sleep infinity",
+        }
+    )
+
+    assert data["env"] == {"RUNPOD_TOKEN": "secret"}
+    assert data["ports"] == ["22/tcp", "3000/http"]
+    assert data["dockerStartCmd"] == ["sleep", "infinity"]
+    assert data["isPublic"] is False

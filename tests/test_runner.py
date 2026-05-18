@@ -10,7 +10,7 @@ from comfyui_runpod_agentic.nodes import (
     RunpodSkillFrameworkNode,
     RunpodSkillNode,
 )
-from comfyui_runpod_agentic.runner import RunpodRunner
+from comfyui_runpod_agentic.runner import RunpodRunner, first_ready_probe, readiness_probe_paths
 from comfyui_runpod_agentic.state_store import StateStore
 
 
@@ -81,6 +81,7 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
 def test_runner_apply_waits_for_dependency_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     monkeypatch.setenv("RUNPOD_DEPENDENCY_READY_TIMEOUT_SECONDS", "10")
+    monkeypatch.setattr("comfyui_runpod_agentic.runner.first_ready_probe", lambda endpoint, role, env: "/")
     browser = RunpodBrowserNode().build("Playwright", "own_pod", "chromium")[0]
     agent = RunpodAgentNode().build("Pi", "model", "manual", browser=browser)[0]
     deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
@@ -138,3 +139,39 @@ def test_runner_installs_skills_before_user_commands(tmp_path, monkeypatch):
 
     assert "https://github.com/example/skills.git" in runner.ssh_client.commands[1]
     assert "https://github.com/obra/superpowers.git" in runner.ssh_client.commands[2]
+
+
+def test_readiness_probe_paths_use_service_health_endpoints():
+    assert readiness_probe_paths("llm", {"LLM_PROVIDER": "ollama"}) == ["/api/tags"]
+    assert readiness_probe_paths("vector", {"VECTOR_PROVIDER": "qdrant"}) == ["/readyz", "/collections"]
+
+
+def test_first_ready_probe_accepts_successful_http_status(monkeypatch):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def fake_urlopen(request, timeout):
+        assert request.full_url == "http://127.0.0.1:11434/api/tags"
+        assert timeout == 3.0
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    assert first_ready_probe("http://127.0.0.1:11434", "llm", {"LLM_PROVIDER": "ollama"}) == "/api/tags"
+
+
+def test_launch_command_can_use_configured_launcher(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setenv("CRAG_AGENT_LAUNCH_COMMAND", "echo launch-agent")
+    agent = RunpodAgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+    plan = runner.planner.build(deployment, mode="apply", workflow_graph={"test": True})
+
+    assert "echo launch-agent" in runner._launch_command(plan)

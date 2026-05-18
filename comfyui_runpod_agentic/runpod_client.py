@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -10,6 +11,25 @@ from typing import Any, Protocol
 from .config import get_runpod_api_key
 
 RUNPOD_GRAPHQL_URL = "https://api.runpod.io/graphql"
+RUNPOD_REST_URL = "https://rest.runpod.io/v1"
+
+REQUIRED_GRAPHQL_TYPES: dict[str, list[str]] = {
+    "PodFindAndDeployOnDemandInput": [
+        "cloudType",
+        "containerDiskInGb",
+        "env",
+        "gpuCount",
+        "gpuTypeId",
+        "name",
+        "ports",
+        "startSsh",
+        "templateId",
+    ],
+    "PodResumeInput": ["podId"],
+    "SaveTemplateInput": ["containerDiskInGb", "dockerArgs", "env", "id", "imageName", "name", "ports", "volumeInGb", "volumeMountPath"],
+    "PodStopInput": ["podId"],
+    "PodTerminateInput": ["podId"],
+}
 
 
 class RunpodClientError(RuntimeError):
@@ -24,12 +44,14 @@ class RunpodClientProtocol(Protocol):
     def resume_pod(self, pod_id: str) -> dict[str, Any]: ...
     def terminate_pod(self, pod_id: str) -> None: ...
     def save_template(self, input: dict[str, Any]) -> dict[str, Any]: ...
+    def validate_graphql_schema(self) -> dict[str, Any]: ...
 
 
 @dataclass
 class RunpodClient:
     api_key: str | None = None
     endpoint: str = RUNPOD_GRAPHQL_URL
+    rest_endpoint: str = RUNPOD_REST_URL
     timeout_seconds: int = 60
 
     def __post_init__(self) -> None:
@@ -89,6 +111,30 @@ class RunpodClient:
         """
         return self._graphql(mutation, {"input": clean_none(input)})["saveTemplate"]
 
+    def save_template_rest(self, input: dict[str, Any]) -> dict[str, Any]:
+        payload = normalize_template_rest_input(clean_none(input))
+        template_id = payload.pop("id", None)
+        if template_id:
+            return self._rest_json("POST", f"/templates/{urllib.parse.quote(str(template_id))}/update", payload)
+        return self._rest_json("POST", "/templates", payload)
+
+    def validate_graphql_schema(self) -> dict[str, Any]:
+        query = """
+        query CragSchemaCheck($typeName: String!) {
+          __type(name: $typeName) {
+            name
+            inputFields { name }
+          }
+        }
+        """
+        result: dict[str, Any] = {}
+        for type_name, required_fields in REQUIRED_GRAPHQL_TYPES.items():
+            type_data = self._graphql(query, {"typeName": type_name}).get("__type")
+            fields = sorted(field["name"] for field in (type_data or {}).get("inputFields", []))
+            missing = sorted(set(required_fields).difference(fields))
+            result[type_name] = {"present": type_data is not None, "fields": fields, "missing": missing}
+        return result
+
     def _graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
             raise RunpodClientError("RUNPOD_API_KEY is required for Runpod API calls.")
@@ -98,6 +144,7 @@ class RunpodClient:
             data=body,
             headers={
                 "Accept": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
                 "User-Agent": "comfyui-runpod-agentic/0.1 (+https://github.com/ssube/runpod-sandbox-nodes)",
             },
@@ -118,6 +165,34 @@ class RunpodClient:
             raise RunpodClientError(format_graphql_errors(payload["errors"]))
         return payload.get("data") or {}
 
+    def _rest_json(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not self.api_key:
+            raise RunpodClientError("RUNPOD_API_KEY is required for Runpod API calls.")
+        url = self.rest_endpoint.rstrip("/") + "/" + path.lstrip("/")
+        body = json.dumps(payload or {}).encode("utf-8") if payload is not None else None
+        request = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "comfyui-runpod-agentic/0.1 (+https://github.com/ssube/runpod-sandbox-nodes)",
+            },
+            method=method,
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="replace")
+            detail = f"{exc.code} {exc.reason}"
+            if body_text:
+                detail = f"{detail}: {body_text}"
+            raise RunpodClientError(f"Runpod REST request failed: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RunpodClientError(f"Runpod REST request failed: {exc}") from exc
+
 
 def clean_none(value: Any) -> Any:
     if isinstance(value, dict):
@@ -137,6 +212,24 @@ def normalize_pod_input(input: dict[str, Any]) -> dict[str, Any]:
         normalized.pop("ports", None)
     elif isinstance(ports, list):
         normalized["ports"] = ",".join(f"{port['container_port']}/{port.get('protocol', 'http')}" for port in ports)
+    return normalized
+
+
+def normalize_template_rest_input(input: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(input)
+    env = normalized.get("env")
+    if isinstance(env, list):
+        normalized["env"] = {str(item["key"]): str(item["value"]) for item in env if isinstance(item, dict) and "key" in item and "value" in item}
+    elif env is None:
+        normalized["env"] = {}
+    ports = normalized.get("ports")
+    if isinstance(ports, str):
+        normalized["ports"] = [part.strip() for part in ports.split(",") if part.strip()]
+    docker_args = normalized.pop("dockerArgs", None)
+    if docker_args and "dockerStartCmd" not in normalized:
+        normalized["dockerStartCmd"] = shlex.split(str(docker_args))
+    normalized.setdefault("isPublic", False)
+    normalized.setdefault("isServerless", False)
     return normalized
 
 

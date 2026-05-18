@@ -634,6 +634,12 @@ scripts/create-runpod-templates \
   --map defaults/runpod_template_ids.json
 ```
 
+Validate the live Runpod GraphQL schema before changing pod/template API code:
+
+```bash
+scripts/check-runpod-schema --json
+```
+
 Run a minimal live smoke test:
 
 ```bash
@@ -641,6 +647,14 @@ scripts/run-live-smoke \
   --cloud-type COMMUNITY \
   --gpu-type-id "NVIDIA GeForce RTX 3090"
 ```
+
+Run opt-in live pytest checks:
+
+```bash
+RUNPOD_LIVE_TESTS=1 scripts/test tests/test_runpod_live.py
+```
+
+The live pod creation test is skipped unless `RUNPOD_LIVE_CREATE_POD=1`, `RUNPOD_TEST_TEMPLATE_ID`, and `RUNPOD_TEST_GPU_TYPE_ID` are also set.
 
 Clean up managed pods:
 
@@ -657,6 +671,10 @@ Set `RUNPOD_API_KEY` in the ComfyUI server environment or `.env.d/runpod.env` fo
 SSH port is open but connections are refused:
 
 The container may not be running an SSH daemon. Add `Runpod SSH Access` with `install_internal_sshd=true`, or use an image/template that starts sshd itself.
+
+Agent launch fails with exit code 127:
+
+The agent template does not include `/usr/local/bin/runpod-agent-launch`. Bake the CRAG runtime launcher into the image, or set `CRAG_AGENT_LAUNCH_COMMAND` in the ComfyUI server environment to the command that starts the runtime supervisor.
 
 `sshd: no hostkeys available -- exiting`:
 

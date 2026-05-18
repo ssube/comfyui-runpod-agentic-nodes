@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -138,9 +140,12 @@ class RunpodRunner:
         deadline = time.monotonic() + timeout_seconds
         last_status = pod.get("desiredStatus") or "unknown"
         while time.monotonic() < deadline:
-            if wants_public_endpoint and public_http_endpoint(pod):
-                self.state_store.add_event(run_id, "dependency_ready", resource.name, resource_id=resource_id, payload={"pod_id": pod_id})
-                return pod
+            if wants_public_endpoint:
+                endpoint = public_http_endpoint(pod)
+                probe_path = first_ready_probe(endpoint, resource.role, resource.pod_input.get("env", {})) if endpoint else None
+                if endpoint and probe_path:
+                    self.state_store.add_event(run_id, "dependency_ready", resource.name, resource_id=resource_id, payload={"pod_id": pod_id, "endpoint": endpoint, "probe_path": probe_path})
+                    return pod
             if not wants_public_endpoint and (pod.get("runtime") or {}).get("ports"):
                 self.state_store.add_event(run_id, "dependency_ready", resource.name, resource_id=resource_id, payload={"pod_id": pod_id})
                 return pod
@@ -214,7 +219,15 @@ class RunpodRunner:
             return ""
         workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
         harness = agent_env.get("AGENT_HARNESS", "agent")
-        return f"cd {workspace} && test -x /usr/local/bin/runpod-agent-launch && nohup /usr/local/bin/runpod-agent-launch {harness} > .runpod_agentic/agent.log 2>&1 &"
+        configured_launcher = os.environ.get("CRAG_AGENT_LAUNCH_COMMAND") or agent_env.get("CRAG_AGENT_LAUNCH_COMMAND")
+        if configured_launcher:
+            return f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && nohup bash -lc {shell_env(configured_launcher)} > .runpod_agentic/agent.log 2>&1 &"
+        launcher = f"/usr/local/bin/runpod-agent-launch {shell_env(harness)}"
+        return (
+            f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && "
+            f"if [ -x /usr/local/bin/runpod-agent-launch ]; then nohup {launcher} > .runpod_agentic/agent.log 2>&1 & "
+            "else echo 'CRAG agent launcher missing: set CRAG_AGENT_LAUNCH_COMMAND or bake /usr/local/bin/runpod-agent-launch into the template.' >&2; exit 127; fi"
+        )
 
     def _lifecycle(self, plan: DeploymentPlan, mode: str) -> dict[str, Any]:
         resources = self.state_store.list_resources()
@@ -321,4 +334,33 @@ def public_http_endpoint(pod: dict[str, Any]) -> str | None:
         if host and public:
             scheme = "https" if str(port.get("type") or port.get("protocol")).lower() == "https" else "http"
             return f"{scheme}://{host}:{int(public)}"
+    return None
+
+
+def readiness_probe_paths(role: str, env: dict[str, Any]) -> list[str]:
+    provider = str(env.get("LLM_PROVIDER") or env.get("VECTOR_PROVIDER") or "").lower()
+    if role == "llm" and provider == "ollama":
+        return ["/api/tags"]
+    if role == "llm" and provider == "vllm":
+        return ["/health", "/v1/models"]
+    if role == "vector" and provider == "qdrant":
+        return ["/readyz", "/collections"]
+    if role == "vector" and provider == "chroma":
+        return ["/api/v2/heartbeat"]
+    return ["/"]
+
+
+def first_ready_probe(endpoint: str, role: str, env: dict[str, Any], *, timeout_seconds: float = 3.0) -> str | None:
+    for path in readiness_probe_paths(role, env):
+        url = endpoint.rstrip("/") + path
+        request = urllib.request.Request(url, headers={"Accept": "application/json,text/plain,*/*", "User-Agent": "comfyui-runpod-agentic/0.1"}, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+                if 200 <= response.status < 500:
+                    return path
+        except urllib.error.HTTPError as exc:
+            if 200 <= exc.code < 500:
+                return path
+        except urllib.error.URLError:
+            continue
     return None

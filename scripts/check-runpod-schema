@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_dir="$(cd "$script_dir/.." && pwd)"
+python_bin="$repo_dir/venv/bin/python"
+if [ ! -x "$python_bin" ]; then
+  python_bin="python"
+fi
+exec "$python_bin" -m comfyui_runpod_agentic.schema_check "$@"
