@@ -1,161 +1,692 @@
 {
   "id": "5bbd5d10-3b08-4bfb-b729-faf92f9511b5",
   "revision": 0,
-  "last_node_id": 9,
-  "last_link_id": 8,
+  "last_node_id": 10,
+  "last_link_id": 9,
   "nodes": [
     {
       "id": 1,
       "type": "RunpodSkillFramework",
-      "pos": [120, 170],
-      "size": [340, 178],
+      "pos": [
+        120,
+        170
+      ],
+      "size": [
+        340,
+        250.65625
+      ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "skills", "type": "RUNPOD_AGENT_SKILLS", "links": [1]}],
-      "properties": {"Node name for S&R": "RunpodSkillFramework"},
-      "widgets_values": ["Superpowers", "", "", "/workspace/.codex/skills", ""]
+      "inputs": [
+        {
+          "label": "Agent Framework",
+          "name": "framework",
+          "type": "COMBO",
+          "widget": {
+            "name": "framework"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "skills",
+          "type": "RUNPOD_AGENT_SKILLS",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodSkillFramework"
+      },
+      "widgets_values": [
+        "Superpowers",
+        "",
+        "",
+        "/workspace/.codex/skills",
+        ""
+      ]
     },
     {
       "id": 2,
       "type": "RunpodMCPServer",
-      "pos": [120, 430],
-      "size": [380, 250],
+      "pos": [
+        120,
+        430
+      ],
+      "size": [
+        380,
+        354.65625
+      ],
       "flags": {},
       "order": 1,
       "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "mcp_servers", "type": "RUNPOD_MCP_SERVERS", "links": [2]}],
-      "properties": {"Node name for S&R": "RunpodMCPServer"},
-      "widgets_values": ["filesystem", "stdio", "npx", "-y @modelcontextprotocol/server-filesystem /workspace", "", "{}", ""]
+      "inputs": [
+        {
+          "label": "MCP Server Name",
+          "name": "name",
+          "type": "STRING",
+          "widget": {
+            "name": "name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mcp_servers",
+          "type": "RUNPOD_MCP_SERVERS",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodMCPServer"
+      },
+      "widgets_values": [
+        "filesystem",
+        "stdio",
+        "npx",
+        "-y @modelcontextprotocol/server-filesystem /workspace",
+        "",
+        "{}",
+        ""
+      ]
     },
     {
       "id": 3,
       "type": "RunpodNetworkStorage",
-      "pos": [120, 780],
-      "size": [320, 130],
+      "pos": [
+        120,
+        780
+      ],
+      "size": [
+        320,
+        144
+      ],
       "flags": {},
       "order": 2,
       "mode": 0,
       "inputs": [],
-      "outputs": [{"name": "network_storage", "type": "RUNPOD_STORAGE_NETWORK", "links": [3]}],
-      "properties": {"Node name for S&R": "RunpodNetworkStorage"},
-      "widgets_values": ["vol-agent-workspace", "/workspace"]
+      "outputs": [
+        {
+          "name": "network_storage",
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodNetworkStorage"
+      },
+      "widgets_values": [
+        "vol-agent-workspace",
+        "/workspace"
+      ]
     },
     {
       "id": 5,
       "type": "RunpodKeepAlive",
-      "pos": [650, 130],
-      "size": [280, 202],
+      "pos": [
+        650,
+        130
+      ],
+      "size": [
+        280,
+        303.96875
+      ],
       "flags": {},
       "order": 3,
       "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "keep_alive", "type": "RUNPOD_KEEPALIVE_POLICY", "links": [5]}],
-      "properties": {"Node name for S&R": "RunpodKeepAlive"},
-      "widgets_values": ["time", "stop", 15, "minutes", 0, 0, 0]
+      "inputs": [
+        {
+          "label": "Timeout",
+          "name": "time_value",
+          "type": "INT",
+          "widget": {
+            "name": "time_value"
+          },
+          "link": null
+        },
+        {
+          "label": "Turn Limit",
+          "name": "turn_limit",
+          "type": "INT",
+          "widget": {
+            "name": "turn_limit"
+          },
+          "link": null
+        },
+        {
+          "label": "Cost Limit (USD)",
+          "name": "cost_limit_usd",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cost_limit_usd"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "keep_alive",
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodKeepAlive"
+      },
+      "widgets_values": [
+        "time",
+        "stop",
+        15,
+        "minutes",
+        0,
+        0,
+        0
+      ]
     },
     {
       "id": 4,
       "type": "RunpodAgent",
-      "pos": [650, 380],
-      "size": [360, 324],
+      "pos": [
+        650,
+        380
+      ],
+      "size": [
+        360,
+        401.3125
+      ],
       "flags": {},
       "order": 5,
       "mode": 0,
       "inputs": [
-        {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": null},
-        {"name": "llm", "shape": 7, "type": "RUNPOD_LLM", "link": null},
-        {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": null},
-        {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": null},
-        {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": 2},
-        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": 1},
-        {"name": "system_prompt", "type": "STRING", "widget": {"name": "system_prompt"}, "link": 7}
+        {
+          "name": "browser",
+          "shape": 7,
+          "type": "RUNPOD_APP_BROWSER",
+          "link": null
+        },
+        {
+          "name": "llm",
+          "shape": 7,
+          "type": "RUNPOD_LLM",
+          "link": null
+        },
+        {
+          "name": "sql_database",
+          "shape": 7,
+          "type": "RUNPOD_APP_SQL_DATABASE",
+          "link": null
+        },
+        {
+          "name": "vector_database",
+          "shape": 7,
+          "type": "RUNPOD_APP_VECTOR_DATABASE",
+          "link": null
+        },
+        {
+          "name": "mcp_servers",
+          "shape": 7,
+          "type": "RUNPOD_MCP_SERVERS",
+          "link": 2
+        },
+        {
+          "name": "skills",
+          "shape": 7,
+          "type": "RUNPOD_AGENT_SKILLS",
+          "link": 1
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "system_prompt"
+          },
+          "link": 7
+        },
+        {
+          "label": "Agent Harness",
+          "name": "harness",
+          "type": "COMBO",
+          "widget": {
+            "name": "harness"
+          },
+          "link": null
+        }
       ],
-      "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [4]}],
-      "properties": {"Node name for S&R": "RunpodAgent"},
-      "widgets_values": ["Pi", "manual-screenshot", "manual", "/workspace", "You are a screenshot demo agent with Superpowers and filesystem MCP."]
+      "outputs": [
+        {
+          "name": "agent",
+          "type": "RUNPOD_APP_AGENT",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodAgent"
+      },
+      "widgets_values": [
+        "Pi",
+        "manual-screenshot",
+        "manual",
+        "/workspace",
+        "You are a screenshot demo agent with Superpowers and filesystem MCP."
+      ]
     },
     {
       "id": 8,
       "type": "PrimitiveStringMultiline",
-      "pos": [650, 760],
-      "size": [360, 140],
+      "pos": [
+        650,
+        760
+      ],
+      "size": [
+        360,
+        140
+      ],
       "flags": {},
       "order": 4,
       "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "STRING", "type": "STRING", "links": [7]}],
-      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
-      "widgets_values": ["You are a screenshot demo agent with Superpowers and filesystem MCP."]
+      "inputs": [
+        {
+          "label": "System Prompt",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "You are a screenshot demo agent with Superpowers and filesystem MCP."
+      ],
+      "title": "System Prompt"
     },
     {
       "id": 6,
       "type": "RunpodPod",
-      "pos": [1130, 360],
-      "size": [300, 302],
+      "pos": [
+        1130,
+        360
+      ],
+      "size": [
+        300,
+        421.3125
+      ],
       "flags": {},
       "order": 6,
       "mode": 0,
       "inputs": [
-        {"name": "app", "type": "RUNPOD_APP_AGENT", "link": 4},
-        {"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": 3},
-        {"name": "s3_storage", "shape": 7, "type": "RUNPOD_STORAGE_S3", "link": null},
-        {"name": "commands", "shape": 7, "type": "RUNPOD_COMMAND_SSH", "link": null},
-        {"name": "keep_alive", "shape": 7, "type": "RUNPOD_KEEPALIVE_POLICY", "link": 5},
-        {"name": "ssh_access", "shape": 7, "type": "RUNPOD_SSH_ACCESS_POLICY", "link": null}
+        {
+          "name": "app",
+          "type": "RUNPOD_APP_AGENT",
+          "link": 4
+        },
+        {
+          "name": "network_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "link": 3
+        },
+        {
+          "name": "s3_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_S3",
+          "link": null
+        },
+        {
+          "name": "commands",
+          "shape": 7,
+          "type": "RUNPOD_COMMAND_SSH",
+          "link": null
+        },
+        {
+          "name": "keep_alive",
+          "shape": 7,
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "link": 5
+        },
+        {
+          "name": "ssh_access",
+          "shape": 7,
+          "type": "RUNPOD_SSH_ACCESS_POLICY",
+          "link": null
+        }
       ],
-      "outputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "links": [6]}],
-      "properties": {"Node name for S&R": "RunpodPod"},
-      "widgets_values": ["NVIDIA RTX A4000", 1, "SECURE", 20, 0, true, "always_create"]
+      "outputs": [
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodPod"
+      },
+      "widgets_values": [
+        "NVIDIA RTX A4000",
+        1,
+        "SECURE",
+        20,
+        0,
+        true,
+        "always_create"
+      ]
     },
     {
       "id": 7,
       "type": "RunpodRun",
-      "pos": [1550, 380],
-      "size": [360, 190],
+      "pos": [
+        1550,
+        380
+      ],
+      "size": [
+        360,
+        243.96875
+      ],
       "flags": {},
       "order": 8,
       "mode": 0,
       "inputs": [
-        {"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 6},
-        {"name": "prompt", "type": "STRING", "widget": {"name": "prompt"}, "link": 8}
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "link": 6
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 8
+        }
       ],
-      "outputs": [{"name": "result", "type": "RUNPOD_RUN_RESULT", "links": []}],
-      "properties": {"Node name for S&R": "RunpodRun"},
-      "widgets_values": ["plan", "Plan an agent with Superpowers skills and filesystem MCP.", "terminate_created", "info"]
+      "outputs": [
+        {
+          "name": "result",
+          "type": "RUNPOD_RUN_RESULT",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodRun"
+      },
+      "widgets_values": [
+        "plan",
+        "Plan an agent with Superpowers skills and filesystem MCP.",
+        "terminate_created",
+        "info"
+      ]
     },
     {
       "id": 9,
       "type": "PrimitiveStringMultiline",
-      "pos": [1550, 620],
-      "size": [360, 140],
+      "pos": [
+        1550,
+        620
+      ],
+      "size": [
+        360,
+        140
+      ],
       "flags": {},
       "order": 7,
       "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "STRING", "type": "STRING", "links": [8]}],
-      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
-      "widgets_values": ["Plan an agent with Superpowers skills and filesystem MCP."]
+      "inputs": [
+        {
+          "label": "Task Prompt",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "Plan an agent with Superpowers skills and filesystem MCP."
+      ],
+      "title": "Task Prompt"
+    },
+    {
+      "id": 10,
+      "type": "PreviewAny",
+      "pos": [
+        2020,
+        400
+      ],
+      "size": [
+        225,
+        166
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [
+        null,
+        null,
+        false
+      ]
     }
   ],
   "links": [
-    [1, 1, 0, 4, 5, "RUNPOD_AGENT_SKILLS"],
-    [2, 2, 0, 4, 4, "RUNPOD_MCP_SERVERS"],
-    [3, 3, 0, 6, 1, "RUNPOD_STORAGE_NETWORK"],
-    [4, 4, 0, 6, 0, "RUNPOD_APP_AGENT"],
-    [5, 5, 0, 6, 4, "RUNPOD_KEEPALIVE_POLICY"],
-    [6, 6, 0, 7, 0, "RUNPOD_DEPLOYMENT_SPEC"],
-    [7, 8, 0, 4, 6, "STRING"],
-    [8, 9, 0, 7, 1, "STRING"]
+    [
+      1,
+      1,
+      0,
+      4,
+      5,
+      "RUNPOD_AGENT_SKILLS"
+    ],
+    [
+      2,
+      2,
+      0,
+      4,
+      4,
+      "RUNPOD_MCP_SERVERS"
+    ],
+    [
+      3,
+      3,
+      0,
+      6,
+      1,
+      "RUNPOD_STORAGE_NETWORK"
+    ],
+    [
+      4,
+      4,
+      0,
+      6,
+      0,
+      "RUNPOD_APP_AGENT"
+    ],
+    [
+      5,
+      5,
+      0,
+      6,
+      4,
+      "RUNPOD_KEEPALIVE_POLICY"
+    ],
+    [
+      6,
+      6,
+      0,
+      7,
+      0,
+      "RUNPOD_DEPLOYMENT_SPEC"
+    ],
+    [
+      7,
+      8,
+      0,
+      4,
+      6,
+      "STRING"
+    ],
+    [
+      8,
+      9,
+      0,
+      7,
+      1,
+      "STRING"
+    ],
+    [
+      9,
+      7,
+      0,
+      10,
+      0,
+      "RUNPOD_RUN_RESULT"
+    ]
   ],
   "groups": [
-    {"title": "Agent Inputs", "bounding": [80, 90, 430, 860], "color": "#355f9c", "font_size": 24, "flags": {}},
-    {"title": "Agent Policy", "bounding": [610, 70, 440, 880], "color": "#3f7f5f", "font_size": 24, "flags": {}},
-    {"title": "Deployment", "bounding": [1090, 300, 870, 520], "color": "#8a6f38", "font_size": 24, "flags": {}}
+    {
+      "title": "Agent Inputs",
+      "bounding": [
+        80,
+        90,
+        430,
+        860
+      ],
+      "color": "#355f9c",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "Agent Policy",
+      "bounding": [
+        610,
+        70,
+        440,
+        880
+      ],
+      "color": "#3f7f5f",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "Deployment",
+      "bounding": [
+        1090,
+        300,
+        870,
+        520
+      ],
+      "color": "#8a6f38",
+      "font_size": 24,
+      "flags": {}
+    }
   ],
   "config": {},
-  "extra": {"ds": {"scale": 1, "offset": [160, 120]}, "frontendVersion": "1.43.18"},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        160,
+        120
+      ]
+    },
+    "frontendVersion": "1.43.18",
+    "linearData": {
+      "inputs": [
+        [
+          "1",
+          "framework"
+        ],
+        [
+          "2",
+          "name"
+        ],
+        [
+          "5",
+          "time_value"
+        ],
+        [
+          "5",
+          "turn_limit"
+        ],
+        [
+          "5",
+          "cost_limit_usd"
+        ],
+        [
+          "4",
+          "harness"
+        ],
+        [
+          "8",
+          "value"
+        ],
+        [
+          "9",
+          "value"
+        ]
+      ],
+      "outputs": [
+        "10"
+      ]
+    },
+    "linearMode": true
+  },
   "version": 0.4
 }

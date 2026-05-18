@@ -2,7 +2,7 @@
 
 Custom ComfyUI nodes for designing and running agentic systems on Runpod. The nodes build a typed deployment graph for agents, browsers, LLMs, databases, storage, commands, and keep-alive policy.
 
-The package follows one core rule: all nodes are declarative except `Runpod Run`. In `plan` mode, `Runpod Run` produces an ordered deployment plan and never calls Runpod. In apply modes, it uses injectable Runpod, SSH, and SQLite state abstractions so behavior can be tested and mocked.
+The package follows one core rule: all nodes are declarative except `Run on Runpod`. In `plan` mode, `Run on Runpod` produces an ordered deployment plan and never calls Runpod. In apply modes, it uses injectable Runpod, SSH, and SQLite state abstractions so behavior can be tested and mocked.
 
 ## Status
 
@@ -69,8 +69,8 @@ For a complete walkthrough of the mission, graph model, node inputs, credentials
 
 Core:
 
-- `Pod`: creates a deployment spec around the primary agent.
-- `Runpod Run`: plan/apply/stop/terminate/destroy output node with the per-run agent prompt.
+- `Runpod Pod`: creates a deployment spec around the primary agent.
+- `Run on Runpod`: plan/apply/stop/terminate/destroy output node with the per-run agent prompt.
 - `Keep Alive`: time, turns, cost, or manual policy.
 - `Runpod Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
 
@@ -86,7 +86,7 @@ Apps and services:
 - `SQL Database`: Postgres, MySQL, or SQLite.
 - `Vector Database`: Chroma or Qdrant.
 - `Network Storage` and `S3 Storage`.
-- `SSH Command`: declarative command chain executed by `Runpod Run`.
+- `SSH Command`: declarative command chain executed by `Run on Runpod`.
 
 ## Example Workflows
 
@@ -103,8 +103,8 @@ Agent(harness=OpenCode, model=claude-sonnet, system_prompt="Follow repository co
 SSH Command(phase=before_start, command="pip install -e /workspace/tools")
 Network Storage(volume_id=..., mount=/workspace)
 Keep Alive(mode=time, value=30 minutes, action=stop)
-Pod(app=Agent, network_storage=Network Storage, commands=SSH Command, keep_alive=Keep Alive)
-Runpod Run(mode=plan or apply_and_wait, prompt="Implement the requested change.")
+Runpod Pod(app=Agent, network_storage=Network Storage, commands=SSH Command, keep_alive=Keep Alive)
+Run on Runpod(mode=plan or apply_and_wait, prompt="Implement the requested change.")
 ```
 
 Plan order:
@@ -128,8 +128,8 @@ MONITOR_KEEP_ALIVE
 ```text
 LLM Server(engine=vLLM, model=Qwen/Qwen3-0.6B, placement=own_pod)
 Agent(harness=Codex, llm=LLM Server)
-Pod(app=Agent)
-Runpod Run(mode=apply)
+Runpod Pod(app=Agent)
+Run on Runpod(mode=apply)
 ```
 
 The planner creates the vLLM pod first, then injects OpenAI-compatible endpoint variables into the agent runtime contract.
@@ -140,11 +140,52 @@ The planner creates the vLLM pod first, then injects OpenAI-compatible endpoint 
 SQL Database(engine=SQLite, sqlite_path=/workspace/db/app.sqlite)
 S3 Storage(endpoint=..., bucket=..., access_key_secret=s3_access, secret_key_secret=s3_secret)
 Agent(harness=Pi, sql_database=SQLite)
-Pod(app=Agent, s3_storage=S3)
-Runpod Run(mode=apply)
+Runpod Pod(app=Agent, s3_storage=S3)
+Run on Runpod(mode=apply)
 ```
 
 SQLite is `file_only`, so no database pod is created.
+
+### Workflow Screenshots
+
+<details>
+<summary>Agent Skills and MCP Plan</summary>
+
+Graph mode:
+
+![Agent skills and MCP workflow](docs/assets/workflows/ui_agent_skills_mcp_plan.png)
+
+App mode:
+
+![Agent skills and MCP app mode](docs/assets/workflows/ui_agent_skills_mcp_plan_app.png)
+
+</details>
+
+<details>
+<summary>Claude Data Agent Plan</summary>
+
+Graph mode:
+
+![Claude data agent workflow](docs/assets/workflows/ui_claude_data_agent_plan.png)
+
+App mode:
+
+![Claude data agent app mode](docs/assets/workflows/ui_claude_data_agent_plan_app.png)
+
+</details>
+
+<details>
+<summary>Neko and Ollama Agent Plan</summary>
+
+Graph mode:
+
+![Neko and Ollama workflow](docs/assets/workflows/ui_neko_ollama_agent_plan.png)
+
+App mode:
+
+![Neko and Ollama app mode](docs/assets/workflows/ui_neko_ollama_agent_plan_app.png)
+
+</details>
 
 ## Testing
 
@@ -182,7 +223,7 @@ python -m playwright install chromium
 scripts/screenshot-ui-workflows --skip-clone
 ```
 
-By default, the script launches a temporary CPU-only ComfyUI server, loads `examples/workflows/ui_*.json`, fits each graph to the canvas, and writes PNG files under `artifacts/workflow-screenshots`.
+By default, the script launches a temporary CPU-only ComfyUI server, loads `examples/workflows/ui_*.json`, fits each graph to the canvas, captures graph mode and app mode, and writes PNG files under `artifacts/workflow-screenshots`.
 
 ## Live Runpod Smoke Test
 

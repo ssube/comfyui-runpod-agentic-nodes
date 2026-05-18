@@ -76,9 +76,50 @@ async ({ workflow }) => {
 }
 """
 
+ENSURE_GRAPH_MODE_SCRIPT = """
+async () => {
+  const button = document.querySelector('[aria-label="Enter node graph"]');
+  if (button) {
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return {
+    mode: document.querySelector('[aria-label="Enter app mode"]') ? "graph" : "unknown",
+  };
+}
+"""
+
+ENSURE_APP_MODE_SCRIPT = """
+async () => {
+  if (document.querySelector('[aria-label="Enter node graph"]')) {
+    return {
+      mode: "app",
+      title: document.title,
+      bodyText: document.body.innerText.slice(0, 2000),
+    };
+  }
+  const button =
+    document.querySelector('[aria-label="Enter app mode"]') ||
+    [...document.querySelectorAll('button, [role="button"]')].find((element) => {
+      const label = `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''} ${element.textContent || ''}`.toLowerCase();
+      return label.includes('app mode') || label.includes('linear mode');
+    });
+  if (!button) {
+    throw new Error("Could not find the App mode button");
+  }
+  button.click();
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  return {
+    mode: "app",
+    title: document.title,
+    bodyText: document.body.innerText.slice(0, 2000),
+  };
+}
+"""
+
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Launch ComfyUI, load UI workflow JSON files, and screenshot each graph.")
+    parser = argparse.ArgumentParser(description="Launch ComfyUI, load UI workflow JSON files, and screenshot each workflow in graph mode and app mode.")
     parser.add_argument("--comfy-dir", default=os.environ.get("COMFYUI_E2E_DIR", "/tmp/comfyui-runpod-e2e"))
     parser.add_argument("--repo-dir", default=str(Path(__file__).resolve().parents[2]))
     parser.add_argument("--python", default=sys.executable)
@@ -117,7 +158,7 @@ def main() -> int:
         output: list[str] = []
         try:
             wait_for_server(port, proc, output, timeout=args.timeout)
-            capture_screenshots(
+            screenshot_count = capture_screenshots(
                 f"http://127.0.0.1:{port}",
                 workflows,
                 output_dir,
@@ -129,7 +170,7 @@ def main() -> int:
         finally:
             stop_process(proc)
 
-    print(f"Wrote {len(workflows)} workflow screenshots to {output_dir}")
+    print(f"Wrote {screenshot_count} workflow screenshots to {output_dir}")
     return 0
 
 
@@ -162,7 +203,7 @@ def capture_screenshots(
     browser_executable: str | None,
     timeout: int,
     viewport: tuple[int, int],
-) -> None:
+) -> int:
     try:
         from playwright.sync_api import Error as PlaywrightError
         from playwright.sync_api import sync_playwright
@@ -182,23 +223,36 @@ def capture_screenshots(
                 "or set COMFYUI_SCREENSHOT_BROWSER=/path/to/chrome."
             ) from exc
         page = browser.new_page(viewport={"width": viewport[0], "height": viewport[1]})
-        page.goto(server, wait_until="domcontentloaded", timeout=timeout * 1000)
-        page.wait_for_function("() => window.app && window.app.graph", timeout=timeout * 1000)
-        dismiss_overlays(page)
+        screenshot_count = 0
 
         for workflow in workflows:
             workflow_text = workflow.read_text()
+            page.goto(server, wait_until="domcontentloaded", timeout=timeout * 1000)
+            page.wait_for_function("() => window.app && window.app.graph", timeout=timeout * 1000)
             page.set_viewport_size(workflow_viewport(json.loads(workflow_text), minimum=viewport))
             dismiss_overlays(page)
+            page.evaluate(ENSURE_GRAPH_MODE_SCRIPT)
             result = page.evaluate(FIT_WORKFLOW_SCRIPT, {"workflow": workflow_text})
+            page.evaluate(ENSURE_GRAPH_MODE_SCRIPT)
             dismiss_overlays(page)
             screenshot_path = output_dir / f"{workflow.stem}.png"
             page.screenshot(path=str(screenshot_path), timeout=timeout * 1000)
+            screenshot_count += 1
             print(
-                f"{workflow.name}: {result['nodes']} nodes at scale {result['scale']:.3f} "
+                f"{workflow.name} graph: {result['nodes']} nodes at scale {result['scale']:.3f} "
                 f"in {page.viewport_size['width']}x{page.viewport_size['height']} -> {screenshot_path}"
             )
+            app_result = page.evaluate(ENSURE_APP_MODE_SCRIPT)
+            dismiss_overlays(page)
+            app_screenshot_path = output_dir / f"{workflow.stem}_app.png"
+            page.screenshot(path=str(app_screenshot_path), timeout=timeout * 1000)
+            screenshot_count += 1
+            print(
+                f"{workflow.name} app: {app_result['title'] or 'App mode'} "
+                f"in {page.viewport_size['width']}x{page.viewport_size['height']} -> {app_screenshot_path}"
+            )
         browser.close()
+        return screenshot_count
 
 
 def dismiss_overlays(page) -> None:
@@ -207,6 +261,9 @@ def dismiss_overlays(page) -> None:
         """
         () => {
           for (const element of document.querySelectorAll('button, [role="button"]')) {
+            if (!element.closest('[role="dialog"], .p-dialog, .modal, .comfy-modal')) {
+              continue;
+            }
             const label = `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''} ${element.textContent || ''}`.toLowerCase();
             if (label.includes('close') || label.includes('dismiss') || label.trim() === 'x' || label.trim() === '×') {
               element.click();

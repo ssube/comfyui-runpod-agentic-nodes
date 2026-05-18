@@ -2,28 +2,28 @@
 
 This package lets you design, launch, connect, monitor, and shut down agentic systems on Runpod from a ComfyUI graph.
 
-The mission is to make infrastructure for agents visible and repeatable. A workflow should show the agent, its model, browser, databases, storage, skills, MCP servers, setup commands, lifetime policy, and run prompt as typed nodes. Most nodes only describe intent. The only node that creates, mutates, or cleans up real Runpod resources is `Runpod Run`.
+The mission is to make infrastructure for agents visible and repeatable. A workflow should show the agent, its model, browser, databases, storage, skills, MCP servers, setup commands, lifetime policy, and run prompt as typed nodes. Most nodes only describe intent. The only node that creates, mutates, or cleans up real Runpod resources is `Run on Runpod`.
 
 ## Core Mental Model
 
 Build workflows in two layers:
 
 1. Describe resources with typed nodes.
-2. Execute the deployment with `Runpod Run`.
+2. Execute the deployment with `Run on Runpod`.
 
-Resource nodes return Python spec objects. They do not call Runpod, start containers, SSH into pods, or write state. This makes the graph safe to edit and inspect. `Runpod Run` compiles the graph into a Terraform-style plan, reconciles it with existing managed resources, executes commands, writes runtime configuration, launches the agent, and applies cleanup behavior.
+Resource nodes return Python spec objects. They do not call Runpod, start containers, SSH into pods, or write state. This makes the graph safe to edit and inspect. `Run on Runpod` compiles the graph into a Terraform-style plan, reconciles it with existing managed resources, executes commands, writes runtime configuration, launches the agent, and applies cleanup behavior.
 
 The most important graph shape is:
 
 ```text
 LLM / Browser / DB / MCP / Skills
               -> Agent
-              -> Pod
-              -> Runpod Run
+              -> Runpod Pod
+              -> Run on Runpod
               -> PreviewAny or Runpod Logs
 ```
 
-Use `Runpod Run` in `plan` mode first. A plan should explain what pods would be created or reused, what dependencies must become ready, what commands would run, what runtime files and environment contracts would be written, and what cleanup policy would apply.
+Use `Run on Runpod` in `plan` mode first. A plan should explain what pods would be created or reused, what dependencies must become ready, what commands would run, what runtime files and environment contracts would be written, and what cleanup policy would apply.
 
 ## Resource Materialization
 
@@ -66,14 +66,14 @@ There are two prompts:
 | Prompt | Node | Purpose |
 | --- | --- | --- |
 | `system_prompt` | `Runpod Agent` | Long-lived behavior and operating instructions for the agent. |
-| `prompt` | `Runpod Run` | The specific task for this run. |
+| `prompt` | `Run on Runpod` | The specific task for this run. |
 
 In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these string inputs. That keeps prompts readable in screenshots and makes the workflow easier to review. Do not create both `prompt` and `run_prompt`; the run prompt is simply `prompt`.
 
 ## Practical Workflow Recipe
 
 1. Add any prompt primitives.
-   Connect one multiline string to `Runpod Agent.system_prompt` and another to `Runpod Run.prompt` when you want visible prompt nodes.
+   Connect one multiline string to `Runpod Agent.system_prompt` and another to `Run on Runpod.prompt` when you want visible prompt nodes.
 
 2. Add LLM access.
    Use `Runpod LLM API` for hosted APIs or `Runpod LLM Server` for self-hosted Ollama/vLLM. Both output the generic `RUNPOD_LLM` type and connect to `Runpod Agent.llm`.
@@ -93,20 +93,20 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
 7. Add `Runpod Pod`.
    Connect the agent to `app`, choose GPU hints, disk size, exposure, and reuse policy.
 
-8. Add `Runpod Run`.
+8. Add `Run on Runpod`.
    Start with `mode=plan`. Inspect the JSON. Move to `apply`, `apply_and_wait`, `stop`, `terminate`, or `destroy` only after the plan is correct.
 
 9. Inspect outputs and logs.
-   Connect `Runpod Run.result` to `PreviewAny`. Use `Runpod Logs` with a run ID to collect saved command stdout/stderr.
+   Connect `Run on Runpod.result` to `PreviewAny`. Use `Runpod Logs` with a run ID to collect saved command stdout/stderr.
 
 10. Clean up.
    Use `terminate` or `destroy` when the deployment is no longer needed. For managed leftovers, use `scripts/cleanup-runpod-pods --action terminate`.
 
 ## Core Nodes
 
-### Runpod Run
+### Run on Runpod
 
-`Runpod Run` is the terminal execution node and the only side-effecting node.
+`Run on Runpod` is the terminal execution node and the only side-effecting node.
 
 Inputs:
 
@@ -533,8 +533,8 @@ PrimitiveStringMultiline(task prompt)
 Runpod LLM API(provider=Claude or Codex)
 Runpod Agent(llm=LLM API, system_prompt=system prompt)
 Runpod Pod(app=Agent, reuse_policy=reuse_matching)
-Runpod Run(mode=plan, prompt=task prompt)
-PreviewAny(source=Runpod Run.result)
+Run on Runpod(mode=plan, prompt=task prompt)
+PreviewAny(source=Run on Runpod.result)
 ```
 
 ### Agent With Hosted LLM, Browser, And Skills
@@ -543,7 +543,7 @@ PreviewAny(source=Runpod Run.result)
 Runpod LLM API -> Agent.llm
 Runpod Browser(Playwright, same_pod) -> Agent.browser
 Runpod Skill Framework(Superpowers) -> Runpod Skill(previous=framework) -> Agent.skills
-Agent -> Pod -> Runpod Run
+Agent -> Runpod Pod -> Run on Runpod
 ```
 
 This avoids a self-hosted model pod and keeps the graph focused on agent workspace setup.
@@ -553,7 +553,7 @@ This avoids a self-hosted model pod and keeps the graph focused on agent workspa
 ```text
 Network Storage(model-cache) -> LLM Server.network_storage
 Runpod LLM Server(engine=Ollama or vLLM, placement=own_pod) -> Agent.llm
-Agent -> Pod -> Runpod Run
+Agent -> Runpod Pod -> Run on Runpod
 ```
 
 The LLM server starts before the agent. Use `hf_token_secret_name` for private Hugging Face models with vLLM.
@@ -567,7 +567,7 @@ Runpod SQL Database(Postgres) -> Agent.sql_database
 Runpod Vector Database(Qdrant) -> Agent.vector_database
 Runpod Browser(Playwright, same_pod) -> Agent.browser
 Runpod LLM API(Claude) -> Agent.llm
-Agent -> Pod -> Runpod Run
+Agent -> Runpod Pod -> Run on Runpod
 ```
 
 This pattern is useful when the agent needs both structured state and retrieval state.
@@ -577,7 +577,7 @@ This pattern is useful when the agent needs both structured state and retrieval 
 ```text
 SSH Command(order=10, phase=before_start, command="python -m pip install -r requirements.txt")
 SSH Command(previous=first, order=20, phase=before_start, command="python scripts/bootstrap.py")
-final commands -> Pod.commands
+final commands -> Runpod Pod.commands
 ```
 
 Keep commands idempotent when using `reuse_matching` or `resume_stopped`, because they may run against an existing workspace.
@@ -672,7 +672,7 @@ The current MVP supports `own_pod` only for Ollama and vLLM. Use `Runpod LLM API
 
 Stopped pods are left behind:
 
-Use `terminate_created` in `Runpod Run.on_error`, set keep-alive action to `terminate` for tests, or run `scripts/cleanup-runpod-pods --action terminate`.
+Use `terminate_created` in `Run on Runpod.on_error`, set keep-alive action to `terminate` for tests, or run `scripts/cleanup-runpod-pods --action terminate`.
 
 Logs are missing:
 
@@ -682,7 +682,7 @@ Logs are missing:
 
 Before applying a real workflow, verify:
 
-- The graph uses `Runpod Run(mode=plan)` successfully.
+- The graph uses `Run on Runpod(mode=plan)` successfully.
 - No raw credentials appear in node widgets or JSON.
 - The agent has exactly one intended LLM connection on `llm`.
 - Long prompts are visible through multiline primitive nodes.

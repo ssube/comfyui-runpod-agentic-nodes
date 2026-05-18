@@ -53,8 +53,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RunpodSSHCommand": "SSH Command",
     "RunpodKeepAlive": "Keep Alive",
     "RunpodSSHAccess": "SSH Access",
-    "RunpodPod": "Pod",
-    "RunpodRun": "Runpod Run",
+    "RunpodPod": "Runpod Pod",
+    "RunpodRun": "Run on Runpod",
     "RunpodLogs": "Runpod Logs",
 }
 

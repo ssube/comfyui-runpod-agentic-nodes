@@ -1,3 +1,4 @@
+from comfyui_runpod_agentic import NODE_DISPLAY_NAME_MAPPINGS
 from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
     RunpodBrowserNode,
@@ -11,6 +12,11 @@ from comfyui_runpod_agentic.nodes import (
     RunpodSQLDatabaseNode,
 )
 from comfyui_runpod_agentic.validation import ValidationError
+
+
+def test_user_facing_core_node_names():
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPod"] == "Runpod Pod"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRun"] == "Run on Runpod"
 
 
 def test_agent_accepts_generic_llm_sources():

@@ -1,219 +1,905 @@
 {
   "id": "a445d975-72ec-4e7a-8d92-4f4a2e9d883c",
   "revision": 0,
-  "last_node_id": 13,
-  "last_link_id": 12,
+  "last_node_id": 14,
+  "last_link_id": 13,
   "nodes": [
     {
       "id": 1,
       "type": "RunpodLLMApi",
-      "pos": [120, 160],
-      "size": [300, 178],
+      "pos": [
+        120,
+        160
+      ],
+      "size": [
+        300,
+        246
+      ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "llm", "type": "RUNPOD_LLM", "links": [1]}],
-      "properties": {"Node name for S&R": "RunpodLLMApi"},
-      "widgets_values": ["Claude", "claude-sonnet", "anthropic_key", ""]
+      "inputs": [
+        {
+          "label": "LLM Provider",
+          "name": "provider",
+          "type": "COMBO",
+          "widget": {
+            "name": "provider"
+          },
+          "link": null
+        },
+        {
+          "label": "LLM Model",
+          "name": "model",
+          "type": "STRING",
+          "widget": {
+            "name": "model"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "llm",
+          "type": "RUNPOD_LLM",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodLLMApi"
+      },
+      "widgets_values": [
+        "Claude",
+        "claude-sonnet",
+        "anthropic_key",
+        ""
+      ]
     },
     {
       "id": 2,
       "type": "RunpodBrowser",
-      "pos": [120, 420],
-      "size": [270, 130],
+      "pos": [
+        120,
+        420
+      ],
+      "size": [
+        270,
+        170
+      ],
       "flags": {},
       "order": 1,
       "mode": 0,
-      "inputs": [{"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": null}],
-      "outputs": [{"name": "browser", "type": "RUNPOD_APP_BROWSER", "links": [2]}],
-      "properties": {"Node name for S&R": "RunpodBrowser"},
-      "widgets_values": ["Playwright", "same_pod", "chromium"]
+      "inputs": [
+        {
+          "name": "network_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "link": null
+        },
+        {
+          "label": "Browser",
+          "name": "browser",
+          "type": "COMBO",
+          "widget": {
+            "name": "browser"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "browser",
+          "type": "RUNPOD_APP_BROWSER",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodBrowser"
+      },
+      "widgets_values": [
+        "Playwright",
+        "same_pod",
+        "chromium"
+      ]
     },
     {
       "id": 3,
       "type": "RunpodNetworkStorage",
-      "pos": [120, 720],
-      "size": [320, 130],
+      "pos": [
+        120,
+        720
+      ],
+      "size": [
+        320,
+        130
+      ],
       "flags": {},
       "order": 2,
       "mode": 0,
       "inputs": [],
-      "outputs": [{"name": "network_storage", "type": "RUNPOD_STORAGE_NETWORK", "links": [3]}],
-      "properties": {"Node name for S&R": "RunpodNetworkStorage"},
-      "widgets_values": ["vol-postgres-data", "/var/lib/postgresql/data"]
+      "outputs": [
+        {
+          "name": "network_storage",
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodNetworkStorage"
+      },
+      "widgets_values": [
+        "vol-postgres-data",
+        "/var/lib/postgresql/data"
+      ]
     },
     {
       "id": 4,
       "type": "RunpodNetworkStorage",
-      "pos": [120, 930],
-      "size": [320, 130],
+      "pos": [
+        120,
+        930
+      ],
+      "size": [
+        320,
+        130
+      ],
       "flags": {},
       "order": 3,
       "mode": 0,
       "inputs": [],
-      "outputs": [{"name": "network_storage", "type": "RUNPOD_STORAGE_NETWORK", "links": [4]}],
-      "properties": {"Node name for S&R": "RunpodNetworkStorage"},
-      "widgets_values": ["vol-qdrant-data", "/qdrant/storage"]
+      "outputs": [
+        {
+          "name": "network_storage",
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodNetworkStorage"
+      },
+      "widgets_values": [
+        "vol-qdrant-data",
+        "/qdrant/storage"
+      ]
     },
     {
       "id": 7,
       "type": "RunpodSkill",
-      "pos": [540, 320],
-      "size": [380, 226],
+      "pos": [
+        540,
+        320
+      ],
+      "size": [
+        380,
+        266
+      ],
       "flags": {},
       "order": 4,
       "mode": 0,
-      "inputs": [{"name": "previous", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": null}],
-      "outputs": [{"name": "skills", "type": "RUNPOD_AGENT_SKILLS", "links": [7]}],
-      "properties": {"Node name for S&R": "RunpodSkill"},
-      "widgets_values": ["research-notes", "https://github.com/example/agent-skills.git", "skills/research-notes", "/workspace/.codex/skills/research-notes", ""]
+      "inputs": [
+        {
+          "name": "previous",
+          "shape": 7,
+          "type": "RUNPOD_AGENT_SKILLS",
+          "link": null
+        },
+        {
+          "label": "Skill Name",
+          "name": "name",
+          "type": "STRING",
+          "widget": {
+            "name": "name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "skills",
+          "type": "RUNPOD_AGENT_SKILLS",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodSkill"
+      },
+      "widgets_values": [
+        "research-notes",
+        "https://github.com/example/agent-skills.git",
+        "skills/research-notes",
+        "/workspace/.codex/skills/research-notes",
+        ""
+      ]
     },
     {
       "id": 5,
       "type": "RunpodSQLDatabase",
-      "pos": [540, 650],
-      "size": [300, 230],
+      "pos": [
+        540,
+        650
+      ],
+      "size": [
+        300,
+        230
+      ],
       "flags": {},
       "order": 5,
       "mode": 0,
-      "inputs": [{"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": 3}],
-      "outputs": [{"name": "sql_database", "type": "RUNPOD_APP_SQL_DATABASE", "links": [5]}],
-      "properties": {"Node name for S&R": "RunpodSQLDatabase"},
-      "widgets_values": ["Postgres", "app", "app", "pg_password", "/workspace/db/app.sqlite"]
+      "inputs": [
+        {
+          "name": "network_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "sql_database",
+          "type": "RUNPOD_APP_SQL_DATABASE",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodSQLDatabase"
+      },
+      "widgets_values": [
+        "Postgres",
+        "app",
+        "app",
+        "pg_password",
+        "/workspace/db/app.sqlite"
+      ]
     },
     {
       "id": 6,
       "type": "RunpodVectorDatabase",
-      "pos": [540, 930],
-      "size": [300, 178],
+      "pos": [
+        540,
+        930
+      ],
+      "size": [
+        300,
+        178
+      ],
       "flags": {},
       "order": 6,
       "mode": 0,
-      "inputs": [{"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": 4}],
-      "outputs": [{"name": "vector_database", "type": "RUNPOD_APP_VECTOR_DATABASE", "links": [6]}],
-      "properties": {"Node name for S&R": "RunpodVectorDatabase"},
-      "widgets_values": ["Qdrant", "docs", "/workspace/vector"]
+      "inputs": [
+        {
+          "name": "network_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "vector_database",
+          "type": "RUNPOD_APP_VECTOR_DATABASE",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodVectorDatabase"
+      },
+      "widgets_values": [
+        "Qdrant",
+        "docs",
+        "/workspace/vector"
+      ]
     },
     {
       "id": 9,
       "type": "RunpodKeepAlive",
-      "pos": [1040, 160],
-      "size": [280, 202],
+      "pos": [
+        1040,
+        160
+      ],
+      "size": [
+        280,
+        252
+      ],
       "flags": {},
       "order": 7,
       "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "keep_alive", "type": "RUNPOD_KEEPALIVE_POLICY", "links": [9]}],
-      "properties": {"Node name for S&R": "RunpodKeepAlive"},
-      "widgets_values": ["turns", "terminate", 0, "minutes", 3, 0, 0]
+      "inputs": [
+        {
+          "label": "Turn Limit",
+          "name": "turn_limit",
+          "type": "INT",
+          "widget": {
+            "name": "turn_limit"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "keep_alive",
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodKeepAlive"
+      },
+      "widgets_values": [
+        "turns",
+        "terminate",
+        0,
+        "minutes",
+        3,
+        0,
+        0
+      ]
     },
     {
       "id": 8,
       "type": "RunpodAgent",
-      "pos": [1020, 460],
-      "size": [360, 324],
+      "pos": [
+        1020,
+        460
+      ],
+      "size": [
+        360,
+        401.3125
+      ],
       "flags": {},
       "order": 9,
       "mode": 0,
       "inputs": [
-        {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": 2},
-        {"name": "llm", "shape": 7, "type": "RUNPOD_LLM", "link": 1},
-        {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": 5},
-        {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": 6},
-        {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": null},
-        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": 7},
-        {"name": "system_prompt", "type": "STRING", "widget": {"name": "system_prompt"}, "link": 11}
+        {
+          "name": "browser",
+          "shape": 7,
+          "type": "RUNPOD_APP_BROWSER",
+          "link": 2
+        },
+        {
+          "name": "llm",
+          "shape": 7,
+          "type": "RUNPOD_LLM",
+          "link": 1
+        },
+        {
+          "name": "sql_database",
+          "shape": 7,
+          "type": "RUNPOD_APP_SQL_DATABASE",
+          "link": 5
+        },
+        {
+          "name": "vector_database",
+          "shape": 7,
+          "type": "RUNPOD_APP_VECTOR_DATABASE",
+          "link": 6
+        },
+        {
+          "name": "mcp_servers",
+          "shape": 7,
+          "type": "RUNPOD_MCP_SERVERS",
+          "link": null
+        },
+        {
+          "name": "skills",
+          "shape": 7,
+          "type": "RUNPOD_AGENT_SKILLS",
+          "link": 7
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "system_prompt"
+          },
+          "link": 11
+        },
+        {
+          "label": "Agent Harness",
+          "name": "harness",
+          "type": "COMBO",
+          "widget": {
+            "name": "harness"
+          },
+          "link": null
+        }
       ],
-      "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [8]}],
-      "properties": {"Node name for S&R": "RunpodAgent"},
-      "widgets_values": ["OpenCode", "claude-sonnet", "wait_for_commands", "/workspace", "You are a data research agent. Use SQL for structured facts and Qdrant for retrieved notes."]
+      "outputs": [
+        {
+          "name": "agent",
+          "type": "RUNPOD_APP_AGENT",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodAgent"
+      },
+      "widgets_values": [
+        "OpenCode",
+        "claude-sonnet",
+        "wait_for_commands",
+        "/workspace",
+        "You are a data research agent. Use SQL for structured facts and Qdrant for retrieved notes."
+      ]
     },
     {
       "id": 12,
       "type": "PrimitiveStringMultiline",
-      "pos": [1020, 840],
-      "size": [360, 140],
+      "pos": [
+        1020,
+        840
+      ],
+      "size": [
+        360,
+        140
+      ],
       "flags": {},
       "order": 8,
       "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "STRING", "type": "STRING", "links": [11]}],
-      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
-      "widgets_values": ["You are a data research agent. Use SQL for structured facts and Qdrant for retrieved notes."]
+      "inputs": [
+        {
+          "label": "System Prompt",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "You are a data research agent. Use SQL for structured facts and Qdrant for retrieved notes."
+      ],
+      "title": "System Prompt"
     },
     {
       "id": 10,
       "type": "RunpodPod",
-      "pos": [1480, 520],
-      "size": [300, 302],
+      "pos": [
+        1480,
+        520
+      ],
+      "size": [
+        300,
+        421.3125
+      ],
       "flags": {},
       "order": 10,
       "mode": 0,
       "inputs": [
-        {"name": "app", "type": "RUNPOD_APP_AGENT", "link": 8},
-        {"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": null},
-        {"name": "s3_storage", "shape": 7, "type": "RUNPOD_STORAGE_S3", "link": null},
-        {"name": "commands", "shape": 7, "type": "RUNPOD_COMMAND_SSH", "link": null},
-        {"name": "keep_alive", "shape": 7, "type": "RUNPOD_KEEPALIVE_POLICY", "link": 9},
-        {"name": "ssh_access", "shape": 7, "type": "RUNPOD_SSH_ACCESS_POLICY", "link": null}
+        {
+          "name": "app",
+          "type": "RUNPOD_APP_AGENT",
+          "link": 8
+        },
+        {
+          "name": "network_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "link": null
+        },
+        {
+          "name": "s3_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_S3",
+          "link": null
+        },
+        {
+          "name": "commands",
+          "shape": 7,
+          "type": "RUNPOD_COMMAND_SSH",
+          "link": null
+        },
+        {
+          "name": "keep_alive",
+          "shape": 7,
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "link": 9
+        },
+        {
+          "name": "ssh_access",
+          "shape": 7,
+          "type": "RUNPOD_SSH_ACCESS_POLICY",
+          "link": null
+        }
       ],
-      "outputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "links": [10]}],
-      "properties": {"Node name for S&R": "RunpodPod"},
-      "widgets_values": ["NVIDIA RTX A4000", 1, "SECURE", 40, 20, true, "always_create"]
+      "outputs": [
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodPod"
+      },
+      "widgets_values": [
+        "NVIDIA RTX A4000",
+        1,
+        "SECURE",
+        40,
+        20,
+        true,
+        "always_create"
+      ]
     },
     {
       "id": 11,
       "type": "RunpodRun",
-      "pos": [1900, 550],
-      "size": [360, 190],
+      "pos": [
+        1900,
+        550
+      ],
+      "size": [
+        360,
+        243.96875
+      ],
       "flags": {},
       "order": 12,
       "mode": 0,
       "inputs": [
-        {"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 10},
-        {"name": "prompt", "type": "STRING", "widget": {"name": "prompt"}, "link": 12}
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "link": 10
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 12
+        }
       ],
-      "outputs": [{"name": "result", "type": "RUNPOD_RUN_RESULT", "links": []}],
-      "properties": {"Node name for S&R": "RunpodRun"},
-      "widgets_values": ["plan", "Plan a research workspace with Claude API, Postgres, Qdrant, Playwright, and one downloaded skill.", "terminate_created", "info"]
+      "outputs": [
+        {
+          "name": "result",
+          "type": "RUNPOD_RUN_RESULT",
+          "links": [
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodRun"
+      },
+      "widgets_values": [
+        "plan",
+        "Plan a research workspace with Claude API, Postgres, Qdrant, Playwright, and one downloaded skill.",
+        "terminate_created",
+        "info"
+      ]
     },
     {
       "id": 13,
       "type": "PrimitiveStringMultiline",
-      "pos": [1900, 790],
-      "size": [360, 140],
+      "pos": [
+        1900,
+        790
+      ],
+      "size": [
+        360,
+        140
+      ],
       "flags": {},
       "order": 11,
       "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "STRING", "type": "STRING", "links": [12]}],
-      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
-      "widgets_values": ["Plan a research workspace with Claude API, Postgres, Qdrant, Playwright, and one downloaded skill."]
+      "inputs": [
+        {
+          "label": "Task Prompt",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "Plan a research workspace with Claude API, Postgres, Qdrant, Playwright, and one downloaded skill."
+      ],
+      "title": "Task Prompt"
+    },
+    {
+      "id": 14,
+      "type": "PreviewAny",
+      "pos": [
+        2400,
+        560
+      ],
+      "size": [
+        225,
+        166
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [
+        null,
+        null,
+        false
+      ]
     }
   ],
   "links": [
-    [1, 1, 0, 8, 1, "RUNPOD_LLM"],
-    [2, 2, 0, 8, 0, "RUNPOD_APP_BROWSER"],
-    [3, 3, 0, 5, 0, "RUNPOD_STORAGE_NETWORK"],
-    [4, 4, 0, 6, 0, "RUNPOD_STORAGE_NETWORK"],
-    [5, 5, 0, 8, 2, "RUNPOD_APP_SQL_DATABASE"],
-    [6, 6, 0, 8, 3, "RUNPOD_APP_VECTOR_DATABASE"],
-    [7, 7, 0, 8, 5, "RUNPOD_AGENT_SKILLS"],
-    [8, 8, 0, 10, 0, "RUNPOD_APP_AGENT"],
-    [9, 9, 0, 10, 4, "RUNPOD_KEEPALIVE_POLICY"],
-    [10, 10, 0, 11, 0, "RUNPOD_DEPLOYMENT_SPEC"],
-    [11, 12, 0, 8, 6, "STRING"],
-    [12, 13, 0, 11, 1, "STRING"]
+    [
+      1,
+      1,
+      0,
+      8,
+      1,
+      "RUNPOD_LLM"
+    ],
+    [
+      2,
+      2,
+      0,
+      8,
+      0,
+      "RUNPOD_APP_BROWSER"
+    ],
+    [
+      3,
+      3,
+      0,
+      5,
+      0,
+      "RUNPOD_STORAGE_NETWORK"
+    ],
+    [
+      4,
+      4,
+      0,
+      6,
+      0,
+      "RUNPOD_STORAGE_NETWORK"
+    ],
+    [
+      5,
+      5,
+      0,
+      8,
+      2,
+      "RUNPOD_APP_SQL_DATABASE"
+    ],
+    [
+      6,
+      6,
+      0,
+      8,
+      3,
+      "RUNPOD_APP_VECTOR_DATABASE"
+    ],
+    [
+      7,
+      7,
+      0,
+      8,
+      5,
+      "RUNPOD_AGENT_SKILLS"
+    ],
+    [
+      8,
+      8,
+      0,
+      10,
+      0,
+      "RUNPOD_APP_AGENT"
+    ],
+    [
+      9,
+      9,
+      0,
+      10,
+      4,
+      "RUNPOD_KEEPALIVE_POLICY"
+    ],
+    [
+      10,
+      10,
+      0,
+      11,
+      0,
+      "RUNPOD_DEPLOYMENT_SPEC"
+    ],
+    [
+      11,
+      12,
+      0,
+      8,
+      6,
+      "STRING"
+    ],
+    [
+      12,
+      13,
+      0,
+      11,
+      1,
+      "STRING"
+    ],
+    [
+      13,
+      11,
+      0,
+      14,
+      0,
+      "RUNPOD_RUN_RESULT"
+    ]
   ],
   "groups": [
-    {"title": "External Inputs", "bounding": [80, 90, 380, 520], "color": "#355f9c", "font_size": 24, "flags": {}},
-    {"title": "Stateful Storage", "bounding": [80, 650, 380, 470], "color": "#355f9c", "font_size": 24, "flags": {}},
-    {"title": "Data Services And Skills", "bounding": [500, 250, 470, 920], "color": "#6b5c9d", "font_size": 24, "flags": {}},
-    {"title": "Agent Policy", "bounding": [980, 90, 440, 950], "color": "#3f7f5f", "font_size": 24, "flags": {}},
-    {"title": "Deployment", "bounding": [1440, 460, 870, 530], "color": "#8a6f38", "font_size": 24, "flags": {}}
+    {
+      "title": "External Inputs",
+      "bounding": [
+        80,
+        90,
+        380,
+        520
+      ],
+      "color": "#355f9c",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "Stateful Storage",
+      "bounding": [
+        80,
+        650,
+        380,
+        470
+      ],
+      "color": "#355f9c",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "Data Services And Skills",
+      "bounding": [
+        500,
+        250,
+        470,
+        920
+      ],
+      "color": "#6b5c9d",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "Agent Policy",
+      "bounding": [
+        980,
+        90,
+        440,
+        950
+      ],
+      "color": "#3f7f5f",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "Deployment",
+      "bounding": [
+        1440,
+        460,
+        870,
+        530
+      ],
+      "color": "#8a6f38",
+      "font_size": 24,
+      "flags": {}
+    }
   ],
   "config": {},
-  "extra": {"ds": {"scale": 1, "offset": [110, 100]}, "frontendVersion": "1.43.18"},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        110,
+        100
+      ]
+    },
+    "frontendVersion": "1.43.18",
+    "linearData": {
+      "inputs": [
+        [
+          "1",
+          "provider"
+        ],
+        [
+          "1",
+          "model"
+        ],
+        [
+          "2",
+          "browser"
+        ],
+        [
+          "7",
+          "name"
+        ],
+        [
+          "9",
+          "turn_limit"
+        ],
+        [
+          "8",
+          "harness"
+        ],
+        [
+          "12",
+          "value"
+        ],
+        [
+          "13",
+          "value"
+        ]
+      ],
+      "outputs": [
+        "14"
+      ]
+    },
+    "linearMode": true
+  },
   "version": 0.4
 }
