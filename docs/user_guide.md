@@ -1,8 +1,8 @@
-# Runpod Agentic Nodes User Guide
+# ComfyUI Runpod Agentic Workflow Nodes User Guide
 
-This package lets you design, launch, connect, monitor, and shut down agentic systems on Runpod from a ComfyUI graph.
+ComfyUI Runpod Agentic workflow nodes, or CRAG nodes, let you design, launch, connect, monitor, and shut down agentic systems on Runpod from a ComfyUI graph.
 
-The mission is to make infrastructure for agents visible and repeatable. A workflow should show the agent, its model, browser, databases, storage, skills, MCP servers, setup commands, lifetime policy, and run prompt as typed nodes. Most nodes only describe intent. The only node that creates, mutates, or cleans up real Runpod resources is `Run on Runpod`.
+The CRAG node mission is to make infrastructure for agents visible and repeatable. A workflow should show the agent, its model, browser, databases, storage, skills, MCP servers, setup commands, lifetime policy, and run prompt as typed nodes. Most nodes only describe intent. The only node that creates, mutates, or cleans up real Runpod resources is `Run on Runpod`.
 
 ## Core Mental Model
 
@@ -11,7 +11,7 @@ Build workflows in two layers:
 1. Describe resources with typed nodes.
 2. Execute the deployment with `Run on Runpod`.
 
-Resource nodes return Python spec objects. They do not call Runpod, start containers, SSH into pods, or write state. This makes the graph safe to edit and inspect. `Run on Runpod` compiles the graph into a Terraform-style plan, reconciles it with existing managed resources, executes commands, writes runtime configuration, launches the agent, and applies cleanup behavior.
+CRAG resource nodes return Python spec objects. They do not call Runpod, start containers, SSH into pods, or write state. This makes the graph safe to edit and inspect. `Run on Runpod` compiles the graph into a Terraform-style plan, reconciles it with existing managed resources, executes commands, writes runtime configuration, launches the agent, and applies cleanup behavior.
 
 The most important graph shape is:
 
@@ -620,7 +620,7 @@ scripts/test
 scripts/lint
 ```
 
-Verify the nodes load in a temporary CPU-only ComfyUI server:
+Verify the CRAG nodes load in a temporary CPU-only ComfyUI server:
 
 ```bash
 scripts/e2e-comfy-cpu

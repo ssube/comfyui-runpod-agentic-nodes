@@ -1,12 +1,53 @@
-# ComfyUI Runpod Agentic Nodes
+# ComfyUI Runpod Agentic Workflow Nodes
 
-Custom ComfyUI nodes for designing and running agentic systems on Runpod. The nodes build a typed deployment graph for agents, browsers, LLMs, databases, storage, commands, and keep-alive policy.
+ComfyUI Runpod Agentic workflow nodes, or CRAG nodes, are custom ComfyUI nodes for designing and running agentic systems on Runpod. CRAG nodes build a typed deployment graph for agents, browsers, LLMs, databases, storage, commands, and keep-alive policy.
 
-The package follows one core rule: all nodes are declarative except `Run on Runpod`. In `plan` mode, `Run on Runpod` produces an ordered deployment plan and never calls Runpod. In apply modes, it uses injectable Runpod, SSH, and SQLite state abstractions so behavior can be tested and mocked.
+The CRAG node package follows one core rule: all nodes are declarative except `Run on Runpod`. In `plan` mode, `Run on Runpod` produces an ordered deployment plan and never calls Runpod. In apply modes, it uses injectable Runpod, SSH, and SQLite state abstractions so behavior can be tested and mocked.
+
+## Workflow Screenshots
+
+<details>
+<summary>Agent Skills and MCP Plan</summary>
+
+Graph mode:
+
+![Agent skills and MCP workflow](docs/assets/workflows/ui_agent_skills_mcp_plan.png)
+
+App mode:
+
+![Agent skills and MCP app mode](docs/assets/workflows/ui_agent_skills_mcp_plan_app.png)
+
+</details>
+
+<details>
+<summary>Claude Data Agent Plan</summary>
+
+Graph mode:
+
+![Claude data agent workflow](docs/assets/workflows/ui_claude_data_agent_plan.png)
+
+App mode:
+
+![Claude data agent app mode](docs/assets/workflows/ui_claude_data_agent_plan_app.png)
+
+</details>
+
+<details>
+<summary>Neko and Ollama Agent Plan</summary>
+
+Graph mode:
+
+![Neko and Ollama workflow](docs/assets/workflows/ui_neko_ollama_agent_plan.png)
+
+App mode:
+
+![Neko and Ollama app mode](docs/assets/workflows/ui_neko_ollama_agent_plan_app.png)
+
+</details>
 
 ## Status
 
-This is an MVP implementation with:
+The ComfyUI Runpod Agentic workflow nodes currently include:
 
 - ComfyUI node classes and registration mappings for agents, services, storage, commands, logs, and MCP servers.
 - Dataclass specs for the requested resource model.
@@ -65,7 +106,7 @@ When running outside ComfyUI, set `COMFYUI_USER_DIR` to control that location.
 
 ## Node Overview
 
-For a complete walkthrough of the mission, graph model, node inputs, credentials, prompts, storage, execution modes, and workflow recipes, see [docs/user_guide.md](docs/user_guide.md).
+For a complete walkthrough of the CRAG node mission, graph model, node inputs, credentials, prompts, storage, execution modes, and workflow recipes, see [docs/user_guide.md](docs/user_guide.md).
 
 Core:
 
@@ -146,47 +187,6 @@ Run on Runpod(mode=apply)
 
 SQLite is `file_only`, so no database pod is created.
 
-### Workflow Screenshots
-
-<details>
-<summary>Agent Skills and MCP Plan</summary>
-
-Graph mode:
-
-![Agent skills and MCP workflow](docs/assets/workflows/ui_agent_skills_mcp_plan.png)
-
-App mode:
-
-![Agent skills and MCP app mode](docs/assets/workflows/ui_agent_skills_mcp_plan_app.png)
-
-</details>
-
-<details>
-<summary>Claude Data Agent Plan</summary>
-
-Graph mode:
-
-![Claude data agent workflow](docs/assets/workflows/ui_claude_data_agent_plan.png)
-
-App mode:
-
-![Claude data agent app mode](docs/assets/workflows/ui_claude_data_agent_plan_app.png)
-
-</details>
-
-<details>
-<summary>Neko and Ollama Agent Plan</summary>
-
-Graph mode:
-
-![Neko and Ollama workflow](docs/assets/workflows/ui_neko_ollama_agent_plan.png)
-
-App mode:
-
-![Neko and Ollama app mode](docs/assets/workflows/ui_neko_ollama_agent_plan_app.png)
-
-</details>
-
 ## Testing
 
 ```bash
@@ -203,7 +203,7 @@ To verify the nodes load inside a real ComfyUI process in CPU-only mode:
 scripts/e2e-comfy-cpu
 ```
 
-The script creates a temporary ComfyUI base directory, links this repo into `custom_nodes`, runs ComfyUI's quick custom-node load path, starts a CPU-only server, and checks `/object_info` for all Runpod nodes.
+The script creates a temporary ComfyUI base directory, links this repo into `custom_nodes`, runs ComfyUI's quick custom-node load path, starts a CPU-only server, and checks `/object_info` for all CRAG nodes.
 
 Useful options:
 
