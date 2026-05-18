@@ -20,6 +20,10 @@ def default_state_path() -> Path:
     return Path(os.environ.get("COMFYUI_USER_DIR", "user")) / "runpod-agentic" / "state.sqlite"
 
 
+def dependency_ready_timeout_seconds() -> int:
+    return int(os.environ.get("RUNPOD_DEPENDENCY_READY_TIMEOUT_SECONDS", "1200"))
+
+
 @dataclass
 class RunpodRunner:
     runpod_client: RunpodClientProtocol | None = None
@@ -127,9 +131,10 @@ class RunpodRunner:
         if result.exit_code != 0:
             raise RuntimeError(f"Agent launch failed with exit code {result.exit_code}.")
 
-    def _wait_dependency_ready(self, resource, pod: dict[str, Any], run_id: str, resource_id: str, timeout_seconds: int = 300, interval_seconds: int = 5) -> dict[str, Any]:
+    def _wait_dependency_ready(self, resource, pod: dict[str, Any], run_id: str, resource_id: str, timeout_seconds: int | None = None, interval_seconds: int = 5) -> dict[str, Any]:
         pod_id = pod.get("id")
         wants_public_endpoint = any(port.get("public") for port in resource.ports)
+        timeout_seconds = timeout_seconds or dependency_ready_timeout_seconds()
         deadline = time.monotonic() + timeout_seconds
         last_status = pod.get("desiredStatus") or "unknown"
         while time.monotonic() < deadline:
@@ -143,7 +148,7 @@ class RunpodRunner:
                 pod = self.runpod_client.get_pod(pod_id) or pod
                 last_status = pod.get("desiredStatus") or last_status
             time.sleep(interval_seconds)
-        raise RuntimeError(f"Timed out waiting for dependency {resource.role} pod {pod_id} readiness; last status: {last_status}.")
+        raise RuntimeError(f"Timed out after {timeout_seconds}s waiting for dependency {resource.role} pod {pod_id} readiness; last status: {last_status}.")
 
     def _write_runtime_files(self, plan: DeploymentPlan, host: str, port: int) -> None:
         workspace = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"].get("WORKSPACE_DIR", "/workspace")
@@ -154,6 +159,8 @@ class RunpodRunner:
         self.ssh_client.write_file(host, port, f"{base}/resources.json", json.dumps(resources, indent=2, sort_keys=True))
         self.ssh_client.write_file(host, port, f"{base}/session.env", session_env)
         self.ssh_client.write_file(host, port, f"{base}/commands.json", json.dumps(commands, indent=2, sort_keys=True))
+        if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
+            self.ssh_client.write_file(host, port, f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"])
         self.state_store.add_event(plan.run_id, "runtime_config_written", base)
 
     def _command_log_paths(self, run_id: str, detail: dict[str, Any]) -> dict[str, Path]:

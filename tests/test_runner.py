@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from comfyui_runpod_agentic.nodes import RunpodAgentNode, RunpodBrowserNode, RunpodPodNode
+from comfyui_runpod_agentic.nodes import RunpodAgentNode, RunpodBrowserNode, RunpodMCPServerNode, RunpodPodNode
 from comfyui_runpod_agentic.runner import RunpodRunner
 from comfyui_runpod_agentic.state_store import StateStore
 
@@ -73,6 +73,7 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
 
 def test_runner_apply_waits_for_dependency_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setenv("RUNPOD_DEPENDENCY_READY_TIMEOUT_SECONDS", "10")
     browser = RunpodBrowserNode().build("Playwright", "own_pod", "chromium")[0]
     agent = RunpodAgentNode().build("Pi", "model", "manual", browser=browser)[0]
     deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
@@ -99,3 +100,18 @@ def test_runner_logs_sanitized_pod_create_failure(tmp_path, monkeypatch):
     assert any(event["event_type"] == "pod_create_request" for event in events)
     failed = next(event for event in events if event["event_type"] == "pod_create_failed")
     assert "create failed" in failed["message"]
+
+
+def test_runner_writes_mcp_runtime_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    mcp = RunpodMCPServerNode().build("filesystem", "stdio", "npx", "-y @modelcontextprotocol/server-filesystem /workspace", "", "{}", "")[0]
+    agent = RunpodAgentNode().build("Pi", "model", "manual", mcp_servers=mcp)[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply")
+
+    assert result["status"] == "launched"
+    mcp_paths = [path for path in runner.ssh_client.files if path.endswith("mcp_servers.json")]
+    assert mcp_paths
+    assert "filesystem" in runner.ssh_client.files[mcp_paths[0]]

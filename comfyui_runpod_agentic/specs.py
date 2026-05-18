@@ -114,6 +114,24 @@ class VectorDatabaseSpec:
 
 
 @dataclass(frozen=True)
+class MCPServer:
+    name: str
+    transport: Literal["stdio", "http", "sse"]
+    command: str | None = None
+    args: list[str] = field(default_factory=list)
+    url: str | None = None
+    env: dict[str, str] = field(default_factory=dict)
+    secret_refs: list[SecretRef] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class MCPServerSpec:
+    servers: list[MCPServer]
+    runtime_contract: RuntimeContract
+    meta: SpecMeta = field(default_factory=SpecMeta)
+
+
+@dataclass(frozen=True)
 class AgentSpec:
     kind: Literal["agent"]
     harness: Literal["codex", "claude", "opencode", "hermes", "pi"]
@@ -125,6 +143,7 @@ class AgentSpec:
     llm_server: LLMServerSpec | None = None
     sql_database: SQLDatabaseSpec | None = None
     vector_database: VectorDatabaseSpec | None = None
+    mcp_servers: MCPServerSpec | None = None
     runtime_contract: RuntimeContract = field(default_factory=RuntimeContract)
     required_image_capabilities: list[str] = field(default_factory=list)
     template_key: str | None = None

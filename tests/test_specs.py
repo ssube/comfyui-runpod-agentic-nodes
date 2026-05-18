@@ -2,6 +2,7 @@ from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
     RunpodBrowserNode,
     RunpodLLMApiNode,
+    RunpodMCPServerNode,
     RunpodPodNode,
     RunpodSQLDatabaseNode,
 )
@@ -32,6 +33,16 @@ def test_browser_same_pod_adds_agent_capability():
     agent = RunpodAgentNode().build("OpenCode", "qwen", "manual", browser=browser)[0]
 
     assert agent.required_image_capabilities == ["playwright"]
+
+
+def test_agent_accepts_mcp_servers():
+    filesystem = RunpodMCPServerNode().build("filesystem", "stdio", "npx", "-y @modelcontextprotocol/server-filesystem /workspace", "", "{}", "")[0]
+    github = RunpodMCPServerNode().build("github", "http", "", "", "https://mcp.example.test", '{"MODE":"read"}', "GITHUB_TOKEN", previous=filesystem)[0]
+    agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", mcp_servers=github)[0]
+
+    assert len(agent.mcp_servers.servers) == 2
+    assert "MCP_SERVERS_JSON" in agent.runtime_contract.env.values
+    assert agent.runtime_contract.env.secrets[0].env_var == "GITHUB_TOKEN"
 
 
 def test_pod_validation_rejects_sqlite_outside_workspace():

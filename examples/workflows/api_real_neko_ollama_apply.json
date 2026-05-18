@@ -75,15 +75,15 @@
         "3",
         0
       ],
-      "cloud_type": "COMMUNITY",
+      "cloud_type": "auto",
       "commands": [
         "4",
         0
       ],
       "container_disk_gb": 20,
       "expose_public_ip": true,
-      "gpu_count": 1,
-      "gpu_type_id": "NVIDIA GeForce RTX 3090",
+      "gpu_count": 0,
+      "gpu_type_id": "",
       "keep_alive": [
         "5",
         0

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from .specs import (
     KeepAlivePolicy,
     LLMApiSpec,
     LLMServerSpec,
+    MCPServer,
+    MCPServerSpec,
     NetworkStorageSpec,
     PodResourceHints,
     PortSpec,
@@ -38,6 +41,7 @@ from .types import (
     RUNPOD_DEPLOYMENT_SPEC,
     RUNPOD_KEEPALIVE_POLICY,
     RUNPOD_LLM_API,
+    RUNPOD_MCP_SERVERS,
     RUNPOD_RUN_RESULT,
     RUNPOD_SSH_ACCESS_POLICY,
     RUNPOD_STORAGE_NETWORK,
@@ -255,6 +259,81 @@ class RunpodVectorDatabaseNode:
         return (VectorDatabaseSpec("vector_database", vector_engine, "own_pod", collection_name, persistence_path, contract, f"rp-vector-{vector_engine}", meta(node_id, engine)),)
 
 
+class RunpodMCPServerNode:
+    CATEGORY = "Runpod/Agent"
+    RETURN_TYPES = (RUNPOD_MCP_SERVERS,)
+    RETURN_NAMES = ("mcp_servers",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "name": ("STRING", {"default": "filesystem"}),
+                "transport": (["stdio", "http", "sse"],),
+                "command": ("STRING", {"default": "npx"}),
+                "args": ("STRING", {"default": "-y @modelcontextprotocol/server-filesystem /workspace"}),
+                "url": ("STRING", {"default": ""}),
+                "env_json": ("STRING", {"multiline": True, "default": "{}"}),
+                "secret_env_names": ("STRING", {"default": ""}),
+            },
+            "optional": {"previous": (RUNPOD_MCP_SERVERS,)},
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, name: str, transport: str, command: str, args: str, url: str = "", env_json: str = "{}", secret_env_names: str = "", previous: MCPServerSpec | None = None, node_id: str | None = None):
+        server_name = name.strip()
+        if not server_name:
+            raise ValidationError("MCP server name is required.")
+        transport_id = norm(transport)
+        env = parse_json_object(env_json, "env_json")
+        secrets = [SecretRef(secret_name.strip(), secret_name.strip(), "server_env") for secret_name in secret_env_names.split(",") if secret_name.strip()]
+        if transport_id == "stdio":
+            if not command.strip():
+                raise ValidationError("MCP stdio transport requires a command.")
+            server = MCPServer(server_name, "stdio", command.strip(), shlex.split(args or ""), None, env, secrets)
+        else:
+            if not url.strip():
+                raise ValidationError("MCP http/sse transport requires a URL.")
+            server = MCPServer(server_name, transport_id, None, [], url.strip(), env, secrets)
+        servers = [*(previous.servers if previous else []), server]
+        contract = mcp_runtime_contract(servers)
+        return (MCPServerSpec(servers, contract, meta(node_id, "MCP Server")),)
+
+
+def parse_json_object(raw: str, label: str) -> dict[str, str]:
+    try:
+        data = json.loads(raw or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValidationError(f"{label} must be a JSON object: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValidationError(f"{label} must be a JSON object.")
+    return {str(key): str(value) for key, value in data.items()}
+
+
+def mcp_runtime_contract(servers: list[MCPServer]) -> RuntimeContract:
+    payload = {
+        "mcpServers": {
+            server.name: clean_mcp_server(server)
+            for server in servers
+        }
+    }
+    secrets = [secret for server in servers for secret in server.secret_refs]
+    return RuntimeContract(
+        EnvPatch({"MCP_SERVERS_JSON": json.dumps(payload, sort_keys=True)}, secrets),
+    )
+
+
+def clean_mcp_server(server: MCPServer) -> dict[str, Any]:
+    if server.transport == "stdio":
+        data: dict[str, Any] = {"transport": "stdio", "command": server.command, "args": server.args}
+    else:
+        data = {"transport": server.transport, "url": server.url}
+    if server.env or server.secret_refs:
+        data["env"] = {**server.env, **{secret.env_var: f"${{{secret.name}}}" for secret in server.secret_refs}}
+    return data
+
+
 class RunpodAgentNode:
     CATEGORY = "Runpod/Apps"
     RETURN_TYPES = (RUNPOD_APP_AGENT,)
@@ -265,11 +344,11 @@ class RunpodAgentNode:
     def INPUT_TYPES(cls):
         return {
             "required": {"harness": (["Codex", "Claude", "OpenCode", "Hermes", "Pi"],), "model": ("STRING", {"default": ""}), "startup_mode": (["wait_for_commands", "auto_start", "manual"],), "workspace_path": ("STRING", {"default": "/workspace"})},
-            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm_api": (RUNPOD_LLM_API,), "llm_server": (RUNPOD_APP_LLM_SERVER,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,)},
+            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm_api": (RUNPOD_LLM_API,), "llm_server": (RUNPOD_APP_LLM_SERVER,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,)},
             "hidden": {"node_id": "UNIQUE_ID", "prompt": "PROMPT"},
         }
 
-    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", browser=None, llm_api=None, llm_server=None, sql_database=None, vector_database=None, node_id: str | None = None, prompt: Any = None):
+    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", browser=None, llm_api=None, llm_server=None, sql_database=None, vector_database=None, mcp_servers=None, node_id: str | None = None, prompt: Any = None):
         if llm_api and llm_server:
             raise ValidationError("Agent accepts either llm_api or llm_server, not both.")
         capabilities = []
@@ -279,7 +358,12 @@ class RunpodAgentNode:
                     raise ValidationError("LLM Server same_pod materialization is not supported in the MVP.")
                 capabilities.extend(spec.required_image_capabilities)
         contract = RuntimeContract(EnvPatch({"AGENT_HARNESS": norm(harness), "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "WORKSPACE_DIR": workspace_path}))
-        return (AgentSpec("agent", norm(harness), model, startup_mode, workspace_path, browser, llm_api, llm_server, sql_database, vector_database, contract, capabilities, None, meta(node_id, harness)),)
+        if mcp_servers:
+            contract = RuntimeContract(
+                EnvPatch({**contract.env.values, **mcp_servers.runtime_contract.env.values}, [*contract.env.secrets, *mcp_servers.runtime_contract.env.secrets]),
+                files=mcp_servers.runtime_contract.files,
+            )
+        return (AgentSpec("agent", norm(harness), model, startup_mode, workspace_path, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, contract, capabilities, None, meta(node_id, harness)),)
 
 
 class RunpodNetworkStorageNode:
@@ -483,6 +567,7 @@ NODE_CLASSES = [
     RunpodLLMApiNode,
     RunpodSQLDatabaseNode,
     RunpodVectorDatabaseNode,
+    RunpodMCPServerNode,
     RunpodNetworkStorageNode,
     RunpodS3StorageNode,
     RunpodSSHCommandNode,

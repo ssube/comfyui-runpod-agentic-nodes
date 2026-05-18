@@ -8,7 +8,7 @@ The package follows one core rule: all nodes are declarative except `Runpod Run`
 
 This is an MVP implementation with:
 
-- 12 ComfyUI node classes and registration mappings.
+- ComfyUI node classes and registration mappings for agents, services, storage, commands, logs, and MCP servers.
 - Dataclass specs for the requested resource model.
 - Template resolution with example YAML config.
 - Planner for dependency extraction, materialization ordering, runtime contracts, and keep-alive lifecycle timestamps.
@@ -74,10 +74,11 @@ Core:
 
 Apps and services:
 
-- `Agent`: composition point for browser, LLM, SQL, and vector resources.
+- `Agent`: composition point for browser, LLM, SQL, vector, and MCP resources.
 - `Browser`: Neko or Playwright.
 - `LLM Server`: Ollama or vLLM own-pod service.
 - `LLM API`: Codex/OpenAI, Claude/Anthropic, or Ollama Cloud env contract.
+- `MCP Server`: chainable stdio/http/sse MCP server definitions exposed to the agent as `MCP_SERVERS_JSON` and `.runpod_agentic/mcp_servers.json`.
 - `SQL Database`: Postgres, MySQL, or SQLite.
 - `Vector Database`: Chroma or Qdrant.
 - `Network Storage` and `S3 Storage`.
@@ -89,10 +90,11 @@ Apps and services:
 
 ```text
 LLM API(provider=Claude, model=claude-sonnet, secret=anthropic_key)
+MCP Server(name=filesystem, transport=stdio, command=npx, args="-y @modelcontextprotocol/server-filesystem /workspace")
 SQL Database(engine=Postgres, database=app, username=app, secret=pg_password)
 Vector Database(engine=Qdrant, collection=docs)
 Browser(browser=Playwright, placement=same_pod)
-Agent(harness=OpenCode, model=claude-sonnet)
+Agent(harness=OpenCode, model=claude-sonnet, mcp_servers=MCP Server)
 SSH Command(phase=before_start, command="pip install -e /workspace/tools")
 Network Storage(volume_id=..., mount=/workspace)
 Keep Alive(mode=time, value=30 minutes, action=stop)
