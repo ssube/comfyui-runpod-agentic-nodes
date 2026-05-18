@@ -1,13 +1,13 @@
 {
   "id": "9f04d59f-35ef-47ef-86ff-6c9854a7a093",
   "revision": 0,
-  "last_node_id": 9,
-  "last_link_id": 8,
+  "last_node_id": 11,
+  "last_link_id": 10,
   "nodes": [
     {
       "id": 1,
       "type": "RunpodNetworkStorage",
-      "pos": [120, 120],
+      "pos": [120, 170],
       "size": [320, 130],
       "flags": {},
       "order": 0,
@@ -20,7 +20,7 @@
     {
       "id": 2,
       "type": "RunpodNetworkStorage",
-      "pos": [120, 360],
+      "pos": [120, 410],
       "size": [320, 130],
       "flags": {},
       "order": 1,
@@ -33,7 +33,7 @@
     {
       "id": 3,
       "type": "RunpodBrowser",
-      "pos": [560, 110],
+      "pos": [560, 170],
       "size": [270, 130],
       "flags": {},
       "order": 2,
@@ -46,7 +46,7 @@
     {
       "id": 4,
       "type": "RunpodLLMServer",
-      "pos": [560, 330],
+      "pos": [560, 390],
       "size": [300, 210],
       "flags": {},
       "order": 3,
@@ -57,12 +57,25 @@
       "widgets_values": ["Ollama", "smoke", "own_pod", "none", "", ""]
     },
     {
-      "id": 5,
-      "type": "RunpodAgent",
-      "pos": [1010, 230],
-      "size": [360, 280],
+      "id": 7,
+      "type": "RunpodKeepAlive",
+      "pos": [1010, 150],
+      "size": [280, 202],
       "flags": {},
       "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "keep_alive", "type": "RUNPOD_KEEPALIVE_POLICY", "links": [7]}],
+      "properties": {"Node name for S&R": "RunpodKeepAlive"},
+      "widgets_values": ["time", "stop", 10, "minutes", 0, 0, 0]
+    },
+    {
+      "id": 5,
+      "type": "RunpodAgent",
+      "pos": [1010, 400],
+      "size": [360, 324],
+      "flags": {},
+      "order": 6,
       "mode": 0,
       "inputs": [
         {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": 3},
@@ -70,7 +83,8 @@
         {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": null},
         {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": null},
         {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": null},
-        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": null}
+        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": null},
+        {"name": "system_prompt", "type": "STRING", "widget": {"name": "system_prompt"}, "link": 9}
       ],
       "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [5]}],
       "properties": {"Node name for S&R": "RunpodAgent"},
@@ -79,10 +93,10 @@
     {
       "id": 6,
       "type": "RunpodSSHAccess",
-      "pos": [1010, 650],
+      "pos": [1010, 930],
       "size": [300, 178],
       "flags": {},
-      "order": 5,
+      "order": 7,
       "mode": 0,
       "inputs": [],
       "outputs": [{"name": "ssh_access", "type": "RUNPOD_SSH_ACCESS_POLICY", "links": [6]}],
@@ -90,25 +104,25 @@
       "widgets_values": ["runpod_proxy", "root", "~/.ssh/id_ed25519", "64410ecc", 22, true]
     },
     {
-      "id": 7,
-      "type": "RunpodKeepAlive",
-      "pos": [1010, 20],
-      "size": [280, 202],
+      "id": 10,
+      "type": "PrimitiveStringMultiline",
+      "pos": [1010, 760],
+      "size": [360, 140],
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [],
-      "outputs": [{"name": "keep_alive", "type": "RUNPOD_KEEPALIVE_POLICY", "links": [7]}],
-      "properties": {"Node name for S&R": "RunpodKeepAlive"},
-      "widgets_values": ["time", "stop", 10, "minutes", 0, 0, 0]
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [9]}],
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["Use Neko for browser tasks and Ollama for local model calls."]
     },
     {
       "id": 8,
       "type": "RunpodPod",
-      "pos": [1480, 270],
+      "pos": [1480, 430],
       "size": [300, 302],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {"name": "app", "type": "RUNPOD_APP_AGENT", "link": 5},
@@ -125,15 +139,31 @@
     {
       "id": 9,
       "type": "RunpodRun",
-      "pos": [1900, 310],
+      "pos": [1900, 460],
       "size": [360, 190],
       "flags": {},
-      "order": 8,
+      "order": 10,
       "mode": 0,
-      "inputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 8}],
+      "inputs": [
+        {"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 8},
+        {"name": "prompt", "type": "STRING", "widget": {"name": "prompt"}, "link": 10}
+      ],
       "outputs": [{"name": "result", "type": "RUNPOD_RUN_RESULT", "links": []}],
       "properties": {"Node name for S&R": "RunpodRun"},
       "widgets_values": ["plan", "Plan a Neko plus Ollama agent deployment.", "terminate_created", "info"]
+    },
+    {
+      "id": 11,
+      "type": "PrimitiveStringMultiline",
+      "pos": [1900, 700],
+      "size": [360, 140],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [10]}],
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["Plan a Neko plus Ollama agent deployment."]
     }
   ],
   "links": [
@@ -144,13 +174,15 @@
     [5, 5, 0, 8, 0, "RUNPOD_APP_AGENT"],
     [6, 6, 0, 8, 5, "RUNPOD_SSH_ACCESS_POLICY"],
     [7, 7, 0, 8, 4, "RUNPOD_KEEPALIVE_POLICY"],
-    [8, 8, 0, 9, 0, "RUNPOD_DEPLOYMENT_SPEC"]
+    [8, 8, 0, 9, 0, "RUNPOD_DEPLOYMENT_SPEC"],
+    [9, 10, 0, 5, 6, "STRING"],
+    [10, 11, 0, 9, 1, "STRING"]
   ],
   "groups": [
-    {"title": "Persistent Service Storage", "bounding": [80, 70, 410, 470], "color": "#355f9c", "font_size": 24, "flags": {}},
-    {"title": "Service Pods", "bounding": [520, 70, 390, 520], "color": "#6b5c9d", "font_size": 24, "flags": {}},
-    {"title": "Agent Policy", "bounding": [970, 0, 440, 860], "color": "#3f7f5f", "font_size": 24, "flags": {}},
-    {"title": "Deployment", "bounding": [1440, 220, 870, 410], "color": "#8a6f38", "font_size": 24, "flags": {}}
+    {"title": "Persistent Service Storage", "bounding": [80, 90, 410, 500], "color": "#355f9c", "font_size": 24, "flags": {}},
+    {"title": "Service Pods", "bounding": [520, 90, 390, 560], "color": "#6b5c9d", "font_size": 24, "flags": {}},
+    {"title": "Agent Policy", "bounding": [970, 90, 440, 1060], "color": "#3f7f5f", "font_size": 24, "flags": {}},
+    {"title": "Deployment", "bounding": [1440, 370, 870, 530], "color": "#8a6f38", "font_size": 24, "flags": {}}
   ],
   "config": {},
   "extra": {"ds": {"scale": 1, "offset": [120, 90]}, "frontendVersion": "1.43.18"},

@@ -1,13 +1,13 @@
 {
   "id": "a445d975-72ec-4e7a-8d92-4f4a2e9d883c",
   "revision": 0,
-  "last_node_id": 11,
-  "last_link_id": 10,
+  "last_node_id": 13,
+  "last_link_id": 12,
   "nodes": [
     {
       "id": 1,
       "type": "RunpodLLMApi",
-      "pos": [120, 120],
+      "pos": [120, 160],
       "size": [300, 178],
       "flags": {},
       "order": 0,
@@ -20,7 +20,7 @@
     {
       "id": 2,
       "type": "RunpodBrowser",
-      "pos": [120, 370],
+      "pos": [120, 420],
       "size": [270, 130],
       "flags": {},
       "order": 1,
@@ -33,7 +33,7 @@
     {
       "id": 3,
       "type": "RunpodNetworkStorage",
-      "pos": [120, 650],
+      "pos": [120, 720],
       "size": [320, 130],
       "flags": {},
       "order": 2,
@@ -46,7 +46,7 @@
     {
       "id": 4,
       "type": "RunpodNetworkStorage",
-      "pos": [120, 850],
+      "pos": [120, 930],
       "size": [320, 130],
       "flags": {},
       "order": 3,
@@ -57,12 +57,25 @@
       "widgets_values": ["vol-qdrant-data", "/qdrant/storage"]
     },
     {
-      "id": 5,
-      "type": "RunpodSQLDatabase",
-      "pos": [540, 620],
-      "size": [300, 230],
+      "id": 7,
+      "type": "RunpodSkill",
+      "pos": [540, 320],
+      "size": [380, 226],
       "flags": {},
       "order": 4,
+      "mode": 0,
+      "inputs": [{"name": "previous", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": null}],
+      "outputs": [{"name": "skills", "type": "RUNPOD_AGENT_SKILLS", "links": [7]}],
+      "properties": {"Node name for S&R": "RunpodSkill"},
+      "widgets_values": ["research-notes", "https://github.com/example/agent-skills.git", "skills/research-notes", "/workspace/.codex/skills/research-notes", ""]
+    },
+    {
+      "id": 5,
+      "type": "RunpodSQLDatabase",
+      "pos": [540, 650],
+      "size": [300, 230],
+      "flags": {},
+      "order": 5,
       "mode": 0,
       "inputs": [{"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": 3}],
       "outputs": [{"name": "sql_database", "type": "RUNPOD_APP_SQL_DATABASE", "links": [5]}],
@@ -72,10 +85,10 @@
     {
       "id": 6,
       "type": "RunpodVectorDatabase",
-      "pos": [540, 890],
+      "pos": [540, 930],
       "size": [300, 178],
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [{"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": 4}],
       "outputs": [{"name": "vector_database", "type": "RUNPOD_APP_VECTOR_DATABASE", "links": [6]}],
@@ -83,45 +96,12 @@
       "widgets_values": ["Qdrant", "docs", "/workspace/vector"]
     },
     {
-      "id": 7,
-      "type": "RunpodSkill",
-      "pos": [540, 250],
-      "size": [380, 226],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [{"name": "skills", "type": "RUNPOD_AGENT_SKILLS", "links": [7]}],
-      "properties": {"Node name for S&R": "RunpodSkill"},
-      "widgets_values": ["research-notes", "https://github.com/example/agent-skills.git", "skills/research-notes", "/workspace/.codex/skills/research-notes", ""]
-    },
-    {
-      "id": 8,
-      "type": "RunpodAgent",
-      "pos": [1020, 420],
-      "size": [360, 280],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": 2},
-        {"name": "llm", "shape": 7, "type": "RUNPOD_LLM", "link": 1},
-        {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": 5},
-        {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": 6},
-        {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": null},
-        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": 7}
-      ],
-      "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [8]}],
-      "properties": {"Node name for S&R": "RunpodAgent"},
-      "widgets_values": ["OpenCode", "claude-sonnet", "wait_for_commands", "/workspace", "You are a data research agent. Use SQL for structured facts and Qdrant for retrieved notes."]
-    },
-    {
       "id": 9,
       "type": "RunpodKeepAlive",
-      "pos": [1020, 140],
+      "pos": [1040, 160],
       "size": [280, 202],
       "flags": {},
-      "order": 8,
+      "order": 7,
       "mode": 0,
       "inputs": [],
       "outputs": [{"name": "keep_alive", "type": "RUNPOD_KEEPALIVE_POLICY", "links": [9]}],
@@ -129,12 +109,46 @@
       "widgets_values": ["turns", "terminate", 0, "minutes", 3, 0, 0]
     },
     {
-      "id": 10,
-      "type": "RunpodPod",
-      "pos": [1480, 460],
-      "size": [300, 302],
+      "id": 8,
+      "type": "RunpodAgent",
+      "pos": [1020, 460],
+      "size": [360, 324],
       "flags": {},
       "order": 9,
+      "mode": 0,
+      "inputs": [
+        {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": 2},
+        {"name": "llm", "shape": 7, "type": "RUNPOD_LLM", "link": 1},
+        {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": 5},
+        {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": 6},
+        {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": null},
+        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": 7},
+        {"name": "system_prompt", "type": "STRING", "widget": {"name": "system_prompt"}, "link": 11}
+      ],
+      "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [8]}],
+      "properties": {"Node name for S&R": "RunpodAgent"},
+      "widgets_values": ["OpenCode", "claude-sonnet", "wait_for_commands", "/workspace", "You are a data research agent. Use SQL for structured facts and Qdrant for retrieved notes."]
+    },
+    {
+      "id": 12,
+      "type": "PrimitiveStringMultiline",
+      "pos": [1020, 840],
+      "size": [360, 140],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [11]}],
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["You are a data research agent. Use SQL for structured facts and Qdrant for retrieved notes."]
+    },
+    {
+      "id": 10,
+      "type": "RunpodPod",
+      "pos": [1480, 520],
+      "size": [300, 302],
+      "flags": {},
+      "order": 10,
       "mode": 0,
       "inputs": [
         {"name": "app", "type": "RUNPOD_APP_AGENT", "link": 8},
@@ -151,15 +165,31 @@
     {
       "id": 11,
       "type": "RunpodRun",
-      "pos": [1900, 490],
+      "pos": [1900, 550],
       "size": [360, 190],
       "flags": {},
-      "order": 10,
+      "order": 12,
       "mode": 0,
-      "inputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 10}],
+      "inputs": [
+        {"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 10},
+        {"name": "prompt", "type": "STRING", "widget": {"name": "prompt"}, "link": 12}
+      ],
       "outputs": [{"name": "result", "type": "RUNPOD_RUN_RESULT", "links": []}],
       "properties": {"Node name for S&R": "RunpodRun"},
       "widgets_values": ["plan", "Plan a research workspace with Claude API, Postgres, Qdrant, Playwright, and one downloaded skill.", "terminate_created", "info"]
+    },
+    {
+      "id": 13,
+      "type": "PrimitiveStringMultiline",
+      "pos": [1900, 790],
+      "size": [360, 140],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [12]}],
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["Plan a research workspace with Claude API, Postgres, Qdrant, Playwright, and one downloaded skill."]
     }
   ],
   "links": [
@@ -172,14 +202,16 @@
     [7, 7, 0, 8, 5, "RUNPOD_AGENT_SKILLS"],
     [8, 8, 0, 10, 0, "RUNPOD_APP_AGENT"],
     [9, 9, 0, 10, 4, "RUNPOD_KEEPALIVE_POLICY"],
-    [10, 10, 0, 11, 0, "RUNPOD_DEPLOYMENT_SPEC"]
+    [10, 10, 0, 11, 0, "RUNPOD_DEPLOYMENT_SPEC"],
+    [11, 12, 0, 8, 6, "STRING"],
+    [12, 13, 0, 11, 1, "STRING"]
   ],
   "groups": [
-    {"title": "External Inputs", "bounding": [80, 70, 360, 470], "color": "#355f9c", "font_size": 24, "flags": {}},
-    {"title": "Stateful Storage", "bounding": [80, 600, 380, 430], "color": "#355f9c", "font_size": 24, "flags": {}},
-    {"title": "Data Services And Skills", "bounding": [500, 200, 470, 920], "color": "#6b5c9d", "font_size": 24, "flags": {}},
-    {"title": "Agent Policy", "bounding": [980, 90, 440, 660], "color": "#3f7f5f", "font_size": 24, "flags": {}},
-    {"title": "Deployment", "bounding": [1440, 410, 870, 410], "color": "#8a6f38", "font_size": 24, "flags": {}}
+    {"title": "External Inputs", "bounding": [80, 90, 380, 520], "color": "#355f9c", "font_size": 24, "flags": {}},
+    {"title": "Stateful Storage", "bounding": [80, 650, 380, 470], "color": "#355f9c", "font_size": 24, "flags": {}},
+    {"title": "Data Services And Skills", "bounding": [500, 250, 470, 920], "color": "#6b5c9d", "font_size": 24, "flags": {}},
+    {"title": "Agent Policy", "bounding": [980, 90, 440, 950], "color": "#3f7f5f", "font_size": 24, "flags": {}},
+    {"title": "Deployment", "bounding": [1440, 460, 870, 530], "color": "#8a6f38", "font_size": 24, "flags": {}}
   ],
   "config": {},
   "extra": {"ds": {"scale": 1, "offset": [110, 100]}, "frontendVersion": "1.43.18"},

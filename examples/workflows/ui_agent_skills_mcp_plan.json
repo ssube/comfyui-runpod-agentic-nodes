@@ -1,13 +1,13 @@
 {
   "id": "5bbd5d10-3b08-4bfb-b729-faf92f9511b5",
   "revision": 0,
-  "last_node_id": 7,
-  "last_link_id": 6,
+  "last_node_id": 9,
+  "last_link_id": 8,
   "nodes": [
     {
       "id": 1,
       "type": "RunpodSkillFramework",
-      "pos": [120, 140],
+      "pos": [120, 170],
       "size": [340, 178],
       "flags": {},
       "order": 0,
@@ -20,7 +20,7 @@
     {
       "id": 2,
       "type": "RunpodMCPServer",
-      "pos": [120, 390],
+      "pos": [120, 430],
       "size": [380, 250],
       "flags": {},
       "order": 1,
@@ -33,7 +33,7 @@
     {
       "id": 3,
       "type": "RunpodNetworkStorage",
-      "pos": [120, 730],
+      "pos": [120, 780],
       "size": [320, 130],
       "flags": {},
       "order": 2,
@@ -44,32 +44,12 @@
       "widgets_values": ["vol-agent-workspace", "/workspace"]
     },
     {
-      "id": 4,
-      "type": "RunpodAgent",
-      "pos": [650, 300],
-      "size": [360, 280],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": null},
-        {"name": "llm", "shape": 7, "type": "RUNPOD_LLM", "link": null},
-        {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": null},
-        {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": null},
-        {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": 2},
-        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": 1}
-      ],
-      "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [4]}],
-      "properties": {"Node name for S&R": "RunpodAgent"},
-      "widgets_values": ["Pi", "manual-screenshot", "manual", "/workspace", "You are a screenshot demo agent with Superpowers and filesystem MCP."]
-    },
-    {
       "id": 5,
       "type": "RunpodKeepAlive",
-      "pos": [650, 70],
+      "pos": [650, 130],
       "size": [280, 202],
       "flags": {},
-      "order": 4,
+      "order": 3,
       "mode": 0,
       "inputs": [],
       "outputs": [{"name": "keep_alive", "type": "RUNPOD_KEEPALIVE_POLICY", "links": [5]}],
@@ -77,12 +57,46 @@
       "widgets_values": ["time", "stop", 15, "minutes", 0, 0, 0]
     },
     {
-      "id": 6,
-      "type": "RunpodPod",
-      "pos": [1130, 320],
-      "size": [300, 302],
+      "id": 4,
+      "type": "RunpodAgent",
+      "pos": [650, 380],
+      "size": [360, 324],
       "flags": {},
       "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": null},
+        {"name": "llm", "shape": 7, "type": "RUNPOD_LLM", "link": null},
+        {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": null},
+        {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": null},
+        {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": 2},
+        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": 1},
+        {"name": "system_prompt", "type": "STRING", "widget": {"name": "system_prompt"}, "link": 7}
+      ],
+      "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [4]}],
+      "properties": {"Node name for S&R": "RunpodAgent"},
+      "widgets_values": ["Pi", "manual-screenshot", "manual", "/workspace", "You are a screenshot demo agent with Superpowers and filesystem MCP."]
+    },
+    {
+      "id": 8,
+      "type": "PrimitiveStringMultiline",
+      "pos": [650, 760],
+      "size": [360, 140],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [7]}],
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["You are a screenshot demo agent with Superpowers and filesystem MCP."]
+    },
+    {
+      "id": 6,
+      "type": "RunpodPod",
+      "pos": [1130, 360],
+      "size": [300, 302],
+      "flags": {},
+      "order": 6,
       "mode": 0,
       "inputs": [
         {"name": "app", "type": "RUNPOD_APP_AGENT", "link": 4},
@@ -99,15 +113,31 @@
     {
       "id": 7,
       "type": "RunpodRun",
-      "pos": [1550, 350],
+      "pos": [1550, 380],
       "size": [360, 190],
       "flags": {},
-      "order": 6,
+      "order": 8,
       "mode": 0,
-      "inputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 6}],
+      "inputs": [
+        {"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 6},
+        {"name": "prompt", "type": "STRING", "widget": {"name": "prompt"}, "link": 8}
+      ],
       "outputs": [{"name": "result", "type": "RUNPOD_RUN_RESULT", "links": []}],
       "properties": {"Node name for S&R": "RunpodRun"},
       "widgets_values": ["plan", "Plan an agent with Superpowers skills and filesystem MCP.", "terminate_created", "info"]
+    },
+    {
+      "id": 9,
+      "type": "PrimitiveStringMultiline",
+      "pos": [1550, 620],
+      "size": [360, 140],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [8]}],
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["Plan an agent with Superpowers skills and filesystem MCP."]
     }
   ],
   "links": [
@@ -116,12 +146,14 @@
     [3, 3, 0, 6, 1, "RUNPOD_STORAGE_NETWORK"],
     [4, 4, 0, 6, 0, "RUNPOD_APP_AGENT"],
     [5, 5, 0, 6, 4, "RUNPOD_KEEPALIVE_POLICY"],
-    [6, 6, 0, 7, 0, "RUNPOD_DEPLOYMENT_SPEC"]
+    [6, 6, 0, 7, 0, "RUNPOD_DEPLOYMENT_SPEC"],
+    [7, 8, 0, 4, 6, "STRING"],
+    [8, 9, 0, 7, 1, "STRING"]
   ],
   "groups": [
-    {"title": "Agent Inputs", "bounding": [80, 90, 430, 820], "color": "#355f9c", "font_size": 24, "flags": {}},
-    {"title": "Agent Policy", "bounding": [610, 40, 440, 590], "color": "#3f7f5f", "font_size": 24, "flags": {}},
-    {"title": "Deployment", "bounding": [1090, 270, 870, 410], "color": "#8a6f38", "font_size": 24, "flags": {}}
+    {"title": "Agent Inputs", "bounding": [80, 90, 430, 860], "color": "#355f9c", "font_size": 24, "flags": {}},
+    {"title": "Agent Policy", "bounding": [610, 70, 440, 880], "color": "#3f7f5f", "font_size": 24, "flags": {}},
+    {"title": "Deployment", "bounding": [1090, 300, 870, 520], "color": "#8a6f38", "font_size": 24, "flags": {}}
   ],
   "config": {},
   "extra": {"ds": {"scale": 1, "offset": [160, 120]}, "frontendVersion": "1.43.18"},
