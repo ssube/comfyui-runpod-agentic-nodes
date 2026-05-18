@@ -262,6 +262,19 @@ Output:
 
 Use `startup_mode=wait_for_commands` when setup commands, skills, MCP files, or runtime config must be prepared before the agent starts.
 
+### Injected Runtime Launcher
+
+`Run on Runpod` writes a common launcher runtime into the agent workspace before launch:
+
+| Path | Purpose |
+| --- | --- |
+| `.runpod_agentic/launcher.sh` | Stable entrypoint used by the runner. |
+| `.runpod_agentic/launcher.d/*.sh` | Environment and preflight hook scripts loaded before dispatch. |
+| `.runpod_agentic/launcher.d/pre.d/*.sh` | Optional user-provided pre-launch hooks. |
+| `.runpod_agentic/launcher.d/harnesses/*.sh` | Per-harness stubs for Codex, Claude, OpenCode, and generic fallback behavior. |
+
+This makes CRAG usable with arbitrary SSH-capable containers. The container needs the requested agent CLI installed, or a `CRAG_AGENT_LAUNCH_COMMAND` override, but it does not need to include CRAG-specific files in the image. Advanced users can add or replace harness scripts with startup commands before launch.
+
 ### Runpod Browser
 
 `Runpod Browser` adds browser automation.
@@ -674,7 +687,7 @@ The container may not be running an SSH daemon. Add `Runpod SSH Access` with `in
 
 Agent launch fails with exit code 127:
 
-The agent template does not include `/usr/local/bin/runpod-agent-launch`. Bake the CRAG runtime launcher into the image, or set `CRAG_AGENT_LAUNCH_COMMAND` in the ComfyUI server environment to the command that starts the runtime supervisor.
+The injected launcher could not find a compatible agent CLI. Install the requested CLI in the container, include `runpod-agent-launch` on `PATH`, add a harness stub under `.runpod_agentic/launcher.d/harnesses/`, or set `CRAG_AGENT_LAUNCH_COMMAND` in the ComfyUI server environment to the exact startup command. The runner writes the CRAG runtime layer over SSH before launch, so the shim itself does not need to be baked into each image.
 
 `sshd: no hostkeys available -- exiting`:
 

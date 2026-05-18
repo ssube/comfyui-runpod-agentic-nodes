@@ -170,6 +170,8 @@ class RunpodRunner:
             self.ssh_client.write_file(host, port, f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"])
         if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
             self.ssh_client.write_file(host, port, f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"])
+        for relative_path, content in launcher_runtime_files().items():
+            self.ssh_client.write_file(host, port, f"{base}/{relative_path}", content)
         self.state_store.add_event(plan.run_id, "runtime_config_written", base)
 
     def _command_log_paths(self, run_id: str, detail: dict[str, Any]) -> dict[str, Path]:
@@ -222,11 +224,10 @@ class RunpodRunner:
         configured_launcher = os.environ.get("CRAG_AGENT_LAUNCH_COMMAND") or agent_env.get("CRAG_AGENT_LAUNCH_COMMAND")
         if configured_launcher:
             return f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && nohup bash -lc {shell_env(configured_launcher)} > .runpod_agentic/agent.log 2>&1 &"
-        launcher = f"/usr/local/bin/runpod-agent-launch {shell_env(harness)}"
         return (
             f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && "
-            f"if [ -x /usr/local/bin/runpod-agent-launch ]; then nohup {launcher} > .runpod_agentic/agent.log 2>&1 & "
-            "else echo 'CRAG agent launcher missing: set CRAG_AGENT_LAUNCH_COMMAND or bake /usr/local/bin/runpod-agent-launch into the template.' >&2; exit 127; fi"
+            f"chmod +x .runpod_agentic/launcher.sh .runpod_agentic/launcher.d/*.sh .runpod_agentic/launcher.d/harnesses/*.sh 2>/dev/null || true && "
+            f"nohup .runpod_agentic/launcher.sh {shell_env(harness)} > .runpod_agentic/agent.log 2>&1 &"
         )
 
     def _lifecycle(self, plan: DeploymentPlan, mode: str) -> dict[str, Any]:
@@ -267,6 +268,166 @@ class RunpodRunner:
 
 def shell_env(value: str) -> str:
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
+
+
+def launcher_runtime_files() -> dict[str, str]:
+    return {
+        "launcher.sh": agent_launcher_script(),
+        "launcher.d/00-env.sh": launcher_env_script(),
+        "launcher.d/10-preflight.sh": launcher_preflight_script(),
+        "launcher.d/harnesses/codex.sh": codex_harness_script(),
+        "launcher.d/harnesses/claude.sh": claude_harness_script(),
+        "launcher.d/harnesses/opencode.sh": opencode_harness_script(),
+        "launcher.d/harnesses/generic.sh": generic_harness_script(),
+    }
+
+
+def agent_launcher_script() -> str:
+    return r"""#!/usr/bin/env bash
+set -euo pipefail
+
+workspace="${WORKSPACE_DIR:-$(pwd)}"
+crag_dir="${CRAG_RUNTIME_DIR:-$workspace/.runpod_agentic}"
+harness="${1:-${AGENT_HARNESS:-agent}}"
+launcher_dir="$crag_dir/launcher.d"
+export WORKSPACE_DIR="$workspace"
+export CRAG_RUNTIME_DIR="$crag_dir"
+export AGENT_HARNESS="$harness"
+
+run_hook_dir() {
+  local dir="$1"
+  if [ ! -d "$dir" ]; then
+    return 0
+  fi
+  local hook
+  for hook in "$dir"/*.sh; do
+    if [ -f "$hook" ]; then
+      # shellcheck disable=SC1090
+      . "$hook"
+    fi
+  done
+}
+
+cd "$workspace"
+run_hook_dir "$launcher_dir"
+run_hook_dir "$launcher_dir/pre.d"
+
+if [ -n "${CRAG_AGENT_LAUNCH_COMMAND:-}" ]; then
+  exec bash -lc "$CRAG_AGENT_LAUNCH_COMMAND"
+fi
+
+if command -v runpod-agent-launch >/dev/null 2>&1; then
+  exec runpod-agent-launch "$harness"
+fi
+
+normalized_harness="$(printf '%s' "$harness" | tr '[:upper:]' '[:lower:]' | tr ' _' '--')"
+harness_script="$launcher_dir/harnesses/$normalized_harness.sh"
+if [ -f "$harness_script" ]; then
+  exec bash "$harness_script"
+fi
+
+exec bash "$launcher_dir/harnesses/generic.sh"
+"""
+
+
+def launcher_env_script() -> str:
+    return r"""#!/usr/bin/env bash
+if [ -f "$CRAG_RUNTIME_DIR/session.env" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$CRAG_RUNTIME_DIR/session.env"
+  set +a
+fi
+export AGENT_MODEL="${AGENT_MODEL:-}"
+export AGENT_PROMPT_FILE="${AGENT_PROMPT_FILE:-$CRAG_RUNTIME_DIR/prompt.txt}"
+export AGENT_SYSTEM_PROMPT_FILE="${AGENT_SYSTEM_PROMPT_FILE:-$CRAG_RUNTIME_DIR/system_prompt.txt}"
+export MCP_SERVERS_FILE="${MCP_SERVERS_FILE:-$CRAG_RUNTIME_DIR/mcp_servers.json}"
+"""
+
+
+def launcher_preflight_script() -> str:
+    return r"""#!/usr/bin/env bash
+if [ ! -d "$WORKSPACE_DIR" ]; then
+  mkdir -p "$WORKSPACE_DIR"
+fi
+if [ -f "$MCP_SERVERS_FILE" ]; then
+  export MCP_SERVERS_JSON="$(cat "$MCP_SERVERS_FILE")"
+fi
+"""
+
+
+def codex_harness_script() -> str:
+    return r"""#!/usr/bin/env bash
+set -euo pipefail
+if ! command -v codex >/dev/null 2>&1; then
+  exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
+fi
+prompt=""
+if [ -f "$AGENT_PROMPT_FILE" ]; then
+  prompt="$(cat "$AGENT_PROMPT_FILE")"
+fi
+args=(exec)
+if [ -n "$AGENT_MODEL" ]; then
+  args+=(-m "$AGENT_MODEL")
+fi
+if [ -s "$AGENT_SYSTEM_PROMPT_FILE" ]; then
+  args+=(--system-prompt "$(cat "$AGENT_SYSTEM_PROMPT_FILE")")
+fi
+exec codex "${args[@]}" "$prompt"
+"""
+
+
+def claude_harness_script() -> str:
+    return r"""#!/usr/bin/env bash
+set -euo pipefail
+if ! command -v claude >/dev/null 2>&1; then
+  exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
+fi
+prompt=""
+if [ -f "$AGENT_PROMPT_FILE" ]; then
+  prompt="$(cat "$AGENT_PROMPT_FILE")"
+fi
+args=(-p "$prompt")
+if [ -n "$AGENT_MODEL" ]; then
+  args+=(--model "$AGENT_MODEL")
+fi
+if [ -s "$AGENT_SYSTEM_PROMPT_FILE" ]; then
+  args+=(--system-prompt "$(cat "$AGENT_SYSTEM_PROMPT_FILE")")
+fi
+exec claude "${args[@]}"
+"""
+
+
+def opencode_harness_script() -> str:
+    return r"""#!/usr/bin/env bash
+set -euo pipefail
+if ! command -v opencode >/dev/null 2>&1; then
+  exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
+fi
+prompt=""
+if [ -f "$AGENT_PROMPT_FILE" ]; then
+  prompt="$(cat "$AGENT_PROMPT_FILE")"
+fi
+args=(run)
+if [ -n "$AGENT_MODEL" ]; then
+  args+=(--model "$AGENT_MODEL")
+fi
+exec opencode "${args[@]}" "$prompt"
+"""
+
+
+def generic_harness_script() -> str:
+    return r"""#!/usr/bin/env bash
+set -euo pipefail
+
+cat >&2 <<EOF
+No compatible agent launcher was found for harness '${AGENT_HARNESS:-agent}'.
+Install the requested agent CLI in the container, include runpod-agent-launch on PATH,
+add a script at $CRAG_RUNTIME_DIR/launcher.d/harnesses/<harness>.sh,
+or set CRAG_AGENT_LAUNCH_COMMAND to the exact startup command.
+EOF
+exit 127
+"""
 
 
 def stable_command_hash(command: str) -> str:

@@ -8,11 +8,12 @@ Most repo-local TODO items have been implemented. The remaining work needs confi
 - Added opt-in live pytest coverage behind `RUNPOD_LIVE_TESTS`, with real pod creation additionally gated by `RUNPOD_LIVE_CREATE_POD`, `RUNPOD_TEST_TEMPLATE_ID`, and `RUNPOD_TEST_GPU_TYPE_ID`.
 - Added HTTP readiness probes for known public service endpoints such as Ollama, vLLM, Qdrant, and Chroma.
 - Added real template IDs to `defaults/runpod_template_ids.json` for the current bootstrap templates.
-- Made the agent launch command configurable with `CRAG_AGENT_LAUNCH_COMMAND`.
+- Added an SSH-injected `.runpod_agentic` runtime layer with `launcher.sh`, `.d`-style hooks, and common harness stubs so CRAG does not need to bake the launcher shim into every image.
+- Made the exact agent launch command configurable with `CRAG_AGENT_LAUNCH_COMMAND`.
 
 ## Remaining External Work
 
-- Bake the final runtime supervisor into agent templates as `/usr/local/bin/runpod-agent-launch`, or standardize the deployment environment on `CRAG_AGENT_LAUNCH_COMMAND`.
+- Publish production images with the desired agent CLIs installed, or standardize the deployment environment on `CRAG_AGENT_LAUNCH_COMMAND` for images that need custom startup behavior.
 - Re-run `scripts/check-runpod-schema --json` after Runpod schema changes and adjust mutations if the account exposes a newer API shape.
 - Replace bootstrap template images and commands with production CRAG runtime images once those images are published.
 - Finalize richer service-specific readiness probes after production template endpoint shapes are locked.

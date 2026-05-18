@@ -273,7 +273,7 @@ Preview sanitized inputs without calling Runpod:
 scripts/create-runpod-templates --dry-run
 ```
 
-Agent templates should either bake `/usr/local/bin/runpod-agent-launch` into the image or set `CRAG_AGENT_LAUNCH_COMMAND` in the ComfyUI server environment to the command that starts the runtime supervisor.
+The runner injects a small runtime layer under `.runpod_agentic` over SSH before starting the agent, so templates do not need to bake in the CRAG launcher. The entrypoint is `.runpod_agentic/launcher.sh`; it loads `.runpod_agentic/launcher.d/*.sh`, runs optional preflight hooks, uses `CRAG_AGENT_LAUNCH_COMMAND` when set, falls back to `runpod-agent-launch` if the image provides it, and then dispatches to harness stubs under `.runpod_agentic/launcher.d/harnesses/` for tools such as Codex, Claude, and OpenCode.
 
 ## Security Notes
 

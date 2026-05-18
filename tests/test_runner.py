@@ -10,7 +10,13 @@ from comfyui_runpod_agentic.nodes import (
     RunpodSkillFrameworkNode,
     RunpodSkillNode,
 )
-from comfyui_runpod_agentic.runner import RunpodRunner, first_ready_probe, readiness_probe_paths
+from comfyui_runpod_agentic.runner import (
+    RunpodRunner,
+    agent_launcher_script,
+    first_ready_probe,
+    launcher_runtime_files,
+    readiness_probe_paths,
+)
 from comfyui_runpod_agentic.state_store import StateStore
 
 
@@ -74,6 +80,8 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
     assert result["status"] == "launched"
     assert len(runpod.created) == 1
     assert any(Path(path).name == "session.env" for path in ssh.files)
+    assert any(Path(path).name == "launcher.sh" for path in ssh.files)
+    assert any(path.endswith("launcher.d/harnesses/codex.sh") for path in ssh.files)
     assert any(resource["runpod_pod_id"] == "orphan" for resource in runner.state_store.list_resources())
     assert runner.state_store.list_commands(result["run_id"]) == []
 
@@ -175,3 +183,37 @@ def test_launch_command_can_use_configured_launcher(tmp_path, monkeypatch):
     plan = runner.planner.build(deployment, mode="apply", workflow_graph={"test": True})
 
     assert "echo launch-agent" in runner._launch_command(plan)
+
+
+def test_launch_command_uses_injected_launcher_by_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.delenv("CRAG_AGENT_LAUNCH_COMMAND", raising=False)
+    agent = RunpodAgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+    plan = runner.planner.build(deployment, mode="apply", workflow_graph={"test": True})
+
+    command = runner._launch_command(plan)
+
+    assert ".runpod_agentic/launcher.sh" in command
+    assert "/usr/local/bin/runpod-agent-launch" not in command
+
+
+def test_injected_launcher_documents_override_path():
+    script = agent_launcher_script()
+
+    assert "CRAG_AGENT_LAUNCH_COMMAND" in script
+    assert "runpod-agent-launch" in script
+    assert "harnesses/generic.sh" in script
+
+
+def test_launcher_runtime_files_include_common_harness_stubs():
+    files = launcher_runtime_files()
+
+    assert "launcher.sh" in files
+    assert "launcher.d/00-env.sh" in files
+    assert "launcher.d/10-preflight.sh" in files
+    assert "launcher.d/harnesses/codex.sh" in files
+    assert "launcher.d/harnesses/claude.sh" in files
+    assert "launcher.d/harnesses/opencode.sh" in files
+    assert "No compatible agent launcher" in files["launcher.d/harnesses/generic.sh"]
