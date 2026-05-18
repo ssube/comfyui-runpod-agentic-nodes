@@ -132,6 +132,8 @@ Apps and services:
 - `Network Storage` and `S3 Storage`.
 - `SSH Command`: declarative command chain executed by `Run on Runpod`.
 - `Startup Script`: ready-to-paste bash startup script for a deployment.
+- `Compose YAML`: exports a local Docker Compose compatible projection.
+- `Docker Compose Apply`, `Podman Compose Apply`, `Containerd Apply`: save the Compose projection and optionally run it with Docker, Podman, or `nerdctl compose`.
 
 ## Example Workflows
 

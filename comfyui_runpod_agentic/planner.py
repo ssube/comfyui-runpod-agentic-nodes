@@ -44,6 +44,7 @@ class ResourcePlan:
     secrets: list[SecretRef] = field(default_factory=list)
     ports: list[dict[str, Any]] = field(default_factory=list)
     pod_input: dict[str, Any] = field(default_factory=dict)
+    storage_retention_policy: str | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,7 @@ class Planner:
             pod_contract = dependency_pod_contract(role, spec.runtime_contract)
             desired_hash = stable_hash(to_plain(spec))[:12]
             name = managed_name(workflow_hash, role, spec.meta.node_id, desired_hash)
+            storage = getattr(spec, "network_storage", None)
             resources.append(
                 ResourcePlan(
                     role=role,
@@ -99,7 +101,8 @@ class Planner:
                     env=contract_env_for_creation(pod_contract),
                     secrets=pod_contract.env.secrets,
                     ports=[to_plain(port) for port in pod_contract.ports],
-                    pod_input=self._pod_input(deployment, selection.template_id, name, role, spec.meta.node_id, desired_hash, pod_contract, network_storage=getattr(spec, "network_storage", None)),
+                    pod_input=self._pod_input(deployment, selection.template_id, name, role, spec.meta.node_id, desired_hash, pod_contract, network_storage=storage),
+                    storage_retention_policy=storage.retention_policy if storage else None,
                 )
             )
             dependency_contracts.append(spec.runtime_contract)
@@ -147,6 +150,7 @@ class Planner:
                 secrets=agent_contract.env.secrets,
                 ports=[to_plain(port) for port in agent_pod_contract.ports],
                 pod_input=self._pod_input(deployment, agent_selection.template_id, agent_name, "agent", deployment.primary_app.meta.node_id, agent_hash, agent_pod_contract, network_storage=deployment.network_storage, install_sshd=deployment.ssh_access.install_internal_sshd),
+                storage_retention_policy=deployment.network_storage.retention_policy if deployment.network_storage else None,
             )
         )
 

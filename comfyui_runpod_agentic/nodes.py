@@ -678,6 +678,79 @@ class RunpodStartupScriptNode:
         return (startup_script_for_plan(plan),)
 
 
+class RunpodComposeYAMLNode:
+    CATEGORY = "Runpod/Local"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("compose_yaml", "saved_path")
+    FUNCTION = "export"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "deployment": (RUNPOD_DEPLOYMENT_SPEC,),
+                "prompt": ("STRING", {"multiline": True, "default": ""}),
+                "project_name": ("STRING", {"default": "crag-local"}),
+                "output_path": ("STRING", {"default": "artifacts/local-runtime/compose.yaml"}),
+                "save_file": ("BOOLEAN", {"default": True}),
+            },
+            "hidden": {"workflow_graph": "PROMPT"},
+        }
+
+    def export(self, deployment: DeploymentSpec, prompt: str = "", project_name: str = "crag-local", output_path: str = "artifacts/local-runtime/compose.yaml", save_file: bool = True, workflow_graph: Any = None):
+        from .local_runtime import compose_yaml_for_plan, write_compose_file
+
+        plan = Planner().build(deployment, mode="plan", prompt=prompt, workflow_graph=workflow_graph)
+        compose_yaml = compose_yaml_for_plan(plan, project_name=project_name.strip() or "crag-local")
+        saved_path = write_compose_file(output_path, compose_yaml) if save_file else ""
+        return (compose_yaml, saved_path)
+
+
+class LocalComposeApplyMixin:
+    ENGINE = ""
+    CATEGORY = "Runpod/Local"
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("result", "compose_yaml", "saved_path")
+    FUNCTION = "apply"
+    OUTPUT_NODE = True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "deployment": (RUNPOD_DEPLOYMENT_SPEC,),
+                "prompt": ("STRING", {"multiline": True, "default": ""}),
+                "project_name": ("STRING", {"default": "crag-local"}),
+                "output_path": ("STRING", {"default": "artifacts/local-runtime/compose.yaml"}),
+                "action": (["save_only", "config", "pull", "up", "down"],),
+                "timeout_seconds": ("INT", {"default": 1800, "min": 1}),
+            },
+            "hidden": {"workflow_graph": "PROMPT"},
+        }
+
+    def apply(self, deployment: DeploymentSpec, prompt: str = "", project_name: str = "crag-local", output_path: str = "artifacts/local-runtime/compose.yaml", action: str = "config", timeout_seconds: int = 1800, workflow_graph: Any = None):
+        from .local_runtime import apply_compose_file, compose_yaml_for_plan, write_compose_file
+
+        project = project_name.strip() or "crag-local"
+        plan = Planner().build(deployment, mode="plan", prompt=prompt, workflow_graph=workflow_graph)
+        compose_yaml = compose_yaml_for_plan(plan, project_name=project)
+        saved_path = write_compose_file(output_path, compose_yaml)
+        result = apply_compose_file(self.ENGINE, saved_path, project_name=project, action=action, timeout_seconds=int(timeout_seconds))
+        return (result.to_text(), compose_yaml, saved_path)
+
+
+class RunpodDockerComposeApplyNode(LocalComposeApplyMixin):
+    ENGINE = "docker"
+
+
+class RunpodPodmanComposeApplyNode(LocalComposeApplyMixin):
+    ENGINE = "podman"
+
+
+class RunpodContainerdApplyNode(LocalComposeApplyMixin):
+    ENGINE = "containerd"
+
+
 class RunpodLogsNode:
     CATEGORY = "Runpod/Core"
     RETURN_TYPES = ("STRING", "STRING")
@@ -752,5 +825,9 @@ NODE_CLASSES = [
     RunpodPodNode,
     RunpodRunNode,
     RunpodStartupScriptNode,
+    RunpodComposeYAMLNode,
+    RunpodDockerComposeApplyNode,
+    RunpodPodmanComposeApplyNode,
+    RunpodContainerdApplyNode,
     RunpodLogsNode,
 ]

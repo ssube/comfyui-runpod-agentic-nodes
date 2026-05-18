@@ -1,6 +1,9 @@
 from .nodes import (
     RunpodAgentNode,
     RunpodBrowserNode,
+    RunpodComposeYAMLNode,
+    RunpodContainerdApplyNode,
+    RunpodDockerComposeApplyNode,
     RunpodKeepAliveNode,
     RunpodLLMApiNode,
     RunpodLLMServerNode,
@@ -8,6 +11,7 @@ from .nodes import (
     RunpodLogsNode,
     RunpodMCPServerNode,
     RunpodNetworkStorageNode,
+    RunpodPodmanComposeApplyNode,
     RunpodPodNode,
     RunpodRemoteSQLDatabaseNode,
     RunpodRunNode,
@@ -39,6 +43,10 @@ NODE_CLASS_MAPPINGS = {
     "RunpodPod": RunpodPodNode,
     "RunpodRun": RunpodRunNode,
     "RunpodStartupScript": RunpodStartupScriptNode,
+    "RunpodComposeYAML": RunpodComposeYAMLNode,
+    "RunpodDockerComposeApply": RunpodDockerComposeApplyNode,
+    "RunpodPodmanComposeApply": RunpodPodmanComposeApplyNode,
+    "RunpodContainerdApply": RunpodContainerdApplyNode,
     "RunpodLogs": RunpodLogsNode,
 }
 
@@ -61,6 +69,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RunpodPod": "Runpod Pod",
     "RunpodRun": "Run on Runpod",
     "RunpodStartupScript": "Startup Script",
+    "RunpodComposeYAML": "Compose YAML",
+    "RunpodDockerComposeApply": "Docker Compose Apply",
+    "RunpodPodmanComposeApply": "Podman Compose Apply",
+    "RunpodContainerdApply": "Containerd Apply",
     "RunpodLogs": "Runpod Logs",
 }
 

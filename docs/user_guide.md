@@ -163,6 +163,38 @@ Output:
 
 Use this when you want to inspect or manually run the exact `.runpod_agentic` bootstrap that CRAG would inject over SSH.
 
+### Local Runtime Nodes
+
+Local runtime nodes project the same deployment graph into a Compose YAML file so you can test the topology on your workstation before spending Runpod GPU time. This is intentionally close to the Runpod model: each own-pod resource becomes a service, dependency links are passed through environment variables, and network storage becomes named volumes with retention-policy labels.
+
+| Node | Purpose |
+| --- | --- |
+| `Compose YAML` | Builds and optionally saves the Compose YAML without applying it. |
+| `Docker Compose Apply` | Saves the YAML, then runs `docker compose`. |
+| `Podman Compose Apply` | Saves the YAML, then runs `podman compose` or `podman-compose`. |
+| `Containerd Apply` | Saves the YAML, then runs `nerdctl compose` for containerd-backed local testing. |
+
+Inputs shared by the apply nodes:
+
+| Input | Type | Use |
+| --- | --- | --- |
+| `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled deployment from `Runpod Pod`. |
+| `prompt` | multiline string | Task prompt injected as `AGENT_PROMPT`. |
+| `project_name` | string | Compose project name and container-name prefix. |
+| `output_path` | string | File path where the generated YAML is saved. |
+| `action` | `save_only`, `config`, `pull`, `up`, `down` | Runtime action. Use `save_only` or `config` first when inspecting a new graph. |
+| `timeout_seconds` | integer | Timeout for the local runtime command. |
+
+Outputs:
+
+| Output | Type | Use |
+| --- | --- | --- |
+| `result` | `STRING` | JSON summary with command, return code, stdout, and stderr. |
+| `compose_yaml` | `STRING` | Generated Compose YAML, useful with `PreviewAny`. |
+| `saved_path` | `STRING` | Path to the saved YAML file. |
+
+`Containerd Apply` uses `nerdctl compose` rather than raw `ctr`; direct `ctr` does not provide the Compose-level dependency, env, port, and volume model these workflows need. If `nerdctl` is not installed, the node reports that as an apply error and still leaves the YAML on disk.
+
 ### Runpod Pod
 
 `Runpod Pod` wraps the primary agent and deployment policy.
@@ -646,6 +678,17 @@ final commands -> Runpod Pod.commands
 ```
 
 Keep commands idempotent when using `reuse_matching` or `resume_stopped`, because they may run against an existing workspace.
+
+### Local Container Rehearsal
+
+```text
+Agent -> Runpod Pod -> Compose YAML -> PreviewAny
+Agent -> Runpod Pod -> Docker Compose Apply(action=config or up)
+Agent -> Runpod Pod -> Podman Compose Apply(action=config or up)
+Agent -> Runpod Pod -> Containerd Apply(action=config or up)
+```
+
+Use local rehearsal to verify service wiring, environment variables, ports, and startup commands. Treat it as a topology test, not a perfect Runpod emulator: GPU scheduling, Runpod secrets, public proxy ports, and Runpod lifecycle policies still need live Runpod validation.
 
 ## Example Workflows
 

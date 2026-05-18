@@ -30,6 +30,10 @@ EXPECTED_NODES = {
     "RunpodPod",
     "RunpodRun",
     "RunpodStartupScript",
+    "RunpodComposeYAML",
+    "RunpodDockerComposeApply",
+    "RunpodPodmanComposeApply",
+    "RunpodContainerdApply",
     "RunpodLogs",
 }
 

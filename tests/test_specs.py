@@ -19,6 +19,10 @@ def test_user_facing_core_node_names():
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPod"] == "Runpod Pod"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRun"] == "Run on Runpod"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodStartupScript"] == "Startup Script"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodComposeYAML"] == "Compose YAML"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodDockerComposeApply"] == "Docker Compose Apply"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPodmanComposeApply"] == "Podman Compose Apply"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodContainerdApply"] == "Containerd Apply"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRemoteSQLDatabase"] == "Remote SQL Database"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodLocalSQLDatabase"] == "Local SQL Database"
     assert "RunpodSQLDatabase" not in NODE_DISPLAY_NAME_MAPPINGS
