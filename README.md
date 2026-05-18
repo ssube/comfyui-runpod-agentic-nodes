@@ -65,6 +65,8 @@ When running outside ComfyUI, set `COMFYUI_USER_DIR` to control that location.
 
 ## Node Overview
 
+For a complete walkthrough of the mission, graph model, node inputs, credentials, prompts, storage, execution modes, and workflow recipes, see [docs/user_guide.md](docs/user_guide.md).
+
 Core:
 
 - `Pod`: creates a deployment spec around the primary agent.
