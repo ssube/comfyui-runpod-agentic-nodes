@@ -14,6 +14,7 @@ try:
     from .runtime_contracts import merge_contracts, secret_placeholder, with_env
     from .specs import (
         DeploymentSpec,
+        NetworkStorageSpec,
         RuntimeContract,
         SecretRef,
         SkillSource,
@@ -24,7 +25,7 @@ try:
     from .validation import validate_deployment
 except ImportError:
     from runtime_contracts import merge_contracts, secret_placeholder, with_env
-    from specs import DeploymentSpec, RuntimeContract, SecretRef, SkillSource, SSHAccessPolicy, to_plain
+    from specs import DeploymentSpec, NetworkStorageSpec, RuntimeContract, SecretRef, SkillSource, SSHAccessPolicy, to_plain
     from template_resolver import TemplateResolver
     from validation import validate_deployment
 
@@ -60,6 +61,7 @@ class DeploymentPlan:
     workflow_hash: str
     deployment_hash: str
     mode: str
+    prompt: str
     resources: list[ResourcePlan]
     runtime_contract: RuntimeContract
     ssh_access: SSHAccessPolicy
@@ -74,10 +76,10 @@ class Planner:
     def __init__(self, template_resolver: TemplateResolver | None = None):
         self.template_resolver = template_resolver or TemplateResolver()
 
-    def build(self, deployment: DeploymentSpec, *, mode: str = "plan", prompt: Any = None) -> DeploymentPlan:
+    def build(self, deployment: DeploymentSpec, *, mode: str = "plan", prompt: str = "", workflow_graph: Any = None) -> DeploymentPlan:
         warnings = validate_deployment(deployment, mode=mode, require_api_key=False)
         deployment_hash = stable_hash(to_plain(deployment))
-        workflow_hash = stable_hash(prompt if prompt is not None else to_plain(deployment))[:12]
+        workflow_hash = stable_hash(workflow_graph if workflow_graph is not None else to_plain(deployment))[:12]
         run_id = f"crag-{uuid.uuid4().hex[:12]}"
         resources: list[ResourcePlan] = []
         dependency_contracts: list[RuntimeContract] = []
@@ -98,7 +100,7 @@ class Planner:
                     env=contract_env_for_creation(pod_contract),
                     secrets=pod_contract.env.secrets,
                     ports=[to_plain(port) for port in pod_contract.ports],
-                    pod_input=self._pod_input(deployment, selection.template_id, name, role, spec.meta.node_id, desired_hash, pod_contract),
+                    pod_input=self._pod_input(deployment, selection.template_id, name, role, spec.meta.node_id, desired_hash, pod_contract, network_storage=getattr(spec, "network_storage", None)),
                 )
             )
             dependency_contracts.append(spec.runtime_contract)
@@ -122,6 +124,7 @@ class Planner:
                 "CRAG_WORKFLOW_HASH": workflow_hash,
                 "CRAG_NODE_ID": deployment.primary_app.meta.node_id or "",
                 "CRAG_ROLE": "agent",
+                "AGENT_PROMPT": prompt,
                 "WORKSPACE_DIR": deployment.primary_app.workspace_path,
             },
         )
@@ -144,12 +147,12 @@ class Planner:
                 env=contract_env_for_creation(agent_contract),
                 secrets=agent_contract.env.secrets,
                 ports=[to_plain(port) for port in agent_pod_contract.ports],
-                pod_input=self._pod_input(deployment, agent_selection.template_id, agent_name, "agent", deployment.primary_app.meta.node_id, agent_hash, agent_pod_contract, install_sshd=deployment.ssh_access.install_internal_sshd),
+                pod_input=self._pod_input(deployment, agent_selection.template_id, agent_name, "agent", deployment.primary_app.meta.node_id, agent_hash, agent_pod_contract, network_storage=deployment.network_storage, install_sshd=deployment.ssh_access.install_internal_sshd),
             )
         )
 
         actions = self._actions(resources, deployment)
-        return DeploymentPlan(run_id, workflow_hash, deployment_hash, mode, resources, agent_contract, deployment.ssh_access, actions, warnings)
+        return DeploymentPlan(run_id, workflow_hash, deployment_hash, mode, prompt, resources, agent_contract, deployment.ssh_access, actions, warnings)
 
     def _own_pod_dependencies(self, deployment: DeploymentSpec) -> list[tuple[str, Any]]:
         app = deployment.primary_app
@@ -171,6 +174,7 @@ class Planner:
         desired_hash: str,
         contract: RuntimeContract,
         *,
+        network_storage: NetworkStorageSpec | None = None,
         install_sshd: bool = False,
     ) -> dict[str, Any]:
         hints = deployment.resource_hints
@@ -197,9 +201,9 @@ class Planner:
             pod_input["gpuTypeId"] = hints.gpu_type_id
         if hints.volume_gb:
             pod_input["volumeInGb"] = hints.volume_gb
-        if deployment.network_storage:
-            pod_input["networkVolumeId"] = deployment.network_storage.network_volume_id
-            pod_input["volumeMountPath"] = deployment.network_storage.mount_path
+        if network_storage:
+            pod_input["networkVolumeId"] = network_storage.network_volume_id
+            pod_input["volumeMountPath"] = network_storage.mount_path
         if deployment.keep_alive and deployment.keep_alive.mode == "time" and deployment.keep_alive.time_seconds:
             field_name = "stopAfter" if deployment.keep_alive.action == "stop" else "terminateAfter"
             pod_input[field_name] = (datetime.now(UTC) + timedelta(seconds=deployment.keep_alive.time_seconds)).isoformat()

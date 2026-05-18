@@ -26,12 +26,13 @@
         0
       ],
       "harness": "Pi",
-      "llm_server": [
+      "llm": [
         "2",
         0
       ],
       "model": "manual-real-api-smoke",
       "startup_mode": "manual",
+      "system_prompt": "You are a Runpod smoke-test agent. Report exact command results.",
       "workspace_path": "/workspace"
     }
   },
@@ -75,15 +76,15 @@
         "3",
         0
       ],
-      "cloud_type": "auto",
+      "cloud_type": "SECURE",
       "commands": [
         "4",
         0
       ],
       "container_disk_gb": 20,
       "expose_public_ip": true,
-      "gpu_count": 0,
-      "gpu_type_id": "",
+      "gpu_count": 1,
+      "gpu_type_id": "NVIDIA RTX A4000",
       "keep_alive": [
         "5",
         0
@@ -105,7 +106,8 @@
       ],
       "log_level": "info",
       "mode": "apply",
-      "on_error": "terminate_created"
+      "on_error": "terminate_created",
+      "prompt": "Run the smoke command and save the generated runtime config files."
     }
   }
 }

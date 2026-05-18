@@ -37,13 +37,12 @@ from .types import (
     RUNPOD_AGENT_SKILLS,
     RUNPOD_APP_AGENT,
     RUNPOD_APP_BROWSER,
-    RUNPOD_APP_LLM_SERVER,
     RUNPOD_APP_SQL_DATABASE,
     RUNPOD_APP_VECTOR_DATABASE,
     RUNPOD_COMMAND_SSH,
     RUNPOD_DEPLOYMENT_SPEC,
     RUNPOD_KEEPALIVE_POLICY,
-    RUNPOD_LLM_API,
+    RUNPOD_LLM,
     RUNPOD_MCP_SERVERS,
     RUNPOD_RUN_RESULT,
     RUNPOD_SSH_ACCESS_POLICY,
@@ -82,10 +81,11 @@ class RunpodBrowserNode:
                 "placement": (["own_pod", "same_pod"],),
                 "browser_engine": (["chromium", "firefox", "chrome"],),
             },
+            "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, browser: str, placement: str, browser_engine: str, node_id: str | None = None):
+    def build(self, browser: str, placement: str, browser_engine: str, network_storage=None, node_id: str | None = None):
         engine = "neko" if norm(browser) == "neko" else "playwright"
         if engine == "neko" and placement == "same_pod":
             raise ValidationError("Neko browser supports only own_pod placement.")
@@ -112,6 +112,7 @@ class RunpodBrowserNode:
                 RuntimeContract(EnvPatch(values), ports),
                 capabilities,
                 template_key,
+                network_storage,
                 meta(node_id, browser),
             ),
         )
@@ -119,8 +120,8 @@ class RunpodBrowserNode:
 
 class RunpodLLMServerNode:
     CATEGORY = "Runpod/Apps"
-    RETURN_TYPES = (RUNPOD_APP_LLM_SERVER,)
-    RETURN_NAMES = ("llm_server",)
+    RETURN_TYPES = (RUNPOD_LLM,)
+    RETURN_NAMES = ("llm",)
     FUNCTION = "build"
 
     @classmethod
@@ -134,10 +135,11 @@ class RunpodLLMServerNode:
                 "api_key_secret_name": ("STRING", {"default": ""}),
                 "hf_token_secret_name": ("STRING", {"default": ""}),
             },
+            "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, engine: str, model: str, placement: str, api_auth_mode: str, api_key_secret_name: str = "", hf_token_secret_name: str = "", node_id: str | None = None):
+    def build(self, engine: str, model: str, placement: str, api_auth_mode: str, api_key_secret_name: str = "", hf_token_secret_name: str = "", network_storage=None, node_id: str | None = None):
         llm_engine = "vllm" if norm(engine) == "vllm" else "ollama"
         if placement != "own_pod":
             raise ValidationError("LLM Server only supports own_pod placement in the MVP.")
@@ -171,6 +173,7 @@ class RunpodLLMServerNode:
                 f"rp-llm-{llm_engine}",
                 hf_secret,
                 api_secret,
+                network_storage,
                 meta(node_id, engine),
             ),
         )
@@ -178,8 +181,8 @@ class RunpodLLMServerNode:
 
 class RunpodLLMApiNode:
     CATEGORY = "Runpod/LLM"
-    RETURN_TYPES = (RUNPOD_LLM_API,)
-    RETURN_NAMES = ("llm_api",)
+    RETURN_TYPES = (RUNPOD_LLM,)
+    RETURN_NAMES = ("llm",)
     FUNCTION = "build"
 
     @classmethod
@@ -236,20 +239,21 @@ class RunpodSQLDatabaseNode:
                 "password_secret_name": ("STRING", {"default": ""}),
                 "sqlite_path": ("STRING", {"default": "/workspace/db/app.sqlite"}),
             },
+            "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, engine: str, database_name: str, username: str, password_secret_name: str = "", sqlite_path: str = "/workspace/db/app.sqlite", node_id: str | None = None):
+    def build(self, engine: str, database_name: str, username: str, password_secret_name: str = "", sqlite_path: str = "/workspace/db/app.sqlite", network_storage=None, node_id: str | None = None):
         db_engine = norm(engine)
         if db_engine == "sqlite":
             contract = RuntimeContract(EnvPatch({"DATABASE_KIND": "sqlite", "DATABASE_URL": f"sqlite:///{sqlite_path}"}))
-            return (SQLDatabaseSpec("sql_database", "sqlite", "file_only", database_name, None, None, contract, None, meta(node_id, engine)),)
+            return (SQLDatabaseSpec("sql_database", "sqlite", "file_only", database_name, None, None, contract, None, network_storage, meta(node_id, engine)),)
         secret = SecretRef(password_secret_name, "DATABASE_PASSWORD") if password_secret_name else None
         contract = RuntimeContract(
             EnvPatch({"DATABASE_KIND": db_engine, "DATABASE_URL": f"crag://sql/{db_engine}/{database_name}", "DATABASE_NAME": database_name, "DATABASE_USER": username}, [secret] if secret else []),
             [PortSpec(db_engine, 5432 if db_engine == "postgres" else 3306, "tcp", False)],
         )
-        return (SQLDatabaseSpec("sql_database", db_engine, "own_pod", database_name, username, secret, contract, f"rp-db-{db_engine}", meta(node_id, engine)),)
+        return (SQLDatabaseSpec("sql_database", db_engine, "own_pod", database_name, username, secret, contract, f"rp-db-{db_engine}", network_storage, meta(node_id, engine)),)
 
 
 class RunpodVectorDatabaseNode:
@@ -260,13 +264,17 @@ class RunpodVectorDatabaseNode:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"engine": (["Chroma", "Qdrant"],), "collection_name": ("STRING", {"default": "default"}), "persistence_path": ("STRING", {"default": "/workspace/vector"})}, "hidden": {"node_id": "UNIQUE_ID"}}
+        return {
+            "required": {"engine": (["Chroma", "Qdrant"],), "collection_name": ("STRING", {"default": "default"}), "persistence_path": ("STRING", {"default": "/workspace/vector"})},
+            "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,)},
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
 
-    def build(self, engine: str, collection_name: str, persistence_path: str = "/workspace/vector", node_id: str | None = None):
+    def build(self, engine: str, collection_name: str, persistence_path: str = "/workspace/vector", network_storage=None, node_id: str | None = None):
         vector_engine = norm(engine)
         port = 6333 if vector_engine == "qdrant" else 8000
         contract = RuntimeContract(EnvPatch({"VECTOR_KIND": vector_engine, "VECTOR_URL": f"crag://vector/{vector_engine}", "VECTOR_COLLECTION": collection_name}), [PortSpec(vector_engine, port, "http", True)])
-        return (VectorDatabaseSpec("vector_database", vector_engine, "own_pod", collection_name, persistence_path, contract, f"rp-vector-{vector_engine}", meta(node_id, engine)),)
+        return (VectorDatabaseSpec("vector_database", vector_engine, "own_pod", collection_name, persistence_path, contract, f"rp-vector-{vector_engine}", network_storage, meta(node_id, engine)),)
 
 
 class RunpodMCPServerNode:
@@ -434,21 +442,21 @@ class RunpodAgentNode:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {"harness": (["Codex", "Claude", "OpenCode", "Hermes", "Pi"],), "model": ("STRING", {"default": ""}), "startup_mode": (["wait_for_commands", "auto_start", "manual"],), "workspace_path": ("STRING", {"default": "/workspace"})},
-            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm_api": (RUNPOD_LLM_API,), "llm_server": (RUNPOD_APP_LLM_SERVER,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,), "skills": (RUNPOD_AGENT_SKILLS,)},
-            "hidden": {"node_id": "UNIQUE_ID", "prompt": "PROMPT"},
+            "required": {"harness": (["Codex", "Claude", "OpenCode", "Hermes", "Pi"],), "model": ("STRING", {"default": ""}), "startup_mode": (["wait_for_commands", "auto_start", "manual"],), "workspace_path": ("STRING", {"default": "/workspace"}), "system_prompt": ("STRING", {"multiline": True, "default": ""})},
+            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm": (RUNPOD_LLM,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,), "skills": (RUNPOD_AGENT_SKILLS,)},
+            "hidden": {"node_id": "UNIQUE_ID", "workflow_graph": "PROMPT"},
         }
 
-    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", browser=None, llm_api=None, llm_server=None, sql_database=None, vector_database=None, mcp_servers=None, skills=None, node_id: str | None = None, prompt: Any = None):
-        if llm_api and llm_server:
-            raise ValidationError("Agent accepts either llm_api or llm_server, not both.")
+    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", system_prompt: str = "", browser=None, llm=None, sql_database=None, vector_database=None, mcp_servers=None, skills=None, node_id: str | None = None, workflow_graph: Any = None):
+        llm_api = llm if isinstance(llm, LLMApiSpec) else None
+        llm_server = llm if isinstance(llm, LLMServerSpec) else None
         capabilities = []
         for spec in (browser, llm_server):
             if spec and spec.materialization == "same_pod":
                 if spec.kind == "llm_server":
                     raise ValidationError("LLM Server same_pod materialization is not supported in the MVP.")
                 capabilities.extend(spec.required_image_capabilities)
-        contract = RuntimeContract(EnvPatch({"AGENT_HARNESS": norm(harness), "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "WORKSPACE_DIR": workspace_path}))
+        contract = RuntimeContract(EnvPatch({"AGENT_HARNESS": norm(harness), "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "AGENT_SYSTEM_PROMPT": system_prompt, "WORKSPACE_DIR": workspace_path}))
         if mcp_servers:
             contract = RuntimeContract(
                 EnvPatch({**contract.env.values, **mcp_servers.runtime_contract.env.values}, [*contract.env.secrets, *mcp_servers.runtime_contract.env.secrets]),
@@ -459,7 +467,7 @@ class RunpodAgentNode:
                 EnvPatch({**contract.env.values, **skills.runtime_contract.env.values}, [*contract.env.secrets, *skills.runtime_contract.env.secrets]),
                 files={**contract.files, **skills.runtime_contract.files},
             )
-        return (AgentSpec("agent", norm(harness), model, startup_mode, workspace_path, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, contract, capabilities, None, meta(node_id, harness)),)
+        return (AgentSpec("agent", norm(harness), model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, contract, capabilities, None, meta(node_id, harness)),)
 
 
 class RunpodNetworkStorageNode:
@@ -589,15 +597,15 @@ class RunpodRunNode:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"deployment": (RUNPOD_DEPLOYMENT_SPEC,), "mode": (["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"],), "on_error": (["stop_created", "terminate_created", "leave_running"],), "log_level": (["info", "debug"],)}, "hidden": {"prompt": "PROMPT"}}
+        return {"required": {"deployment": (RUNPOD_DEPLOYMENT_SPEC,), "mode": (["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"],), "prompt": ("STRING", {"multiline": True, "default": ""}), "on_error": (["stop_created", "terminate_created", "leave_running"],), "log_level": (["info", "debug"],)}, "hidden": {"workflow_graph": "PROMPT"}}
 
-    def run(self, deployment: DeploymentSpec, mode: str = "plan", on_error: str = "stop_created", log_level: str = "info", prompt: Any = None):
+    def run(self, deployment: DeploymentSpec, mode: str = "plan", prompt: str = "", on_error: str = "stop_created", log_level: str = "info", workflow_graph: Any = None):
         if mode != "plan":
             from .runner import RunpodRunner
 
-            result = RunpodRunner().run(deployment, mode=mode, prompt=prompt, on_error=on_error)
+            result = RunpodRunner().run(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
             return (json.dumps(result, indent=2, sort_keys=True),)
-        plan = Planner().build(deployment, mode=mode, prompt=prompt)
+        plan = Planner().build(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph)
         return (json.dumps(plan.to_dict(), indent=2, sort_keys=True),)
 
 

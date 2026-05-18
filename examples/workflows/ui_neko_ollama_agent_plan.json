@@ -1,0 +1,158 @@
+{
+  "id": "9f04d59f-35ef-47ef-86ff-6c9854a7a093",
+  "revision": 0,
+  "last_node_id": 9,
+  "last_link_id": 8,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "RunpodNetworkStorage",
+      "pos": [120, 120],
+      "size": [320, 130],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "network_storage", "type": "RUNPOD_STORAGE_NETWORK", "links": [1]}],
+      "properties": {"Node name for S&R": "RunpodNetworkStorage"},
+      "widgets_values": ["vol-neko-profile", "/workspace/browser"]
+    },
+    {
+      "id": 2,
+      "type": "RunpodNetworkStorage",
+      "pos": [120, 360],
+      "size": [320, 130],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "network_storage", "type": "RUNPOD_STORAGE_NETWORK", "links": [2]}],
+      "properties": {"Node name for S&R": "RunpodNetworkStorage"},
+      "widgets_values": ["vol-ollama-models", "/root/.ollama"]
+    },
+    {
+      "id": 3,
+      "type": "RunpodBrowser",
+      "pos": [560, 110],
+      "size": [270, 130],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [{"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": 1}],
+      "outputs": [{"name": "browser", "type": "RUNPOD_APP_BROWSER", "links": [3]}],
+      "properties": {"Node name for S&R": "RunpodBrowser"},
+      "widgets_values": ["Neko", "own_pod", "chromium"]
+    },
+    {
+      "id": 4,
+      "type": "RunpodLLMServer",
+      "pos": [560, 330],
+      "size": [300, 210],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [{"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": 2}],
+      "outputs": [{"name": "llm", "type": "RUNPOD_LLM", "links": [4]}],
+      "properties": {"Node name for S&R": "RunpodLLMServer"},
+      "widgets_values": ["Ollama", "smoke", "own_pod", "none", "", ""]
+    },
+    {
+      "id": 5,
+      "type": "RunpodAgent",
+      "pos": [1010, 230],
+      "size": [360, 280],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": 3},
+        {"name": "llm", "shape": 7, "type": "RUNPOD_LLM", "link": 4},
+        {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": null},
+        {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": null},
+        {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": null},
+        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": null}
+      ],
+      "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [5]}],
+      "properties": {"Node name for S&R": "RunpodAgent"},
+      "widgets_values": ["Pi", "manual-real-api-smoke", "manual", "/workspace", "Use Neko for browser tasks and Ollama for local model calls."]
+    },
+    {
+      "id": 6,
+      "type": "RunpodSSHAccess",
+      "pos": [1010, 650],
+      "size": [300, 178],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "ssh_access", "type": "RUNPOD_SSH_ACCESS_POLICY", "links": [6]}],
+      "properties": {"Node name for S&R": "RunpodSSHAccess"},
+      "widgets_values": ["runpod_proxy", "root", "~/.ssh/id_ed25519", "64410ecc", 22, true]
+    },
+    {
+      "id": 7,
+      "type": "RunpodKeepAlive",
+      "pos": [1010, 20],
+      "size": [280, 202],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "keep_alive", "type": "RUNPOD_KEEPALIVE_POLICY", "links": [7]}],
+      "properties": {"Node name for S&R": "RunpodKeepAlive"},
+      "widgets_values": ["time", "stop", 10, "minutes", 0, 0, 0]
+    },
+    {
+      "id": 8,
+      "type": "RunpodPod",
+      "pos": [1480, 270],
+      "size": [300, 302],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "app", "type": "RUNPOD_APP_AGENT", "link": 5},
+        {"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": null},
+        {"name": "s3_storage", "shape": 7, "type": "RUNPOD_STORAGE_S3", "link": null},
+        {"name": "commands", "shape": 7, "type": "RUNPOD_COMMAND_SSH", "link": null},
+        {"name": "keep_alive", "shape": 7, "type": "RUNPOD_KEEPALIVE_POLICY", "link": 7},
+        {"name": "ssh_access", "shape": 7, "type": "RUNPOD_SSH_ACCESS_POLICY", "link": 6}
+      ],
+      "outputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "links": [8]}],
+      "properties": {"Node name for S&R": "RunpodPod"},
+      "widgets_values": ["NVIDIA RTX A4000", 1, "SECURE", 20, 0, true, "always_create"]
+    },
+    {
+      "id": 9,
+      "type": "RunpodRun",
+      "pos": [1900, 310],
+      "size": [360, 190],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 8}],
+      "outputs": [{"name": "result", "type": "RUNPOD_RUN_RESULT", "links": []}],
+      "properties": {"Node name for S&R": "RunpodRun"},
+      "widgets_values": ["plan", "Plan a Neko plus Ollama agent deployment.", "terminate_created", "info"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0, "RUNPOD_STORAGE_NETWORK"],
+    [2, 2, 0, 4, 0, "RUNPOD_STORAGE_NETWORK"],
+    [3, 3, 0, 5, 0, "RUNPOD_APP_BROWSER"],
+    [4, 4, 0, 5, 1, "RUNPOD_LLM"],
+    [5, 5, 0, 8, 0, "RUNPOD_APP_AGENT"],
+    [6, 6, 0, 8, 5, "RUNPOD_SSH_ACCESS_POLICY"],
+    [7, 7, 0, 8, 4, "RUNPOD_KEEPALIVE_POLICY"],
+    [8, 8, 0, 9, 0, "RUNPOD_DEPLOYMENT_SPEC"]
+  ],
+  "groups": [
+    {"title": "Persistent Service Storage", "bounding": [80, 70, 410, 470], "color": "#355f9c", "font_size": 24, "flags": {}},
+    {"title": "Service Pods", "bounding": [520, 70, 390, 520], "color": "#6b5c9d", "font_size": 24, "flags": {}},
+    {"title": "Agent Policy", "bounding": [970, 0, 440, 860], "color": "#3f7f5f", "font_size": 24, "flags": {}},
+    {"title": "Deployment", "bounding": [1440, 220, 870, 410], "color": "#8a6f38", "font_size": 24, "flags": {}}
+  ],
+  "config": {},
+  "extra": {"ds": {"scale": 1, "offset": [120, 90]}, "frontendVersion": "1.43.18"},
+  "version": 0.4
+}

@@ -112,16 +112,18 @@ def test_runner_logs_sanitized_pod_create_failure(tmp_path, monkeypatch):
 def test_runner_writes_mcp_runtime_file(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     mcp = RunpodMCPServerNode().build("filesystem", "stdio", "npx", "-y @modelcontextprotocol/server-filesystem /workspace", "", "{}", "")[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual", mcp_servers=mcp)[0]
+    agent = RunpodAgentNode().build("Pi", "model", "manual", system_prompt="Stay concise.", mcp_servers=mcp)[0]
     deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
-    result = runner.run(deployment, mode="apply")
+    result = runner.run(deployment, mode="apply", prompt="List available files.")
 
     assert result["status"] == "launched"
     mcp_paths = [path for path in runner.ssh_client.files if path.endswith("mcp_servers.json")]
     assert mcp_paths
     assert "filesystem" in runner.ssh_client.files[mcp_paths[0]]
+    assert any(path.endswith("system_prompt.txt") for path in runner.ssh_client.files)
+    assert any(path.endswith("prompt.txt") for path in runner.ssh_client.files)
 
 
 def test_runner_installs_skills_before_user_commands(tmp_path, monkeypatch):

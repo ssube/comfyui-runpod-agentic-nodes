@@ -50,10 +50,10 @@ def main() -> int:
     if args.mode == "plan":
         from .planner import Planner
 
-        result = Planner().build(deployment, mode="plan", prompt={"live_smoke": True}).to_dict()
+        result = Planner().build(deployment, mode="plan", workflow_graph={"live_smoke": True}).to_dict()
     else:
         runner = RunpodRunner()
-        result = runner.run(deployment, mode="apply", prompt={"live_smoke": True, "timestamp": time.time()}, on_error="terminate_created")
+        result = runner.run(deployment, mode="apply", workflow_graph={"live_smoke": True, "timestamp": time.time()}, on_error="terminate_created")
         cleanup_pods(runner, result, args.cleanup)
 
     output = Path(args.output)

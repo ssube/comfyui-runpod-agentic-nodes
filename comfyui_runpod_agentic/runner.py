@@ -41,9 +41,9 @@ class RunpodRunner:
         if self.planner is None:
             self.planner = Planner()
 
-    def run(self, deployment: DeploymentSpec, *, mode: str, prompt: Any = None, on_error: str = "stop_created") -> dict[str, Any]:
+    def run(self, deployment: DeploymentSpec, *, mode: str, prompt: str = "", workflow_graph: Any = None, on_error: str = "stop_created") -> dict[str, Any]:
         validate_deployment(deployment, mode=mode, require_api_key=True)
-        plan = self.planner.build(deployment, mode=mode, prompt=prompt)
+        plan = self.planner.build(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph)
         self.reconcile_managed_pods()
         self.state_store.record_run(plan.run_id, plan.workflow_hash, plan.deployment_hash, mode, "started")
         try:
@@ -159,6 +159,10 @@ class RunpodRunner:
         self.ssh_client.write_file(host, port, f"{base}/resources.json", json.dumps(resources, indent=2, sort_keys=True))
         self.ssh_client.write_file(host, port, f"{base}/session.env", session_env)
         self.ssh_client.write_file(host, port, f"{base}/commands.json", json.dumps(commands, indent=2, sort_keys=True))
+        if plan.runtime_contract.env.values.get("AGENT_SYSTEM_PROMPT"):
+            self.ssh_client.write_file(host, port, f"{base}/system_prompt.txt", plan.runtime_contract.env.values["AGENT_SYSTEM_PROMPT"])
+        if plan.runtime_contract.env.values.get("AGENT_PROMPT"):
+            self.ssh_client.write_file(host, port, f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"])
         if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
             self.ssh_client.write_file(host, port, f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"])
         self.state_store.add_event(plan.run_id, "runtime_config_written", base)

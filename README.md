@@ -68,13 +68,13 @@ When running outside ComfyUI, set `COMFYUI_USER_DIR` to control that location.
 Core:
 
 - `Pod`: creates a deployment spec around the primary agent.
-- `Runpod Run`: plan/apply/stop/terminate/destroy output node.
+- `Runpod Run`: plan/apply/stop/terminate/destroy output node with the per-run agent prompt.
 - `Keep Alive`: time, turns, cost, or manual policy.
 - `Runpod Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
 
 Apps and services:
 
-- `Agent`: composition point for browser, LLM, SQL, vector, and MCP resources.
+- `Agent`: composition point for browser, LLM, SQL, vector, MCP resources, skills, and the agent system prompt.
 - `Browser`: Neko or Playwright.
 - `LLM Server`: Ollama or vLLM own-pod service.
 - `LLM API`: Codex/OpenAI, Claude/Anthropic, or Ollama Cloud env contract.
@@ -97,12 +97,12 @@ Skill Framework(framework=Superpowers, target_root=/workspace/.codex/skills)
 SQL Database(engine=Postgres, database=app, username=app, secret=pg_password)
 Vector Database(engine=Qdrant, collection=docs)
 Browser(browser=Playwright, placement=same_pod)
-Agent(harness=OpenCode, model=claude-sonnet, mcp_servers=MCP Server)
+Agent(harness=OpenCode, model=claude-sonnet, system_prompt="Follow repository conventions.", mcp_servers=MCP Server)
 SSH Command(phase=before_start, command="pip install -e /workspace/tools")
 Network Storage(volume_id=..., mount=/workspace)
 Keep Alive(mode=time, value=30 minutes, action=stop)
 Pod(app=Agent, network_storage=Network Storage, commands=SSH Command, keep_alive=Keep Alive)
-Runpod Run(mode=plan or apply_and_wait)
+Runpod Run(mode=plan or apply_and_wait, prompt="Implement the requested change.")
 ```
 
 Plan order:
@@ -125,7 +125,7 @@ MONITOR_KEEP_ALIVE
 
 ```text
 LLM Server(engine=vLLM, model=Qwen/Qwen3-0.6B, placement=own_pod)
-Agent(harness=Codex, llm_server=LLM Server)
+Agent(harness=Codex, llm=LLM Server)
 Pod(app=Agent)
 Runpod Run(mode=apply)
 ```
@@ -171,6 +171,16 @@ COMFYUI_E2E_PORT=18200 scripts/e2e-comfy-cpu
 ```
 
 In restricted sandboxes, the server phase may need permission to bind a localhost port.
+
+To generate screenshots of the UI-format example workflows:
+
+```bash
+python -m pip install -e .[dev]
+python -m playwright install chromium
+scripts/screenshot-ui-workflows --skip-clone
+```
+
+By default, the script launches a temporary CPU-only ComfyUI server, loads `examples/workflows/ui_*.json`, fits each graph to the canvas, and writes PNG files under `artifacts/workflow-screenshots`.
 
 ## Live Runpod Smoke Test
 

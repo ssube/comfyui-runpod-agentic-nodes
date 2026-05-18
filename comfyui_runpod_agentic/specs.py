@@ -58,6 +58,7 @@ class BrowserSpec:
     runtime_contract: RuntimeContract
     required_image_capabilities: list[str]
     template_key: str | None
+    network_storage: NetworkStorageSpec | None = None
     meta: SpecMeta = field(default_factory=SpecMeta)
 
 
@@ -73,6 +74,7 @@ class LLMServerSpec:
     template_key: str
     hf_token_secret: SecretRef | None = None
     api_key_secret: SecretRef | None = None
+    network_storage: NetworkStorageSpec | None = None
     meta: SpecMeta = field(default_factory=SpecMeta)
 
 
@@ -98,6 +100,7 @@ class SQLDatabaseSpec:
     password_secret: SecretRef | None
     runtime_contract: RuntimeContract
     template_key: str | None
+    network_storage: NetworkStorageSpec | None = None
     meta: SpecMeta = field(default_factory=SpecMeta)
 
 
@@ -110,6 +113,7 @@ class VectorDatabaseSpec:
     persistence_path: str
     runtime_contract: RuntimeContract
     template_key: str
+    network_storage: NetworkStorageSpec | None = None
     meta: SpecMeta = field(default_factory=SpecMeta)
 
 
@@ -155,6 +159,7 @@ class AgentSpec:
     model: str
     startup_mode: StartupMode
     workspace_path: str
+    system_prompt: str = ""
     browser: BrowserSpec | None = None
     llm_api: LLMApiSpec | None = None
     llm_server: LLMServerSpec | None = None

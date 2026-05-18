@@ -2,7 +2,9 @@ from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
     RunpodBrowserNode,
     RunpodLLMApiNode,
+    RunpodLLMServerNode,
     RunpodMCPServerNode,
+    RunpodNetworkStorageNode,
     RunpodPodNode,
     RunpodSkillFrameworkNode,
     RunpodSkillNode,
@@ -11,16 +13,13 @@ from comfyui_runpod_agentic.nodes import (
 from comfyui_runpod_agentic.validation import ValidationError
 
 
-def test_agent_rejects_two_llm_sources():
+def test_agent_accepts_generic_llm_sources():
     llm_api = RunpodLLMApiNode().build("Claude", "claude-sonnet", "anthropic_key")[0]
-    llm_server = __import__("comfyui_runpod_agentic.nodes", fromlist=["RunpodLLMServerNode"]).RunpodLLMServerNode().build("vLLM", "Qwen/Qwen3-0.6B", "own_pod", "none")[0]
 
-    try:
-        RunpodAgentNode().build("OpenCode", "model", "manual", llm_api=llm_api, llm_server=llm_server)
-    except ValidationError as exc:
-        assert "either llm_api or llm_server" in str(exc)
-    else:
-        raise AssertionError("expected ValidationError")
+    agent = RunpodAgentNode().build("OpenCode", "model", "manual", llm=llm_api)[0]
+
+    assert agent.llm_api == llm_api
+    assert agent.llm_server is None
 
 
 def test_sqlite_contract_is_file_only():
@@ -32,9 +31,21 @@ def test_sqlite_contract_is_file_only():
 
 def test_browser_same_pod_adds_agent_capability():
     browser = RunpodBrowserNode().build("Playwright", "same_pod", "chromium")[0]
-    agent = RunpodAgentNode().build("OpenCode", "qwen", "manual", browser=browser)[0]
+    agent = RunpodAgentNode().build("OpenCode", "qwen", "manual", system_prompt="Use the browser only when needed.", browser=browser)[0]
 
     assert agent.required_image_capabilities == ["playwright"]
+    assert agent.system_prompt == "Use the browser only when needed."
+
+
+def test_service_nodes_accept_network_storage():
+    storage = RunpodNetworkStorageNode().build("vol-123", "/data")[0]
+    browser = RunpodBrowserNode().build("Neko", "own_pod", "chromium", network_storage=storage)[0]
+    llm = RunpodLLMServerNode().build("Ollama", "llama3.2", "own_pod", "none", network_storage=storage)[0]
+    sql = RunpodSQLDatabaseNode().build("Postgres", "app", "app", network_storage=storage)[0]
+
+    assert browser.network_storage == storage
+    assert llm.network_storage == storage
+    assert sql.network_storage == storage
 
 
 def test_agent_accepts_mcp_servers():

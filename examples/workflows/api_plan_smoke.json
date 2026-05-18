@@ -38,6 +38,7 @@
       "harness": "Pi",
       "model": "manual-api-smoke",
       "startup_mode": "manual",
+      "system_prompt": "You are a concise Runpod smoke-test agent.",
       "workspace_path": "/workspace"
     }
   },
@@ -78,7 +79,8 @@
       ],
       "log_level": "info",
       "mode": "plan",
-      "on_error": "terminate_created"
+      "on_error": "terminate_created",
+      "prompt": "Plan the smoke test deployment."
     }
   }
 }
