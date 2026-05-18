@@ -10,6 +10,7 @@ FailurePolicy = Literal["fail", "continue", "retry"]
 KeepAliveMode = Literal["time", "turns", "cost", "manual"]
 LimitAction = Literal["stop", "terminate"]
 RunMode = Literal["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"]
+VolumeRetentionPolicy = Literal["preserve", "delete_when_unused", "delete_with_deployment"]
 
 SPEC_VERSION = "0.1"
 
@@ -188,6 +189,7 @@ class AgentSpec:
 class NetworkStorageSpec:
     network_volume_id: str
     mount_path: str = "/workspace"
+    retention_policy: VolumeRetentionPolicy = "preserve"
     meta: SpecMeta = field(default_factory=SpecMeta)
 
 

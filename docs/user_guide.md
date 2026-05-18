@@ -521,6 +521,7 @@ Inputs:
 | --- | --- | --- |
 | `network_volume_id` | string | Existing Runpod network volume ID. |
 | `mount_path` | string | Container mount path. |
+| `retention_policy` | `preserve`, `delete_when_unused`, `delete_with_deployment` | Declared lifecycle intent for the volume. Defaults to `preserve`. |
 
 Output:
 
@@ -537,6 +538,8 @@ Where you connect the node determines where the volume is mounted:
 | `Runpod LLM Server.network_storage` | LLM service pod storage. |
 | `Runpod Remote SQL Database.network_storage` | SQL service pod storage. |
 | `Runpod Vector Database.network_storage` | Vector service pod storage. |
+
+Use `retention_policy=preserve` for important data. Destructive retention policies are surfaced as plan warnings so users can notice volume deletion intent before running lifecycle modes.
 
 ### Runpod S3 Storage
 

@@ -88,6 +88,17 @@ def test_dependency_pods_use_their_own_network_storage():
     assert "networkVolumeId" not in agent_resource.pod_input
 
 
+def test_network_storage_retention_policy_is_visible_in_plan_warnings():
+    storage = RunpodNetworkStorageNode().build("vol-workspace", "/workspace", "delete_when_unused")[0]
+    agent = RunpodAgentNode().build("Pi", "model", "manual")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0, network_storage=storage)[0]
+
+    plan = Planner().build(deployment)
+
+    assert deployment.network_storage.retention_policy == "delete_when_unused"
+    assert any("retention_policy=delete_when_unused" in warning for warning in plan.warnings)
+
+
 def test_local_sql_adds_sqlite_setup_before_user_commands():
     sql = RunpodLocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
     agent = RunpodAgentNode().build("Pi", "model", "manual", sql_database=sql)[0]

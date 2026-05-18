@@ -523,10 +523,17 @@ class RunpodNetworkStorageNode:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"network_volume_id": ("STRING", {"default": ""}), "mount_path": ("STRING", {"default": "/workspace"})}, "hidden": {"node_id": "UNIQUE_ID"}}
+        return {
+            "required": {
+                "network_volume_id": ("STRING", {"default": ""}),
+                "mount_path": ("STRING", {"default": "/workspace"}),
+                "retention_policy": (["preserve", "delete_when_unused", "delete_with_deployment"],),
+            },
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
 
-    def build(self, network_volume_id: str, mount_path: str = "/workspace", node_id: str | None = None):
-        return (NetworkStorageSpec(network_volume_id, mount_path, meta(node_id, "Network Storage")),)
+    def build(self, network_volume_id: str, mount_path: str = "/workspace", retention_policy: str = "preserve", node_id: str | None = None):
+        return (NetworkStorageSpec(network_volume_id, mount_path, retention_policy, meta(node_id, "Network Storage")),)
 
 
 class RunpodS3StorageNode:

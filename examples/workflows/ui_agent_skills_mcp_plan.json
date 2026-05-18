@@ -125,7 +125,8 @@
       },
       "widgets_values": [
         "vol-agent-workspace",
-        "/workspace"
+        "/workspace",
+        "preserve"
       ]
     },
     {

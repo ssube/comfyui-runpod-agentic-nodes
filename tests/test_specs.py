@@ -60,6 +60,16 @@ def test_service_nodes_accept_network_storage():
     assert browser.network_storage == storage
     assert llm.network_storage == storage
     assert sql.network_storage == storage
+    assert storage.retention_policy == "preserve"
+
+
+def test_network_storage_retention_policy_warns_for_destructive_intent():
+    storage = RunpodNetworkStorageNode().build("vol-123", "/workspace", "delete_with_deployment")[0]
+    agent = RunpodAgentNode().build("Pi", "model", "manual")[0]
+
+    deployment = RunpodPodNode().build(agent, network_storage=storage)[0]
+
+    assert deployment.network_storage.retention_policy == "delete_with_deployment"
 
 
 def test_agent_accepts_mcp_servers():

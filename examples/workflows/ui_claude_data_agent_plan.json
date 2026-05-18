@@ -135,7 +135,8 @@
       },
       "widgets_values": [
         "vol-postgres-data",
-        "/var/lib/postgresql/data"
+        "/var/lib/postgresql/data",
+        "preserve"
       ]
     },
     {
@@ -167,7 +168,8 @@
       },
       "widgets_values": [
         "vol-qdrant-data",
-        "/qdrant/storage"
+        "/qdrant/storage",
+        "preserve"
       ]
     },
     {

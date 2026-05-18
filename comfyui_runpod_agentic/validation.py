@@ -2,10 +2,10 @@ from __future__ import annotations
 
 try:
     from .config import get_runpod_api_key
-    from .specs import DeploymentSpec, KeepAlivePolicy, SSHCommandSpec
+    from .specs import DeploymentSpec, KeepAlivePolicy, NetworkStorageSpec, SSHCommandSpec
 except ImportError:
     from config import get_runpod_api_key
-    from specs import DeploymentSpec, KeepAlivePolicy, SSHCommandSpec
+    from specs import DeploymentSpec, KeepAlivePolicy, NetworkStorageSpec, SSHCommandSpec
 
 
 class ValidationError(ValueError):
@@ -30,8 +30,11 @@ def validate_deployment(deployment: DeploymentSpec, *, mode: str = "plan", requi
             raise ValidationError("SQLite path must be inside the agent workspace path.")
         if deployment.network_storage is None:
             warnings.append("SQLite without network storage may be ephemeral.")
-    if deployment.network_storage and not deployment.network_storage.network_volume_id:
-        raise ValidationError("Network storage requires network_volume_id.")
+    for storage in network_storages(deployment):
+        if not storage.network_volume_id:
+            raise ValidationError("Network storage requires network_volume_id.")
+        if storage.retention_policy != "preserve":
+            warnings.append(f"Network storage {storage.network_volume_id} uses retention_policy={storage.retention_policy}; verify this before destructive runs.")
     if deployment.s3_storage:
         if not deployment.s3_storage.access_key_secret.name or not deployment.s3_storage.secret_key_secret.name:
             raise ValidationError("S3 storage requires access and secret key secret references.")
@@ -42,6 +45,16 @@ def validate_deployment(deployment: DeploymentSpec, *, mode: str = "plan", requi
     if mode in {"apply", "apply_and_wait", "stop", "terminate", "destroy"} and require_api_key and not get_runpod_api_key():
         raise ValidationError(f"Run mode {mode} requires RUNPOD_API_KEY in the server environment.")
     return warnings
+
+
+def network_storages(deployment: DeploymentSpec) -> list[NetworkStorageSpec]:
+    app = deployment.primary_app
+    storages = [deployment.network_storage]
+    storages.extend(
+        getattr(spec, "network_storage", None)
+        for spec in (app.browser, app.llm_server, app.sql_database, app.vector_database)
+    )
+    return [storage for storage in storages if storage is not None]
 
 
 def validate_commands(commands: SSHCommandSpec) -> list[str]:
