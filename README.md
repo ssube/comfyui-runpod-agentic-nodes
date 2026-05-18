@@ -79,6 +79,8 @@ Apps and services:
 - `LLM Server`: Ollama or vLLM own-pod service.
 - `LLM API`: Codex/OpenAI, Claude/Anthropic, or Ollama Cloud env contract.
 - `MCP Server`: chainable stdio/http/sse MCP server definitions exposed to the agent as `MCP_SERVERS_JSON` and `.runpod_agentic/mcp_servers.json`.
+- `Skill`: chainable GitHub skill download into the agent workspace.
+- `Skill Framework`: chainable preset installer for popular skill frameworks such as Superpowers.
 - `SQL Database`: Postgres, MySQL, or SQLite.
 - `Vector Database`: Chroma or Qdrant.
 - `Network Storage` and `S3 Storage`.
@@ -91,6 +93,7 @@ Apps and services:
 ```text
 LLM API(provider=Claude, model=claude-sonnet, secret=anthropic_key)
 MCP Server(name=filesystem, transport=stdio, command=npx, args="-y @modelcontextprotocol/server-filesystem /workspace")
+Skill Framework(framework=Superpowers, target_root=/workspace/.codex/skills)
 SQL Database(engine=Postgres, database=app, username=app, secret=pg_password)
 Vector Database(engine=Qdrant, collection=docs)
 Browser(browser=Playwright, placement=same_pod)

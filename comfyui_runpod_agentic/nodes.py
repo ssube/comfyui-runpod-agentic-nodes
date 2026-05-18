@@ -24,6 +24,8 @@ from .specs import (
     RuntimeContract,
     S3StorageSpec,
     SecretRef,
+    SkillSource,
+    SkillSpec,
     SpecMeta,
     SQLDatabaseSpec,
     SSHAccessPolicy,
@@ -32,6 +34,7 @@ from .specs import (
     VectorDatabaseSpec,
 )
 from .types import (
+    RUNPOD_AGENT_SKILLS,
     RUNPOD_APP_AGENT,
     RUNPOD_APP_BROWSER,
     RUNPOD_APP_LLM_SERVER,
@@ -48,6 +51,13 @@ from .types import (
     RUNPOD_STORAGE_S3,
 )
 from .validation import ValidationError, validate_deployment
+
+SKILL_FRAMEWORKS = {
+    "Superpowers": ("https://github.com/obra/superpowers.git", "skills"),
+    "Superpowers Skills": ("https://github.com/obra/superpowers-skills.git", "skills"),
+    "Anthropic Skills": ("https://github.com/anthropics/skills.git", "skills"),
+    "Custom GitHub Repo": ("", "."),
+}
 
 
 def norm(value: str) -> str:
@@ -334,6 +344,87 @@ def clean_mcp_server(server: MCPServer) -> dict[str, Any]:
     return data
 
 
+class RunpodSkillNode:
+    CATEGORY = "Runpod/Agent"
+    RETURN_TYPES = (RUNPOD_AGENT_SKILLS,)
+    RETURN_NAMES = ("skills",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "name": ("STRING", {"default": "repo-skill"}),
+                "github_repo_url": ("STRING", {"default": "https://github.com/user/repo.git"}),
+                "repo_path": ("STRING", {"default": "."}),
+                "target_path": ("STRING", {"default": ""}),
+                "git_ref": ("STRING", {"default": ""}),
+            },
+            "optional": {"previous": (RUNPOD_AGENT_SKILLS,)},
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, name: str, github_repo_url: str, repo_path: str = ".", target_path: str = "", git_ref: str = "", previous: SkillSpec | None = None, node_id: str | None = None):
+        skill_name = name.strip()
+        repo_url = github_repo_url.strip()
+        if not skill_name:
+            raise ValidationError("Skill name is required.")
+        if not repo_url.startswith(("https://github.com/", "git@github.com:")):
+            raise ValidationError("Skill GitHub repo URL must start with https://github.com/ or git@github.com:.")
+        destination = target_path.strip() or f"/workspace/.codex/skills/{skill_name}"
+        skill = SkillSource("skill", skill_name, repo_url, repo_path.strip() or ".", destination, git_ref.strip() or None)
+        skills = [*(previous.skills if previous else []), skill]
+        payload = {"skills": [skill_payload(item) for item in skills]}
+        return (SkillSpec(skills, RuntimeContract(EnvPatch({"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)})), meta(node_id, "Skill")),)
+
+
+class RunpodSkillFrameworkNode:
+    CATEGORY = "Runpod/Agent"
+    RETURN_TYPES = (RUNPOD_AGENT_SKILLS,)
+    RETURN_NAMES = ("skills",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "framework": (list(SKILL_FRAMEWORKS),),
+                "custom_github_repo_url": ("STRING", {"default": ""}),
+                "custom_repo_path": ("STRING", {"default": ""}),
+                "target_root": ("STRING", {"default": "/workspace/.codex/skills"}),
+                "git_ref": ("STRING", {"default": ""}),
+            },
+            "optional": {"previous": (RUNPOD_AGENT_SKILLS,)},
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, framework: str, custom_github_repo_url: str = "", custom_repo_path: str = "", target_root: str = "/workspace/.codex/skills", git_ref: str = "", previous: SkillSpec | None = None, node_id: str | None = None):
+        repo_url, repo_path = SKILL_FRAMEWORKS[framework]
+        if framework == "Custom GitHub Repo":
+            repo_url = custom_github_repo_url.strip()
+            repo_path = custom_repo_path.strip() or "."
+        if not repo_url.startswith(("https://github.com/", "git@github.com:")):
+            raise ValidationError("Skill framework GitHub repo URL must start with https://github.com/ or git@github.com:.")
+        framework_name = norm(framework)
+        skill = SkillSource("framework", framework_name, repo_url, repo_path, target_root.strip() or "/workspace/.codex/skills", git_ref.strip() or None)
+        skills = [*(previous.skills if previous else []), skill]
+        payload = {"skills": [skill_payload(item) for item in skills]}
+        return (SkillSpec(skills, RuntimeContract(EnvPatch({"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)})), meta(node_id, "Skill Framework")),)
+
+
+def skill_payload(skill: SkillSource) -> dict[str, str]:
+    payload = {
+        "kind": skill.kind,
+        "name": skill.name,
+        "repo_url": skill.repo_url,
+        "repo_path": skill.repo_path,
+        "target_path": skill.target_path,
+    }
+    if skill.git_ref:
+        payload["git_ref"] = skill.git_ref
+    return payload
+
+
 class RunpodAgentNode:
     CATEGORY = "Runpod/Apps"
     RETURN_TYPES = (RUNPOD_APP_AGENT,)
@@ -344,11 +435,11 @@ class RunpodAgentNode:
     def INPUT_TYPES(cls):
         return {
             "required": {"harness": (["Codex", "Claude", "OpenCode", "Hermes", "Pi"],), "model": ("STRING", {"default": ""}), "startup_mode": (["wait_for_commands", "auto_start", "manual"],), "workspace_path": ("STRING", {"default": "/workspace"})},
-            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm_api": (RUNPOD_LLM_API,), "llm_server": (RUNPOD_APP_LLM_SERVER,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,)},
+            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm_api": (RUNPOD_LLM_API,), "llm_server": (RUNPOD_APP_LLM_SERVER,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,), "skills": (RUNPOD_AGENT_SKILLS,)},
             "hidden": {"node_id": "UNIQUE_ID", "prompt": "PROMPT"},
         }
 
-    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", browser=None, llm_api=None, llm_server=None, sql_database=None, vector_database=None, mcp_servers=None, node_id: str | None = None, prompt: Any = None):
+    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", browser=None, llm_api=None, llm_server=None, sql_database=None, vector_database=None, mcp_servers=None, skills=None, node_id: str | None = None, prompt: Any = None):
         if llm_api and llm_server:
             raise ValidationError("Agent accepts either llm_api or llm_server, not both.")
         capabilities = []
@@ -363,7 +454,12 @@ class RunpodAgentNode:
                 EnvPatch({**contract.env.values, **mcp_servers.runtime_contract.env.values}, [*contract.env.secrets, *mcp_servers.runtime_contract.env.secrets]),
                 files=mcp_servers.runtime_contract.files,
             )
-        return (AgentSpec("agent", norm(harness), model, startup_mode, workspace_path, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, contract, capabilities, None, meta(node_id, harness)),)
+        if skills:
+            contract = RuntimeContract(
+                EnvPatch({**contract.env.values, **skills.runtime_contract.env.values}, [*contract.env.secrets, *skills.runtime_contract.env.secrets]),
+                files={**contract.files, **skills.runtime_contract.files},
+            )
+        return (AgentSpec("agent", norm(harness), model, startup_mode, workspace_path, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, contract, capabilities, None, meta(node_id, harness)),)
 
 
 class RunpodNetworkStorageNode:
@@ -568,6 +664,8 @@ NODE_CLASSES = [
     RunpodSQLDatabaseNode,
     RunpodVectorDatabaseNode,
     RunpodMCPServerNode,
+    RunpodSkillFrameworkNode,
+    RunpodSkillNode,
     RunpodNetworkStorageNode,
     RunpodS3StorageNode,
     RunpodSSHCommandNode,

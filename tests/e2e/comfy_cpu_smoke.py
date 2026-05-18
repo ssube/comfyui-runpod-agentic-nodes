@@ -18,6 +18,8 @@ EXPECTED_NODES = {
     "RunpodLLMServer",
     "RunpodLLMApi",
     "RunpodMCPServer",
+    "RunpodSkill",
+    "RunpodSkillFramework",
     "RunpodSQLDatabase",
     "RunpodVectorDatabase",
     "RunpodNetworkStorage",

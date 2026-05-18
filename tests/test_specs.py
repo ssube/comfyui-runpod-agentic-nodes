@@ -4,6 +4,8 @@ from comfyui_runpod_agentic.nodes import (
     RunpodLLMApiNode,
     RunpodMCPServerNode,
     RunpodPodNode,
+    RunpodSkillFrameworkNode,
+    RunpodSkillNode,
     RunpodSQLDatabaseNode,
 )
 from comfyui_runpod_agentic.validation import ValidationError
@@ -43,6 +45,16 @@ def test_agent_accepts_mcp_servers():
     assert len(agent.mcp_servers.servers) == 2
     assert "MCP_SERVERS_JSON" in agent.runtime_contract.env.values
     assert agent.runtime_contract.env.secrets[0].env_var == "GITHUB_TOKEN"
+
+
+def test_agent_accepts_chainable_skills():
+    skill = RunpodSkillNode().build("frontend-design", "https://github.com/example/skills.git", "frontend-design", "", "main")[0]
+    framework = RunpodSkillFrameworkNode().build("Superpowers", "", "", previous=skill)[0]
+    agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", skills=framework)[0]
+
+    assert len(agent.skills.skills) == 2
+    assert agent.skills.skills[1].kind == "framework"
+    assert "RUNPOD_AGENT_SKILLS_JSON" in agent.runtime_contract.env.values
 
 
 def test_pod_validation_rejects_sqlite_outside_workspace():

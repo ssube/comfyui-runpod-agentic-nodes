@@ -132,6 +132,23 @@ class MCPServerSpec:
 
 
 @dataclass(frozen=True)
+class SkillSource:
+    kind: Literal["skill", "framework"]
+    name: str
+    repo_url: str
+    repo_path: str
+    target_path: str
+    git_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class SkillSpec:
+    skills: list[SkillSource]
+    runtime_contract: RuntimeContract
+    meta: SpecMeta = field(default_factory=SpecMeta)
+
+
+@dataclass(frozen=True)
 class AgentSpec:
     kind: Literal["agent"]
     harness: Literal["codex", "claude", "opencode", "hermes", "pi"]
@@ -144,6 +161,7 @@ class AgentSpec:
     sql_database: SQLDatabaseSpec | None = None
     vector_database: VectorDatabaseSpec | None = None
     mcp_servers: MCPServerSpec | None = None
+    skills: SkillSpec | None = None
     runtime_contract: RuntimeContract = field(default_factory=RuntimeContract)
     required_image_capabilities: list[str] = field(default_factory=list)
     template_key: str | None = None

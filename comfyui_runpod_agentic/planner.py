@@ -16,6 +16,7 @@ try:
         DeploymentSpec,
         RuntimeContract,
         SecretRef,
+        SkillSource,
         SSHAccessPolicy,
         to_plain,
     )
@@ -23,7 +24,7 @@ try:
     from .validation import validate_deployment
 except ImportError:
     from runtime_contracts import merge_contracts, secret_placeholder, with_env
-    from specs import DeploymentSpec, RuntimeContract, SecretRef, SSHAccessPolicy, to_plain
+    from specs import DeploymentSpec, RuntimeContract, SecretRef, SkillSource, SSHAccessPolicy, to_plain
     from template_resolver import TemplateResolver
     from validation import validate_deployment
 
@@ -221,6 +222,8 @@ class Planner:
             actions.append(PlanAction("RESOLVE_DEPENDENCY_CONTRACTS", detail={"resources": [resource.name for resource in deps]}))
         actions.append(PlanAction("CREATE_OR_RESUME", "agent", agent.name, {"template_id": agent.template_id}))
         actions.append(PlanAction("WAIT_SSH", "agent", agent.name))
+        for index, skill in enumerate(deployment.primary_app.skills.skills if deployment.primary_app.skills else []):
+            actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, {"command": skill_install_command(skill), "phase": "before_start", "order": -10000 + index, "failure_policy": "fail", "retry_count": 0, "command_hash": stable_hash(to_plain(skill))[:12]}))
         for command in sorted((deployment.ssh_commands.commands if deployment.ssh_commands else []), key=lambda item: item.order):
             if command.phase == "before_start":
                 actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, to_plain(command)))
@@ -305,6 +308,60 @@ sleep infinity
     encoded = base64.b64encode(script.encode("utf-8")).decode("ascii")
     command = f"echo {encoded} | base64 -d > /tmp/runpod-agentic-sshd.sh && bash /tmp/runpod-agentic-sshd.sh"
     return "bash -lc " + shlex.quote(command)
+
+
+def skill_install_command(skill: SkillSource) -> str:
+    lines = [
+        "set -e",
+        "if ! command -v git >/dev/null 2>&1; then",
+        "  if command -v apt-get >/dev/null 2>&1; then",
+        "    apt-get update",
+        "    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates",
+        "  elif command -v apk >/dev/null 2>&1; then",
+        "    apk add --no-cache git ca-certificates",
+        "  else",
+        "    echo 'No supported package manager found for installing git' >&2",
+        "    exit 1",
+        "  fi",
+        "fi",
+        "tmp=$(mktemp -d)",
+        "trap 'rm -rf \"$tmp\"' EXIT",
+        f"git clone --depth 1 {shlex.quote(skill.repo_url)} \"$tmp/repo\"",
+    ]
+    if skill.git_ref:
+        lines.extend(
+            [
+                f"git -C \"$tmp/repo\" fetch --depth 1 origin {shlex.quote(skill.git_ref)}",
+                "git -C \"$tmp/repo\" checkout FETCH_HEAD",
+            ]
+        )
+    lines.extend(
+        [
+            f"src=\"$tmp/repo/{shell_path_fragment(skill.repo_path)}\"",
+            f"target={shlex.quote(skill.target_path)}",
+            "test -d \"$src\"",
+        ]
+    )
+    if skill.kind == "framework":
+        lines.extend(
+            [
+                "mkdir -p \"$target\"",
+                "cp -a \"$src\"/. \"$target\"/",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "rm -rf \"$target\"",
+                "mkdir -p \"$target\"",
+                "cp -a \"$src\"/. \"$target\"/",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def shell_path_fragment(path: str) -> str:
+    return path.strip().lstrip("/") or "."
 
 
 def runtime_config_paths(workspace_path: str) -> dict[str, str]:
