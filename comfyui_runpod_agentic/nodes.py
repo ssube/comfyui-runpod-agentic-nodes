@@ -654,6 +654,23 @@ class RunpodRunNode:
         return (json.dumps(plan.to_dict(), indent=2, sort_keys=True),)
 
 
+class RunpodStartupScriptNode:
+    CATEGORY = "Runpod/Core"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("startup_script",)
+    FUNCTION = "export"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"deployment": (RUNPOD_DEPLOYMENT_SPEC,), "prompt": ("STRING", {"multiline": True, "default": ""})}, "hidden": {"workflow_graph": "PROMPT"}}
+
+    def export(self, deployment: DeploymentSpec, prompt: str = "", workflow_graph: Any = None):
+        from .runner import startup_script_for_plan
+
+        plan = Planner().build(deployment, mode="plan", prompt=prompt, workflow_graph=workflow_graph)
+        return (startup_script_for_plan(plan),)
+
+
 class RunpodLogsNode:
     CATEGORY = "Runpod/Core"
     RETURN_TYPES = ("STRING", "STRING")
@@ -727,5 +744,6 @@ NODE_CLASSES = [
     RunpodSSHAccessNode,
     RunpodPodNode,
     RunpodRunNode,
+    RunpodStartupScriptNode,
     RunpodLogsNode,
 ]

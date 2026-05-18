@@ -216,19 +216,7 @@ class RunpodRunner:
         raise RuntimeError(f"Timed out waiting for SSH readiness on {host}:{port}: {stderr}")
 
     def _launch_command(self, plan: DeploymentPlan) -> str:
-        agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
-        if agent_env.get("AGENT_STARTUP_MODE") == "manual":
-            return ""
-        workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
-        harness = agent_env.get("AGENT_HARNESS", "agent")
-        configured_launcher = os.environ.get("CRAG_AGENT_LAUNCH_COMMAND") or agent_env.get("CRAG_AGENT_LAUNCH_COMMAND")
-        if configured_launcher:
-            return f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && nohup bash -lc {shell_env(configured_launcher)} > .runpod_agentic/agent.log 2>&1 &"
-        return (
-            f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && "
-            f"chmod +x .runpod_agentic/launcher.sh .runpod_agentic/launcher.d/*.sh .runpod_agentic/launcher.d/harnesses/*.sh 2>/dev/null || true && "
-            f"nohup .runpod_agentic/launcher.sh {shell_env(harness)} > .runpod_agentic/agent.log 2>&1 &"
-        )
+        return launch_command_for_plan(plan)
 
     def _lifecycle(self, plan: DeploymentPlan, mode: str) -> dict[str, Any]:
         resources = self.state_store.list_resources()
@@ -268,6 +256,76 @@ class RunpodRunner:
 
 def shell_env(value: str) -> str:
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
+
+
+def launch_command_for_plan(plan: DeploymentPlan) -> str:
+    agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
+    if agent_env.get("AGENT_STARTUP_MODE") == "manual":
+        return ""
+    workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
+    harness = agent_env.get("AGENT_HARNESS", "agent")
+    configured_launcher = os.environ.get("CRAG_AGENT_LAUNCH_COMMAND") or agent_env.get("CRAG_AGENT_LAUNCH_COMMAND")
+    if configured_launcher:
+        return f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && nohup bash -lc {shell_env(configured_launcher)} > .runpod_agentic/agent.log 2>&1 &"
+    return (
+        f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && "
+        f"chmod +x .runpod_agentic/launcher.sh .runpod_agentic/launcher.d/*.sh .runpod_agentic/launcher.d/harnesses/*.sh 2>/dev/null || true && "
+        f"nohup .runpod_agentic/launcher.sh {shell_env(harness)} > .runpod_agentic/agent.log 2>&1 &"
+    )
+
+
+def startup_script_for_plan(plan: DeploymentPlan) -> str:
+    agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
+    workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
+    base = workspace.rstrip("/") + "/.runpod_agentic"
+    commands = [action.detail for action in plan.actions if action.action == "RUN_SSH_COMMAND"]
+    lines = [
+        "bash <<'CRAG_STARTUP'",
+        "set -euo pipefail",
+        f"workspace={shell_env(workspace)}",
+        "mkdir -p \"$workspace/.runpod_agentic\"",
+        "cd \"$workspace\"",
+        *file_write_lines(f"{base}/resources.json", json.dumps({"resources": [to_plain(resource) for resource in plan.resources if resource.role != "agent"]}, indent=2, sort_keys=True)),
+        *file_write_lines(f"{base}/session.env", "\n".join(f"export {key}={shell_env(value)}" for key, value in sorted(plan.runtime_contract.env.values.items())) + "\n"),
+        *file_write_lines(f"{base}/commands.json", json.dumps(commands, indent=2, sort_keys=True)),
+    ]
+    if plan.runtime_contract.env.values.get("AGENT_SYSTEM_PROMPT"):
+        lines.extend(file_write_lines(f"{base}/system_prompt.txt", plan.runtime_contract.env.values["AGENT_SYSTEM_PROMPT"]))
+    if plan.runtime_contract.env.values.get("AGENT_PROMPT"):
+        lines.extend(file_write_lines(f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"]))
+    if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
+        lines.extend(file_write_lines(f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"]))
+    for relative_path, content in launcher_runtime_files().items():
+        lines.extend(file_write_lines(f"{base}/{relative_path}", content))
+    for index, detail in enumerate(commands):
+        if detail.get("phase") == "before_start":
+            lines.extend(run_script_lines(f"crag_command_{index}", detail["command"]))
+    launch = launch_command_for_plan(plan)
+    if launch:
+        lines.append(launch)
+    else:
+        lines.append("echo 'CRAG startup mode is manual; launcher not started.'")
+    lines.append("CRAG_STARTUP")
+    return "\n".join(lines)
+
+
+def file_write_lines(path: str, content: str) -> list[str]:
+    marker = "CRAG_FILE_" + str(abs(hash(path)))
+    return [
+        f"mkdir -p $(dirname {shell_env(path)})",
+        f"cat > {shell_env(path)} <<'{marker}'",
+        content,
+        marker,
+    ]
+
+
+def run_script_lines(label: str, command: str) -> list[str]:
+    marker = label.upper()
+    return [
+        f"bash <<'{marker}'",
+        command,
+        marker,
+    ]
 
 
 def launcher_runtime_files() -> dict[str, str]:

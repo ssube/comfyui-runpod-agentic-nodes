@@ -16,6 +16,7 @@ from comfyui_runpod_agentic.runner import (
     first_ready_probe,
     launcher_runtime_files,
     readiness_probe_paths,
+    startup_script_for_plan,
 )
 from comfyui_runpod_agentic.state_store import StateStore
 
@@ -217,3 +218,18 @@ def test_launcher_runtime_files_include_common_harness_stubs():
     assert "launcher.d/harnesses/claude.sh" in files
     assert "launcher.d/harnesses/opencode.sh" in files
     assert "No compatible agent launcher" in files["launcher.d/harnesses/generic.sh"]
+
+
+def test_startup_script_for_plan_is_pasteable_bash(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = RunpodAgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+    plan = runner.planner.build(deployment, mode="plan", prompt="Do it.", workflow_graph={"test": True})
+
+    script = startup_script_for_plan(plan)
+
+    assert script.startswith("bash <<'CRAG_STARTUP'")
+    assert ".runpod_agentic/launcher.sh" in script
+    assert "nohup .runpod_agentic/launcher.sh" in script
+    assert script.endswith("CRAG_STARTUP")

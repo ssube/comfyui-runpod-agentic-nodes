@@ -16,6 +16,7 @@ from .nodes import (
     RunpodSkillNode,
     RunpodSSHAccessNode,
     RunpodSSHCommandNode,
+    RunpodStartupScriptNode,
     RunpodVectorDatabaseNode,
 )
 
@@ -37,6 +38,7 @@ NODE_CLASS_MAPPINGS = {
     "RunpodSSHAccess": RunpodSSHAccessNode,
     "RunpodPod": RunpodPodNode,
     "RunpodRun": RunpodRunNode,
+    "RunpodStartupScript": RunpodStartupScriptNode,
     "RunpodLogs": RunpodLogsNode,
 }
 
@@ -58,6 +60,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RunpodSSHAccess": "SSH Access",
     "RunpodPod": "Runpod Pod",
     "RunpodRun": "Run on Runpod",
+    "RunpodStartupScript": "Startup Script",
     "RunpodLogs": "Runpod Logs",
 }
 

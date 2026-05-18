@@ -29,6 +29,7 @@ EXPECTED_NODES = {
     "RunpodKeepAlive",
     "RunpodPod",
     "RunpodRun",
+    "RunpodStartupScript",
     "RunpodLogs",
 }
 

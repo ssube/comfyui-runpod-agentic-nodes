@@ -131,6 +131,7 @@ Apps and services:
 - `Vector Database`: Chroma or Qdrant.
 - `Network Storage` and `S3 Storage`.
 - `SSH Command`: declarative command chain executed by `Run on Runpod`.
+- `Startup Script`: ready-to-paste bash startup script for a deployment.
 
 ## Example Workflows
 

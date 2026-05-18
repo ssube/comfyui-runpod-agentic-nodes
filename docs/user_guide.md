@@ -144,6 +144,25 @@ Output:
 | --- | --- | --- |
 | `result` | `RUNPOD_RUN_RESULT` | JSON plan or execution result, usually connected to `PreviewAny`. |
 
+### Runpod Startup Script
+
+`Runpod Startup Script` exports the agent pod startup sequence as a single pasteable bash command. It does not call Runpod.
+
+Inputs:
+
+| Input | Type | Use |
+| --- | --- | --- |
+| `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled pod deployment from `Runpod Pod`. |
+| `prompt` | multiline string | Task prompt to write into the generated runtime files. |
+
+Output:
+
+| Output | Type | Use |
+| --- | --- | --- |
+| `startup_script` | `STRING` | Pasteable bash command, usually connected to `PreviewAny`. |
+
+Use this when you want to inspect or manually run the exact `.runpod_agentic` bootstrap that CRAG would inject over SSH.
+
 ### Runpod Pod
 
 `Runpod Pod` wraps the primary agent and deployment policy.

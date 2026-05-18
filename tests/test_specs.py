@@ -18,6 +18,7 @@ from comfyui_runpod_agentic.validation import ValidationError
 def test_user_facing_core_node_names():
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPod"] == "Runpod Pod"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRun"] == "Run on Runpod"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodStartupScript"] == "Startup Script"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRemoteSQLDatabase"] == "Remote SQL Database"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodLocalSQLDatabase"] == "Local SQL Database"
     assert "RunpodSQLDatabase" not in NODE_DISPLAY_NAME_MAPPINGS

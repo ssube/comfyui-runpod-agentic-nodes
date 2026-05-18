@@ -1,8 +1,8 @@
 {
   "id": "a445d975-72ec-4e7a-8d92-4f4a2e9d883c",
   "revision": 0,
-  "last_node_id": 14,
-  "last_link_id": 13,
+  "last_node_id": 16,
+  "last_link_id": 16,
   "nodes": [
     {
       "id": 1,
@@ -538,7 +538,8 @@
           "name": "deployment",
           "type": "RUNPOD_DEPLOYMENT_SPEC",
           "links": [
-            10
+            10,
+            14
           ]
         }
       ],
@@ -633,7 +634,8 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            12
+            12,
+            15
           ]
         }
       ],
@@ -681,6 +683,89 @@
         null,
         false
       ]
+    },
+    {
+      "id": 15,
+      "type": "RunpodStartupScript",
+      "pos": [
+        1900,
+        1010
+      ],
+      "size": [
+        360,
+        170
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "link": 14
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "startup_script",
+          "type": "STRING",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunpodStartupScript"
+      },
+      "widgets_values": [
+        "Plan a research workspace with Claude API, Postgres, Qdrant, Playwright, and one downloaded skill."
+      ]
+    },
+    {
+      "id": 16,
+      "type": "PreviewAny",
+      "pos": [
+        2400,
+        940
+      ],
+      "size": [
+        225,
+        166
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [
+        null,
+        null,
+        false
+      ],
+      "title": "Startup Script Preview"
     }
   ],
   "links": [
@@ -787,6 +872,30 @@
       14,
       0,
       "RUNPOD_RUN_RESULT"
+    ],
+    [
+      14,
+      10,
+      0,
+      15,
+      0,
+      "RUNPOD_DEPLOYMENT_SPEC"
+    ],
+    [
+      15,
+      13,
+      0,
+      15,
+      1,
+      "STRING"
+    ],
+    [
+      16,
+      15,
+      0,
+      16,
+      0,
+      "STRING"
     ]
   ],
   "groups": [
@@ -844,7 +953,7 @@
         1440,
         460,
         870,
-        530
+        790
       ],
       "color": "#8a6f38",
       "font_size": 24,
@@ -897,7 +1006,8 @@
         ]
       ],
       "outputs": [
-        "14"
+        "14",
+        "16"
       ]
     },
     "linearMode": true
