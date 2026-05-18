@@ -706,6 +706,10 @@ API-format examples:
 
 | File | Purpose |
 | --- | --- |
+| `examples/workflows/api_local_agent_skills_postgres_up.json` | Comprehensive local runtime preflight: Postgres, Ollama Cloud env, Superpowers skills, package install, harness prompt output. |
+| `examples/workflows/api_local_agent_skills_postgres_down.json` | Teardown pair for the comprehensive local runtime preflight. |
+| `examples/workflows/api_local_runtime_containerd_up.json` | Containerd local runtime apply smoke. |
+| `examples/workflows/api_local_runtime_containerd_down.json` | Teardown pair for the containerd local runtime smoke. |
 | `examples/workflows/api_plan_smoke.json` | Small API prompt for plan-mode smoke tests. |
 | `examples/workflows/api_real_neko_ollama_apply.json` | Real Runpod apply workflow for Neko plus Ollama. |
 
@@ -734,6 +738,13 @@ Verify the CRAG nodes load in a temporary CPU-only ComfyUI server:
 
 ```bash
 scripts/e2e-comfy-cpu
+```
+
+Run local runtime e2e preflights before spending Runpod credits:
+
+```bash
+scripts/e2e-comfy-local-runtime --skip-clone
+scripts/e2e-comfy-local-agent-skills --skip-clone
 ```
 
 Create or update Runpod templates and persist their IDs:

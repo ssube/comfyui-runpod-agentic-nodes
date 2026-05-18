@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 
 from .planner import DeploymentPlan, ResourcePlan
-from .runner import startup_script_for_plan
+from .runner import launch_command_for_plan, launcher_runtime_files, startup_script_for_plan
 
 DEFAULT_IMAGES = {
     "agent": "ubuntu:24.04",
@@ -159,8 +159,12 @@ def agent_startup_command(plan: DeploymentPlan, resource: ResourcePlan) -> str:
         if action.action == "RUN_SSH_COMMAND" and action.role == "agent" and action.resource_name == resource.name and action.detail.get("phase") in {"before_start", "after_start", "after_ready"}
     ]
     script = [
-        "set -u",
-        "mkdir -p /workspace/.runpod_agentic/local-runtime",
+        "set -euo pipefail",
+        "workspace=\"${WORKSPACE_DIR:-/workspace}\"",
+        "crag_dir=\"$workspace/.runpod_agentic\"",
+        "mkdir -p \"$crag_dir/local-runtime\"",
+        "cd \"$workspace\"",
+        *local_runtime_file_writes(plan),
         "run_crag_command() {",
         "  label=\"$1\"",
         "  failure_policy=\"$2\"",
@@ -199,9 +203,54 @@ def agent_startup_command(plan: DeploymentPlan, resource: ResourcePlan) -> str:
                 ]
             )
         )
+    launch = launch_command_for_plan(plan)
+    if launch:
+        script.append(launch)
+    else:
+        script.append("echo '[crag-local-runtime] startup mode is manual; launcher not started.'")
     script.append("echo '[crag-local-runtime] startup commands complete'")
     script.append("sleep infinity")
     return "bash -lc " + shlex.quote("\n".join(script))
+
+
+def local_runtime_file_writes(plan: DeploymentPlan) -> list[str]:
+    agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
+    workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
+    base = workspace.rstrip("/") + "/.runpod_agentic"
+    commands = [action.detail for action in plan.actions if action.action == "RUN_SSH_COMMAND"]
+    lines: list[str] = []
+    lines.extend(shell_write_file_lines(f"{base}/resources.json", json.dumps([resource_as_runtime_json(resource) for resource in plan.resources if resource.role != "agent"], indent=2, sort_keys=True)))
+    lines.extend(shell_write_file_lines(f"{base}/session.env", "\n".join(f"export {key}={shlex.quote(str(value))}" for key, value in sorted(plan.runtime_contract.env.values.items())) + "\n"))
+    lines.extend(shell_write_file_lines(f"{base}/commands.json", json.dumps(commands, indent=2, sort_keys=True)))
+    if plan.runtime_contract.env.values.get("AGENT_SYSTEM_PROMPT"):
+        lines.extend(shell_write_file_lines(f"{base}/system_prompt.txt", plan.runtime_contract.env.values["AGENT_SYSTEM_PROMPT"]))
+    if plan.runtime_contract.env.values.get("AGENT_PROMPT"):
+        lines.extend(shell_write_file_lines(f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"]))
+    if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
+        lines.extend(shell_write_file_lines(f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"]))
+    for relative_path, content in launcher_runtime_files().items():
+        lines.extend(shell_write_file_lines(f"{base}/{relative_path}", content))
+    lines.append("chmod +x \"$crag_dir/launcher.sh\" \"$crag_dir\"/launcher.d/*.sh \"$crag_dir\"/launcher.d/harnesses/*.sh 2>/dev/null || true")
+    return lines
+
+
+def resource_as_runtime_json(resource: ResourcePlan) -> dict[str, str | None]:
+    return {
+        "name": resource.name,
+        "role": resource.role,
+        "template_id": resource.template_id,
+        "materialization": resource.materialization,
+    }
+
+
+def shell_write_file_lines(path: str, content: str) -> list[str]:
+    marker = "CRAG_LOCAL_FILE_" + re.sub(r"[^A-Z0-9_]", "_", path.upper())
+    return [
+        f"mkdir -p {shlex.quote(str(Path(path).parent))}",
+        f"cat > {shlex.quote(path)} <<'{marker}'",
+        content,
+        marker,
+    ]
 
 
 def image_for_resource(resource: ResourcePlan) -> str:

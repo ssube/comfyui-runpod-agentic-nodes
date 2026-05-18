@@ -51,12 +51,14 @@ def test_agent_compose_command_runs_startup_commands():
     agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", llm=llm)[0]
     commands = RunpodSSHCommandNode().build("printf startup-ok > /workspace/startup.txt", "before_start", 5, "fail")[0]
     deployment = RunpodPodNode().build(agent, gpu_count=0, commands=commands)[0]
-    plan = Planner().build(deployment)
+    plan = Planner().build(deployment, prompt="List installed skills.")
 
     compose = yaml.safe_load(compose_yaml_for_plan(plan))
     agent_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
 
     assert "run_crag_command" in agent_service["command"]
+    assert ".runpod_agentic/prompt.txt" in agent_service["command"]
+    assert ".runpod_agentic/launcher.sh" in agent_service["command"]
     assert "printf startup-ok > /workspace/startup.txt" in agent_service["command"]
     assert "$${label}" in agent_service["command"]
     assert "sleep infinity" in agent_service["command"]
