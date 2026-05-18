@@ -16,6 +16,7 @@ def merge_contracts(*contracts: RuntimeContract | None) -> RuntimeContract:
     secrets: list[SecretRef] = []
     ports = []
     files: dict[str, str] = {}
+    commands = []
     for contract in contracts:
         if contract is None:
             continue
@@ -23,7 +24,8 @@ def merge_contracts(*contracts: RuntimeContract | None) -> RuntimeContract:
         secrets.extend(contract.env.secrets)
         ports.extend(contract.ports)
         files.update(contract.files)
-    return RuntimeContract(env=EnvPatch(values, secrets), ports=ports, files=files)
+        commands.extend(contract.commands)
+    return RuntimeContract(env=EnvPatch(values, secrets), ports=ports, files=files, commands=commands)
 
 
 def with_env(contract: RuntimeContract, values: dict[str, str]) -> RuntimeContract:

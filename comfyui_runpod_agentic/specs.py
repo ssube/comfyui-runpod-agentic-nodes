@@ -43,10 +43,21 @@ class EnvPatch:
 
 
 @dataclass(frozen=True)
+class RuntimeCommand:
+    command: str
+    phase: CommandPhase = "before_start"
+    order: int = 0
+    failure_policy: FailurePolicy = "fail"
+    retry_count: int = 0
+    source: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeContract:
     env: EnvPatch = field(default_factory=EnvPatch)
     ports: list[PortSpec] = field(default_factory=list)
     files: dict[str, str] = field(default_factory=dict)
+    commands: list[RuntimeCommand] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

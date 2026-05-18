@@ -8,6 +8,7 @@ from typing import Any
 from .config import get_ssh_env_config
 from .planner import Planner
 from .runner import default_state_path
+from .setup_commands import local_sql_setup_command, skill_install_command
 from .specs import (
     AgentSpec,
     BrowserSpec,
@@ -21,6 +22,7 @@ from .specs import (
     NetworkStorageSpec,
     PodResourceHints,
     PortSpec,
+    RuntimeCommand,
     RuntimeContract,
     S3StorageSpec,
     SecretRef,
@@ -288,7 +290,10 @@ class RunpodLocalSQLDatabaseNode:
         if db_engine != "sqlite":
             raise ValidationError("Local SQL Database only supports SQLite.")
         path = database_path.strip() or "/workspace/db/app.sqlite"
-        contract = RuntimeContract(EnvPatch({"DATABASE_KIND": "sqlite", "DATABASE_URL": f"sqlite:///{path}", "DATABASE_PATH": path, "DATABASE_NAME": database_name}))
+        contract = RuntimeContract(
+            EnvPatch({"DATABASE_KIND": "sqlite", "DATABASE_URL": f"sqlite:///{path}", "DATABASE_PATH": path, "DATABASE_NAME": database_name}),
+            commands=[RuntimeCommand(local_sql_setup_command(path, database_name), "before_start", -20000, "fail", 0, "local_sql")],
+        )
         return (SQLDatabaseSpec("sql_database", "sqlite", "file_only", database_name, None, None, contract, None, None, meta(node_id, "SQLite")),)
 
 
@@ -419,7 +424,8 @@ class RunpodSkillNode:
         skill = SkillSource("skill", skill_name, repo_url, repo_path.strip() or ".", destination, git_ref.strip() or None)
         skills = [*(previous.skills if previous else []), skill]
         payload = {"skills": [skill_payload(item) for item in skills]}
-        return (SkillSpec(skills, RuntimeContract(EnvPatch({"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)})), meta(node_id, "Skill")),)
+        commands = [RuntimeCommand(skill_install_command(item), "before_start", -10000 + index, "fail", 0, f"skill:{item.name}") for index, item in enumerate(skills)]
+        return (SkillSpec(skills, RuntimeContract(EnvPatch({"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)}), commands=commands), meta(node_id, "Skill")),)
 
 
 class RunpodSkillFrameworkNode:
@@ -453,7 +459,8 @@ class RunpodSkillFrameworkNode:
         skill = SkillSource("framework", framework_name, repo_url, repo_path, target_root.strip() or "/workspace/.codex/skills", git_ref.strip() or None)
         skills = [*(previous.skills if previous else []), skill]
         payload = {"skills": [skill_payload(item) for item in skills]}
-        return (SkillSpec(skills, RuntimeContract(EnvPatch({"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)})), meta(node_id, "Skill Framework")),)
+        commands = [RuntimeCommand(skill_install_command(item), "before_start", -10000 + index, "fail", 0, f"skill:{item.name}") for index, item in enumerate(skills)]
+        return (SkillSpec(skills, RuntimeContract(EnvPatch({"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)}), commands=commands), meta(node_id, "Skill Framework")),)
 
 
 def skill_payload(skill: SkillSource) -> dict[str, str]:
@@ -497,11 +504,13 @@ class RunpodAgentNode:
             contract = RuntimeContract(
                 EnvPatch({**contract.env.values, **mcp_servers.runtime_contract.env.values}, [*contract.env.secrets, *mcp_servers.runtime_contract.env.secrets]),
                 files=mcp_servers.runtime_contract.files,
+                commands=[*contract.commands, *mcp_servers.runtime_contract.commands],
             )
         if skills:
             contract = RuntimeContract(
                 EnvPatch({**contract.env.values, **skills.runtime_contract.env.values}, [*contract.env.secrets, *skills.runtime_contract.env.secrets]),
                 files={**contract.files, **skills.runtime_contract.files},
+                commands=[*contract.commands, *skills.runtime_contract.commands],
             )
         return (AgentSpec("agent", norm(harness), model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, contract, capabilities, None, meta(node_id, harness)),)
 

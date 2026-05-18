@@ -38,6 +38,8 @@ def test_sqlite_contract_is_file_only():
     assert spec.materialization == "file_only"
     assert spec.runtime_contract.env.values["DATABASE_PATH"] == "/workspace/db/app.sqlite"
     assert spec.runtime_contract.env.values["DATABASE_URL"] == "sqlite:////workspace/db/app.sqlite"
+    assert spec.runtime_contract.commands[0].source == "local_sql"
+    assert "sqlite3" in spec.runtime_contract.commands[0].command
 
 
 def test_browser_same_pod_adds_agent_capability():
@@ -77,6 +79,7 @@ def test_agent_accepts_chainable_skills():
     assert len(agent.skills.skills) == 2
     assert agent.skills.skills[1].kind == "framework"
     assert "RUNPOD_AGENT_SKILLS_JSON" in agent.runtime_contract.env.values
+    assert [command.source for command in agent.runtime_contract.commands] == ["skill:frontend-design", "skill:superpowers"]
 
 
 def test_pod_validation_rejects_sqlite_outside_workspace():

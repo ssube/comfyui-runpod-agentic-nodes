@@ -17,7 +17,6 @@ try:
         NetworkStorageSpec,
         RuntimeContract,
         SecretRef,
-        SkillSource,
         SSHAccessPolicy,
         to_plain,
     )
@@ -25,7 +24,7 @@ try:
     from .validation import validate_deployment
 except ImportError:
     from runtime_contracts import merge_contracts, secret_placeholder, with_env
-    from specs import DeploymentSpec, NetworkStorageSpec, RuntimeContract, SecretRef, SkillSource, SSHAccessPolicy, to_plain
+    from specs import DeploymentSpec, NetworkStorageSpec, RuntimeContract, SecretRef, SSHAccessPolicy, to_plain
     from template_resolver import TemplateResolver
     from validation import validate_deployment
 
@@ -151,7 +150,7 @@ class Planner:
             )
         )
 
-        actions = self._actions(resources, deployment)
+        actions = self._actions(resources, deployment, agent_contract)
         return DeploymentPlan(run_id, workflow_hash, deployment_hash, mode, prompt, resources, agent_contract, deployment.ssh_access, actions, warnings)
 
     def _own_pod_dependencies(self, deployment: DeploymentSpec) -> list[tuple[str, Any]]:
@@ -214,7 +213,7 @@ class Planner:
             pod_input["dockerArgs"] = internal_sshd_command()
         return pod_input
 
-    def _actions(self, resources: list[ResourcePlan], deployment: DeploymentSpec) -> list[PlanAction]:
+    def _actions(self, resources: list[ResourcePlan], deployment: DeploymentSpec, agent_contract: RuntimeContract) -> list[PlanAction]:
         deps = [resource for resource in resources if resource.role != "agent"]
         agent = next(resource for resource in resources if resource.role == "agent")
         actions: list[PlanAction] = []
@@ -226,15 +225,13 @@ class Planner:
             actions.append(PlanAction("RESOLVE_DEPENDENCY_CONTRACTS", detail={"resources": [resource.name for resource in deps]}))
         actions.append(PlanAction("CREATE_OR_RESUME", "agent", agent.name, {"template_id": agent.template_id}))
         actions.append(PlanAction("WAIT_SSH", "agent", agent.name))
-        if deployment.primary_app.sql_database and deployment.primary_app.sql_database.engine == "sqlite":
-            actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, {"command": local_sql_setup_command(deployment.primary_app.sql_database), "phase": "before_start", "order": -20000, "failure_policy": "fail", "retry_count": 0, "command_hash": stable_hash(to_plain(deployment.primary_app.sql_database))[:12]}))
-        for index, skill in enumerate(deployment.primary_app.skills.skills if deployment.primary_app.skills else []):
-            actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, {"command": skill_install_command(skill), "phase": "before_start", "order": -10000 + index, "failure_policy": "fail", "retry_count": 0, "command_hash": stable_hash(to_plain(skill))[:12]}))
+        actions.extend(runtime_command_actions(agent, agent_contract, {"before_start"}))
         for command in sorted((deployment.ssh_commands.commands if deployment.ssh_commands else []), key=lambda item: item.order):
             if command.phase == "before_start":
                 actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, to_plain(command)))
         actions.append(PlanAction("WRITE_RUNTIME_CONFIG", "agent", agent.name, {"files": runtime_config_paths(deployment.primary_app.workspace_path)}))
         actions.append(PlanAction("LAUNCH_AGENT", "agent", agent.name, {"harness": deployment.primary_app.harness, "startup_mode": deployment.primary_app.startup_mode}))
+        actions.extend(runtime_command_actions(agent, agent_contract, {"after_start", "after_ready"}))
         for command in sorted((deployment.ssh_commands.commands if deployment.ssh_commands else []), key=lambda item: item.order):
             if command.phase in {"after_start", "after_ready"}:
                 actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, to_plain(command)))
@@ -266,6 +263,16 @@ def dependency_pod_contract(role: str, contract: RuntimeContract) -> RuntimeCont
     elif role == "vector":
         env.pop("VECTOR_URL", None)
     return replace(contract, env=replace(contract.env, values=env))
+
+
+def runtime_command_actions(agent: ResourcePlan, contract: RuntimeContract, phases: set[str]) -> list[PlanAction]:
+    actions = []
+    commands = sorted((command for command in contract.commands if command.phase in phases), key=lambda item: item.order)
+    for command in commands:
+        detail = to_plain(command)
+        detail["command_hash"] = stable_hash(detail)[:12]
+        actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, detail))
+    return actions
 
 
 def ensure_ssh_port(ports: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -314,87 +321,6 @@ sleep infinity
     encoded = base64.b64encode(script.encode("utf-8")).decode("ascii")
     command = f"echo {encoded} | base64 -d > /tmp/runpod-agentic-sshd.sh && bash /tmp/runpod-agentic-sshd.sh"
     return "bash -lc " + shlex.quote(command)
-
-
-def skill_install_command(skill: SkillSource) -> str:
-    lines = [
-        "set -e",
-        "if ! command -v git >/dev/null 2>&1; then",
-        "  if command -v apt-get >/dev/null 2>&1; then",
-        "    apt-get update",
-        "    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates",
-        "  elif command -v apk >/dev/null 2>&1; then",
-        "    apk add --no-cache git ca-certificates",
-        "  else",
-        "    echo 'No supported package manager found for installing git' >&2",
-        "    exit 1",
-        "  fi",
-        "fi",
-        "tmp=$(mktemp -d)",
-        "trap 'rm -rf \"$tmp\"' EXIT",
-        f"git clone --depth 1 {shlex.quote(skill.repo_url)} \"$tmp/repo\"",
-    ]
-    if skill.git_ref:
-        lines.extend(
-            [
-                f"git -C \"$tmp/repo\" fetch --depth 1 origin {shlex.quote(skill.git_ref)}",
-                "git -C \"$tmp/repo\" checkout FETCH_HEAD",
-            ]
-        )
-    lines.extend(
-        [
-            f"src=\"$tmp/repo/{shell_path_fragment(skill.repo_path)}\"",
-            f"target={shlex.quote(skill.target_path)}",
-            "test -d \"$src\"",
-        ]
-    )
-    if skill.kind == "framework":
-        lines.extend(
-            [
-                "mkdir -p \"$target\"",
-                "cp -a \"$src\"/. \"$target\"/",
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                "rm -rf \"$target\"",
-                "mkdir -p \"$target\"",
-                "cp -a \"$src\"/. \"$target\"/",
-            ]
-        )
-    return "\n".join(lines)
-
-
-def local_sql_setup_command(sql_database) -> str:
-    path = sql_database.runtime_contract.env.values.get("DATABASE_PATH") or sql_database.runtime_contract.env.values.get("DATABASE_URL", "").removeprefix("sqlite:///")
-    if not path:
-        path = f"/workspace/db/{sql_database.database_name}.sqlite"
-    return "\n".join(
-        [
-            "set -e",
-            "if ! command -v sqlite3 >/dev/null 2>&1; then",
-            "  if command -v apt-get >/dev/null 2>&1; then",
-            "    apt-get update",
-            "    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sqlite3 libsqlite3-0",
-            "  elif command -v apk >/dev/null 2>&1; then",
-            "    apk add --no-cache sqlite-libs sqlite",
-            "  elif command -v dnf >/dev/null 2>&1; then",
-            "    dnf install -y sqlite",
-            "  else",
-            "    echo 'sqlite3 is required for local SQL but no supported package manager was found' >&2",
-            "    exit 1",
-            "  fi",
-            "fi",
-            f"mkdir -p \"$(dirname {shlex.quote(path)})\"",
-            f"touch {shlex.quote(path)}",
-            f"sqlite3 {shlex.quote(path)} 'PRAGMA user_version;'",
-        ]
-    )
-
-
-def shell_path_fragment(path: str) -> str:
-    return path.strip().lstrip("/") or "."
 
 
 def runtime_config_paths(workspace_path: str) -> dict[str, str]:

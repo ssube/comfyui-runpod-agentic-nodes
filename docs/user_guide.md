@@ -13,6 +13,15 @@ Build workflows in two layers:
 
 CRAG resource nodes return Python spec objects. They do not call Runpod, start containers, SSH into pods, or write state. This makes the graph safe to edit and inspect. `Run on Runpod` compiles the graph into a Terraform-style plan, reconciles it with existing managed resources, executes commands, writes runtime configuration, launches the agent, and applies cleanup behavior.
 
+The low-level contract is intentionally small:
+
+| Effect | Contract Surface | Examples |
+| --- | --- | --- |
+| Create or reuse a Runpod resource and pass env forward | `ResourcePlan` plus `RuntimeContract.env`, `ports`, and storage hints | Browser pod, LLM server pod, remote SQL pod, vector DB pod |
+| Queue a command to run after pods launch | `RuntimeContract.commands` | Local SQLite setup, skill download, framework install, user SSH commands |
+
+Higher-level nodes should compose these effects rather than calling providers themselves. A future node should either describe a pod-like resource that `Run on Runpod` can materialize, contribute environment/runtime files to the later agent pod, or add idempotent SSH commands to the runtime contract.
+
 The most important graph shape is:
 
 ```text

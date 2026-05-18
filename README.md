@@ -4,6 +4,8 @@ ComfyUI Runpod Agentic workflow nodes, or CRAG nodes, are custom ComfyUI nodes f
 
 The CRAG node package follows one core rule: all nodes are declarative except `Run on Runpod`. In `plan` mode, `Run on Runpod` produces an ordered deployment plan and never calls Runpod. In apply modes, it uses injectable Runpod, SSH, and SQLite state abstractions so behavior can be tested and mocked.
 
+At the foundation, nodes contribute one of two effects: a managed Runpod resource with environment values for later agent pods, or a queued runtime command to run over SSH after pods launch. This keeps CRAG close to a Terraform provider model: low-level resources such as pods, volumes, env, and SSH commands are composed into higher-level app and agent nodes.
+
 ## Workflow Screenshots
 
 <details>
