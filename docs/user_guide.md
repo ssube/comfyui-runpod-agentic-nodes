@@ -171,7 +171,7 @@ Local runtime nodes project the same deployment graph into a Compose YAML file s
 | --- | --- |
 | `Compose YAML` | Builds and optionally saves the Compose YAML without applying it. |
 | `Docker Compose Apply` | Saves the YAML, then runs `docker compose`. |
-| `Podman Compose Apply` | Saves the YAML, then runs `podman compose` or `podman-compose`. |
+| `Podman Compose Apply` | Saves the YAML, then runs `podman compose`. |
 | `Containerd Apply` | Saves the YAML, then runs `nerdctl compose` for containerd-backed local testing. |
 
 Inputs shared by the apply nodes:
@@ -183,6 +183,7 @@ Inputs shared by the apply nodes:
 | `project_name` | string | Compose project name and container-name prefix. |
 | `output_path` | string | File path where the generated YAML is saved. |
 | `action` | `save_only`, `config`, `pull`, `up`, `down` | Runtime action. Use `save_only` or `config` first when inspecting a new graph. |
+| `use_sudo` | boolean | Prefix the local runtime command with `sudo`. Applies equally to Docker, Podman, and containerd. |
 | `timeout_seconds` | integer | Timeout for the local runtime command. |
 
 Outputs:
@@ -698,6 +699,7 @@ UI-format examples for loading into ComfyUI:
 | --- | --- |
 | `examples/workflows/ui_agent_skills_mcp_plan.json` | Agent with MCP servers and skills. |
 | `examples/workflows/ui_claude_data_agent_plan.json` | Claude API, Playwright, Postgres, Qdrant, and prompts. |
+| `examples/workflows/ui_local_runtime_plan.json` | Local Compose/containerd rehearsal with generated YAML and apply result previews. |
 | `examples/workflows/ui_neko_ollama_agent_plan.json` | Neko browser and self-hosted Ollama. |
 
 API-format examples:

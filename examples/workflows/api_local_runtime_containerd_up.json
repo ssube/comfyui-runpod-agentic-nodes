@@ -1,0 +1,86 @@
+{
+  "1": {
+    "class_type": "RunpodSSHCommand",
+    "inputs": {
+      "command": "mkdir -p /workspace/e2e && printf 'startup-one\\n' > /workspace/e2e/command-1.txt && printf '%s\\n' \"$OLLAMA_HOST\" > /workspace/e2e/ollama-host.txt",
+      "phase": "before_start",
+      "order": 10,
+      "failure_policy": "fail",
+      "retry_count": 0
+    }
+  },
+  "2": {
+    "class_type": "RunpodSSHCommand",
+    "inputs": {
+      "previous": [
+        "1",
+        0
+      ],
+      "command": "test -s /workspace/e2e/command-1.txt && printf 'startup-two\\n' > /workspace/e2e/command-2.txt",
+      "phase": "before_start",
+      "order": 20,
+      "failure_policy": "fail",
+      "retry_count": 0
+    }
+  },
+  "3": {
+    "class_type": "RunpodLLMServer",
+    "inputs": {
+      "engine": "Ollama",
+      "model": "smoke",
+      "placement": "own_pod",
+      "api_auth_mode": "none",
+      "api_key_secret_name": "",
+      "hf_token_secret_name": ""
+    }
+  },
+  "4": {
+    "class_type": "RunpodAgent",
+    "inputs": {
+      "harness": "Pi",
+      "model": "smoke",
+      "startup_mode": "manual",
+      "workspace_path": "/workspace",
+      "system_prompt": "You are a local runtime e2e agent.",
+      "llm": [
+        "3",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "RunpodPod",
+    "inputs": {
+      "app": [
+        "4",
+        0
+      ],
+      "commands": [
+        "2",
+        0
+      ],
+      "gpu_type_id": "",
+      "gpu_count": 0,
+      "cloud_type": "auto",
+      "container_disk_gb": 20,
+      "volume_gb": 0,
+      "expose_public_ip": false,
+      "reuse_policy": "always_create"
+    }
+  },
+  "6": {
+    "class_type": "RunpodContainerdApply",
+    "inputs": {
+      "deployment": [
+        "5",
+        0
+      ],
+      "prompt": "Launch the local runtime e2e stack.",
+      "project_name": "crag-comfy-local-e2e",
+      "output_path": "artifacts/local-runtime/comfy-e2e-compose.yaml",
+      "action": "up",
+      "use_sudo": true,
+      "timeout_seconds": 600
+    }
+  }
+}

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -13,7 +15,7 @@ from .planner import DeploymentPlan, ResourcePlan
 from .runner import startup_script_for_plan
 
 DEFAULT_IMAGES = {
-    "agent": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+    "agent": "ubuntu:24.04",
     "browser:neko": "ghcr.io/m1k1o/neko/chromium:latest",
     "browser:playwright": "mcr.microsoft.com/playwright:v1.56.1-noble",
     "llm:ollama": "ollama/ollama:0.12.10",
@@ -73,7 +75,7 @@ def compose_yaml_for_plan(plan: DeploymentPlan, *, project_name: str = "crag-loc
             service["ports"] = ports
         command = compose_command(resource, plan)
         if command:
-            service["command"] = command
+            service["command"] = escape_compose_interpolation(command)
         volume_mount = volume_mount_for_resource(resource)
         if volume_mount:
             volume_name, mount_path, retention_policy = volume_mount
@@ -143,11 +145,63 @@ def compose_ports(resource: ResourcePlan) -> list[str]:
 
 def compose_command(resource: ResourcePlan, plan: DeploymentPlan) -> str | None:
     if resource.role == "agent":
-        return "sleep infinity"
+        return agent_startup_command(plan, resource)
     env = resource.pod_input.get("env") or {}
     if resource.role == "llm" and env.get("LLM_PROVIDER") == "ollama":
         return "serve"
     return None
+
+
+def agent_startup_command(plan: DeploymentPlan, resource: ResourcePlan) -> str:
+    commands = [
+        action.detail
+        for action in plan.actions
+        if action.action == "RUN_SSH_COMMAND" and action.role == "agent" and action.resource_name == resource.name and action.detail.get("phase") in {"before_start", "after_start", "after_ready"}
+    ]
+    script = [
+        "set -u",
+        "mkdir -p /workspace/.runpod_agentic/local-runtime",
+        "run_crag_command() {",
+        "  label=\"$1\"",
+        "  failure_policy=\"$2\"",
+        "  retry_count=\"$3\"",
+        "  body=\"$4\"",
+        "  attempt=0",
+        "  while true; do",
+        "    echo \"[crag-local-runtime] running ${label} attempt ${attempt}\"",
+        "    /bin/bash -lc \"$body\"",
+        "    status=$?",
+        "    if [ \"$status\" -eq 0 ]; then return 0; fi",
+        "    if [ \"$failure_policy\" = \"continue\" ]; then",
+        "      echo \"[crag-local-runtime] ${label} failed with ${status}; continuing\" >&2",
+        "      return 0",
+        "    fi",
+        "    if [ \"$failure_policy\" = \"retry\" ] && [ \"$attempt\" -lt \"$retry_count\" ]; then",
+        "      attempt=$((attempt + 1))",
+        "      sleep 1",
+        "      continue",
+        "    fi",
+        "    echo \"[crag-local-runtime] ${label} failed with ${status}\" >&2",
+        "    return \"$status\"",
+        "  done",
+        "}",
+    ]
+    for index, command in enumerate(commands):
+        label = command.get("source") or f"{command.get('phase', 'command')}:{index}"
+        script.append(
+            "run_crag_command "
+            + " ".join(
+                [
+                    shlex.quote(str(label)),
+                    shlex.quote(str(command.get("failure_policy") or "fail")),
+                    shlex.quote(str(int(command.get("retry_count") or 0))),
+                    shlex.quote(str(command.get("command") or "")),
+                ]
+            )
+        )
+    script.append("echo '[crag-local-runtime] startup commands complete'")
+    script.append("sleep infinity")
+    return "bash -lc " + shlex.quote("\n".join(script))
 
 
 def image_for_resource(resource: ResourcePlan) -> str:
@@ -227,22 +281,36 @@ def apply_compose_file(
 
 def command_for_engine(engine: str, compose_path: str, project_name: str, action: str) -> list[str]:
     if engine == "docker":
-        return compose_command_for(["docker", "compose"], compose_path, project_name, action)
+        return compose_command_for(local_runtime_base_command(["docker", "compose"]), compose_path, project_name, action)
     if engine == "podman":
         if shutil.which("podman"):
-            return compose_command_for(["podman", "compose"], compose_path, project_name, action)
-        if shutil.which("podman-compose"):
-            return compose_command_for(["podman-compose"], compose_path, project_name, action)
-        raise RuntimeError("Podman local runtime requires `podman compose` or `podman-compose` on PATH.")
+            return compose_command_for(local_runtime_base_command(["podman", "compose"]), compose_path, project_name, action)
+        raise RuntimeError("Podman local runtime requires `podman compose` on PATH.")
     if engine == "containerd":
         if not shutil.which("nerdctl"):
             raise RuntimeError("Containerd local runtime requires `nerdctl` on PATH; raw ctr does not support compose semantics.")
-        return compose_command_for(["nerdctl", "compose"], compose_path, project_name, action)
+        return compose_command_for(local_runtime_base_command(["nerdctl", "compose"]), compose_path, project_name, action)
     raise RuntimeError(f"Unsupported local runtime engine: {engine}")
+
+
+def local_runtime_base_command(command: list[str]) -> list[str]:
+    sudo = ["sudo"] if use_sudo_for_local_runtime() else []
+    return [*sudo, *command]
+
+
+def use_sudo_for_local_runtime() -> bool:
+    value = os.environ.get("CRAG_LOCAL_RUNTIME_SUDO", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
 
 
 def compose_command_for(base: list[str], compose_path: str, project_name: str, action: str) -> list[str]:
     command = [*base, "-f", compose_path, "-p", project_name]
     if action == "up":
         return [*command, "up", "-d"]
+    if action == "down":
+        return [*command, "down", "--remove-orphans"]
     return [*command, action]
+
+
+def escape_compose_interpolation(value: str) -> str:
+    return value.replace("$", "$$")

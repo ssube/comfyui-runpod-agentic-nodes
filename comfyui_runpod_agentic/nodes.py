@@ -723,19 +723,33 @@ class LocalComposeApplyMixin:
                 "project_name": ("STRING", {"default": "crag-local"}),
                 "output_path": ("STRING", {"default": "artifacts/local-runtime/compose.yaml"}),
                 "action": (["save_only", "config", "pull", "up", "down"],),
+                "use_sudo": ("BOOLEAN", {"default": False}),
                 "timeout_seconds": ("INT", {"default": 1800, "min": 1}),
             },
             "hidden": {"workflow_graph": "PROMPT"},
         }
 
-    def apply(self, deployment: DeploymentSpec, prompt: str = "", project_name: str = "crag-local", output_path: str = "artifacts/local-runtime/compose.yaml", action: str = "config", timeout_seconds: int = 1800, workflow_graph: Any = None):
+    def apply(self, deployment: DeploymentSpec, prompt: str = "", project_name: str = "crag-local", output_path: str = "artifacts/local-runtime/compose.yaml", action: str = "config", use_sudo: bool = False, timeout_seconds: int = 1800, workflow_graph: Any = None):
+        import os
+
         from .local_runtime import apply_compose_file, compose_yaml_for_plan, write_compose_file
 
         project = project_name.strip() or "crag-local"
         plan = Planner().build(deployment, mode="plan", prompt=prompt, workflow_graph=workflow_graph)
         compose_yaml = compose_yaml_for_plan(plan, project_name=project)
         saved_path = write_compose_file(output_path, compose_yaml)
-        result = apply_compose_file(self.ENGINE, saved_path, project_name=project, action=action, timeout_seconds=int(timeout_seconds))
+        old_sudo = os.environ.get("CRAG_LOCAL_RUNTIME_SUDO")
+        if use_sudo:
+            os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = "1"
+        else:
+            os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
+        try:
+            result = apply_compose_file(self.ENGINE, saved_path, project_name=project, action=action, timeout_seconds=int(timeout_seconds))
+        finally:
+            if old_sudo is None:
+                os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
+            else:
+                os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
         return (result.to_text(), compose_yaml, saved_path)
 
 

@@ -1,0 +1,190 @@
+{
+  "id": "32027c7f-e544-4e20-9e2f-62d734d7c3db",
+  "revision": 0,
+  "last_node_id": 9,
+  "last_link_id": 9,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "RunpodLLMServer",
+      "pos": [120, 170],
+      "size": [320, 210],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "llm", "type": "RUNPOD_LLM", "links": [1]}],
+      "properties": {"Node name for S&R": "RunpodLLMServer"},
+      "widgets_values": ["Ollama", "smoke", "own_pod", "none", "", ""]
+    },
+    {
+      "id": 8,
+      "type": "PrimitiveStringMultiline",
+      "pos": [120, 430],
+      "size": [360, 140],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [{"label": "System Prompt", "name": "value", "type": "STRING", "widget": {"name": "value"}, "link": null}],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [2]}],
+      "title": "System Prompt",
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["You are a local runtime smoke-test agent. Verify service wiring before any live Runpod apply."]
+    },
+    {
+      "id": 9,
+      "type": "PrimitiveStringMultiline",
+      "pos": [120, 620],
+      "size": [360, 140],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [{"label": "Task Prompt", "name": "value", "type": "STRING", "widget": {"name": "value"}, "link": null}],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [4, 5]}],
+      "title": "Task Prompt",
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["Generate a local Compose rehearsal for an agent connected to an Ollama-style LLM service."]
+    },
+    {
+      "id": 2,
+      "type": "RunpodAgent",
+      "pos": [620, 270],
+      "size": [360, 401.3125],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": null},
+        {"name": "llm", "shape": 7, "type": "RUNPOD_LLM", "link": 1},
+        {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": null},
+        {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": null},
+        {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": null},
+        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": null},
+        {"name": "system_prompt", "type": "STRING", "widget": {"name": "system_prompt"}, "link": 2},
+        {"label": "Agent Harness", "name": "harness", "type": "COMBO", "widget": {"name": "harness"}, "link": null}
+      ],
+      "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [3]}],
+      "properties": {"Node name for S&R": "RunpodAgent"},
+      "widgets_values": ["Pi", "smoke", "manual", "/workspace", "You are a local runtime smoke-test agent. Verify service wiring before any live Runpod apply."]
+    },
+    {
+      "id": 3,
+      "type": "RunpodPod",
+      "pos": [1100, 280],
+      "size": [310, 421.3125],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "app", "type": "RUNPOD_APP_AGENT", "link": 3},
+        {"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": null},
+        {"name": "s3_storage", "shape": 7, "type": "RUNPOD_STORAGE_S3", "link": null},
+        {"name": "commands", "shape": 7, "type": "RUNPOD_COMMAND_SSH", "link": null},
+        {"name": "keep_alive", "shape": 7, "type": "RUNPOD_KEEPALIVE_POLICY", "link": null},
+        {"name": "ssh_access", "shape": 7, "type": "RUNPOD_SSH_ACCESS_POLICY", "link": null}
+      ],
+      "outputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "links": [6, 8]}],
+      "properties": {"Node name for S&R": "RunpodPod"},
+      "widgets_values": ["", 0, "auto", 20, 0, false, "always_create"]
+    },
+    {
+      "id": 4,
+      "type": "RunpodComposeYAML",
+      "pos": [1540, 170],
+      "size": [390, 230],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 6},
+        {"name": "prompt", "type": "STRING", "widget": {"name": "prompt"}, "link": 4}
+      ],
+      "outputs": [
+        {"name": "compose_yaml", "type": "STRING", "links": [7]},
+        {"name": "saved_path", "type": "STRING", "links": null}
+      ],
+      "properties": {"Node name for S&R": "RunpodComposeYAML"},
+      "widgets_values": [
+        "Generate a local Compose rehearsal for an agent connected to an Ollama-style LLM service.",
+        "crag-local-example",
+        "artifacts/local-runtime/example-compose.yaml",
+        true
+      ]
+    },
+    {
+      "id": 5,
+      "type": "RunpodContainerdApply",
+      "pos": [1540, 520],
+      "size": [390, 278],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 8},
+        {"name": "prompt", "type": "STRING", "widget": {"name": "prompt"}, "link": 5}
+      ],
+      "outputs": [
+        {"name": "result", "type": "STRING", "links": [9]},
+        {"name": "compose_yaml", "type": "STRING", "links": null},
+        {"name": "saved_path", "type": "STRING", "links": null}
+      ],
+      "properties": {"Node name for S&R": "RunpodContainerdApply"},
+      "widgets_values": [
+        "Generate a local Compose rehearsal for an agent connected to an Ollama-style LLM service.",
+        "crag-local-example",
+        "artifacts/local-runtime/example-compose.yaml",
+        "config",
+        true,
+        300
+      ]
+    },
+    {
+      "id": 6,
+      "type": "PreviewAny",
+      "pos": [2100, 190],
+      "size": [240, 166],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [{"name": "source", "type": "*", "link": 7}],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": null}],
+      "properties": {"Node name for S&R": "PreviewAny"},
+      "widgets_values": [null, null, false]
+    },
+    {
+      "id": 7,
+      "type": "PreviewAny",
+      "pos": [2100, 540],
+      "size": [240, 166],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [{"name": "source", "type": "*", "link": 9}],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": null}],
+      "properties": {"Node name for S&R": "PreviewAny"},
+      "widgets_values": [null, null, false]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 1, "RUNPOD_LLM"],
+    [2, 8, 0, 2, 6, "STRING"],
+    [3, 2, 0, 3, 0, "RUNPOD_APP_AGENT"],
+    [4, 9, 0, 4, 1, "STRING"],
+    [5, 9, 0, 5, 1, "STRING"],
+    [6, 3, 0, 4, 0, "RUNPOD_DEPLOYMENT_SPEC"],
+    [7, 4, 0, 6, 0, "STRING"],
+    [8, 3, 0, 5, 0, "RUNPOD_DEPLOYMENT_SPEC"],
+    [9, 5, 0, 7, 0, "STRING"]
+  ],
+  "groups": [
+    {"id": 1, "title": "Agent Inputs", "bounding": [80, 90, 440, 710], "color": "#355f9c", "flags": {}},
+    {"id": 2, "title": "Agent And Deployment", "bounding": [580, 190, 870, 570], "color": "#3f7f5f", "flags": {}},
+    {"id": 3, "title": "Local Runtime", "bounding": [1500, 90, 890, 760], "color": "#8a6f38", "flags": {}}
+  ],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 1, "offset": [-650, 60]},
+    "frontendVersion": "1.43.18"
+  },
+  "version": 0.4
+}
