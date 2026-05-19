@@ -1,8 +1,8 @@
 {
   "id": "32027c7f-e544-4e20-9e2f-62d734d7c3db",
   "revision": 0,
-  "last_node_id": 9,
-  "last_link_id": 9,
+  "last_node_id": 11,
+  "last_link_id": 11,
   "nodes": [
     {
       "id": 1,
@@ -125,6 +125,8 @@
       ],
       "outputs": [
         {"name": "result", "type": "STRING", "links": [9]},
+        {"name": "response", "type": "STRING", "links": [10]},
+        {"name": "errors", "type": "STRING", "links": [11]},
         {"name": "compose_yaml", "type": "STRING", "links": null},
         {"name": "saved_path", "type": "STRING", "links": null}
       ],
@@ -135,7 +137,10 @@
         "artifacts/local-runtime/example-compose.yaml",
         "config",
         true,
-        300
+        300,
+        "agent",
+        "/workspace/e2e/agent-skill-report.txt",
+        120
       ]
     },
     {
@@ -163,6 +168,32 @@
       "outputs": [{"name": "STRING", "type": "STRING", "links": null}],
       "properties": {"Node name for S&R": "PreviewAny"},
       "widgets_values": [null, null, false]
+    },
+    {
+      "id": 10,
+      "type": "PreviewAny",
+      "pos": [2100, 735],
+      "size": [240, 166],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [{"name": "source", "type": "*", "link": 10}],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": null}],
+      "properties": {"Node name for S&R": "PreviewAny"},
+      "widgets_values": [null, null, false]
+    },
+    {
+      "id": 11,
+      "type": "PreviewAny",
+      "pos": [2360, 735],
+      "size": [240, 166],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [{"name": "source", "type": "*", "link": 11}],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": null}],
+      "properties": {"Node name for S&R": "PreviewAny"},
+      "widgets_values": [null, null, false]
     }
   ],
   "links": [
@@ -174,12 +205,14 @@
     [6, 3, 0, 4, 0, "RUNPOD_DEPLOYMENT_SPEC"],
     [7, 4, 0, 6, 0, "STRING"],
     [8, 3, 0, 5, 0, "RUNPOD_DEPLOYMENT_SPEC"],
-    [9, 5, 0, 7, 0, "STRING"]
+    [9, 5, 0, 7, 0, "STRING"],
+    [10, 5, 1, 10, 0, "STRING"],
+    [11, 5, 2, 11, 0, "STRING"]
   ],
   "groups": [
     {"id": 1, "title": "Agent Inputs", "bounding": [80, 90, 440, 710], "color": "#355f9c", "flags": {}},
     {"id": 2, "title": "Agent And Deployment", "bounding": [580, 190, 870, 570], "color": "#3f7f5f", "flags": {}},
-    {"id": 3, "title": "Local Runtime", "bounding": [1500, 90, 890, 760], "color": "#8a6f38", "flags": {}}
+    {"id": 3, "title": "Local Runtime", "bounding": [1500, 90, 1130, 860], "color": "#8a6f38", "flags": {}}
   ],
   "config": {},
   "extra": {

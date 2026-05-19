@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+venv/bin/python tests/e2e/comfy_local_ollama_deepseek.py "$@"

@@ -80,7 +80,10 @@
       "output_path": "artifacts/local-runtime/comfy-e2e-compose.yaml",
       "action": "up",
       "use_sudo": true,
-      "timeout_seconds": 600
+      "timeout_seconds": 600,
+      "response_role": "agent",
+      "response_path": "/workspace/e2e/command-2.txt",
+      "response_timeout_seconds": 120
     }
   }
 }

@@ -107,7 +107,10 @@
       "output_path": "artifacts/local-runtime/agent-skills-e2e-compose.yaml",
       "action": "up",
       "use_sudo": true,
-      "timeout_seconds": 900
+      "timeout_seconds": 900,
+      "response_role": "agent",
+      "response_path": "/workspace/e2e/agent-skill-report.txt",
+      "response_timeout_seconds": 120
     }
   }
 }

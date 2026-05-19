@@ -97,12 +97,14 @@ class RunpodRunner:
         agent_pod = created[agent.name]
         host, port = self._wait_ssh_endpoint(agent_pod, plan)
         self._wait_ssh_ready(host, port)
-        self._run_agent_ssh_steps(plan, host, port, resource_ids.get(agent.name))
+        response, errors = self._run_agent_ssh_steps(plan, host, port, resource_ids.get(agent.name))
         status = "waiting" if wait else "launched"
-        return {"run_id": plan.run_id, "status": status, "pods": {name: pod.get("id") for name, pod in created.items()}, "plan": plan.to_dict()}
+        return {"run_id": plan.run_id, "status": status, "pods": {name: pod.get("id") for name, pod in created.items()}, "response": response, "errors": errors, "plan": plan.to_dict()}
 
-    def _run_agent_ssh_steps(self, plan: DeploymentPlan, host: str, port: int, resource_id: str | None) -> None:
+    def _run_agent_ssh_steps(self, plan: DeploymentPlan, host: str, port: int, resource_id: str | None) -> tuple[str, str]:
         commands = [action for action in plan.actions if action.action == "RUN_SSH_COMMAND"]
+        response_parts = []
+        error_parts = []
         for action in commands:
             command = action.detail["command"]
             log_paths = self._command_log_paths(plan.run_id, action.detail)
@@ -118,6 +120,10 @@ class RunpodRunner:
             result = self.ssh_client.run(host, port, command)
             log_paths["stdout"].write_text(result.stdout)
             log_paths["stderr"].write_text(result.stderr)
+            if result.stdout:
+                response_parts.append(result.stdout)
+            if result.stderr:
+                error_parts.append(result.stderr)
             status = "completed" if result.exit_code == 0 else "failed"
             self.state_store.finish_command(command_id, status, result.exit_code)
             self.state_store.add_event(plan.run_id, "ssh_command", command, payload={"exit_code": result.exit_code})
@@ -127,11 +133,16 @@ class RunpodRunner:
         launch = self._launch_command(plan)
         if not launch:
             self.state_store.add_event(plan.run_id, "agent_launch_skipped", "manual startup mode")
-            return
+            return "".join(response_parts), "".join(error_parts)
         result = self.ssh_client.run(host, port, launch)
+        if result.stdout:
+            response_parts.append(result.stdout)
+        if result.stderr:
+            error_parts.append(result.stderr)
         self.state_store.add_event(plan.run_id, "agent_launch", launch, payload={"exit_code": result.exit_code})
         if result.exit_code != 0:
             raise RuntimeError(f"Agent launch failed with exit code {result.exit_code}.")
+        return "".join(response_parts), "".join(error_parts)
 
     def _wait_dependency_ready(self, resource, pod: dict[str, Any], run_id: str, resource_id: str, timeout_seconds: int | None = None, interval_seconds: int = 5) -> dict[str, Any]:
         pod_id = pod.get("id")
@@ -170,6 +181,8 @@ class RunpodRunner:
             self.ssh_client.write_file(host, port, f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"])
         if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
             self.ssh_client.write_file(host, port, f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"])
+        for relative_path, content in pi_runtime_files(plan.runtime_contract.env.values).items():
+            self.ssh_client.write_file(host, port, f"{base}/{relative_path}", content)
         for relative_path, content in launcher_runtime_files().items():
             self.ssh_client.write_file(host, port, f"{base}/{relative_path}", content)
         self.state_store.add_event(plan.run_id, "runtime_config_written", base)
@@ -295,6 +308,8 @@ def startup_script_for_plan(plan: DeploymentPlan) -> str:
         lines.extend(file_write_lines(f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"]))
     if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
         lines.extend(file_write_lines(f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"]))
+    for relative_path, content in pi_runtime_files(plan.runtime_contract.env.values).items():
+        lines.extend(file_write_lines(f"{base}/{relative_path}", content))
     for relative_path, content in launcher_runtime_files().items():
         lines.extend(file_write_lines(f"{base}/{relative_path}", content))
     for index, detail in enumerate(commands):
@@ -336,7 +351,54 @@ def launcher_runtime_files() -> dict[str, str]:
         "launcher.d/harnesses/codex.sh": codex_harness_script(),
         "launcher.d/harnesses/claude.sh": claude_harness_script(),
         "launcher.d/harnesses/opencode.sh": opencode_harness_script(),
+        "launcher.d/harnesses/pi.sh": pi_harness_script(),
         "launcher.d/harnesses/generic.sh": generic_harness_script(),
+    }
+
+
+def pi_runtime_files(env: dict[str, str]) -> dict[str, str]:
+    if str(env.get("LLM_PROVIDER") or "").lower() != "ollama_cloud":
+        return {}
+    model = env.get("OLLAMA_MODEL") or env.get("LLM_MODEL") or "deepseek-v4-flash"
+    base_url = (env.get("OLLAMA_HOST") or env.get("LLM_API_BASE_URL") or "https://ollama.com").rstrip("/")
+    openai_base_url = base_url if base_url.endswith("/v1") else f"{base_url}/v1"
+    models = {
+        "providers": {
+            "ollama-cloud": {
+                "baseUrl": openai_base_url,
+                "api": "openai-completions",
+                "apiKey": "OLLAMA_CLOUD_API_KEY",
+                "compat": {
+                    "supportsDeveloperRole": False,
+                    "supportsReasoningEffort": False,
+                },
+                "models": [
+                    {
+                        "id": model,
+                        "contextWindow": 128000,
+                        "maxTokens": 32768,
+                    }
+                ],
+            }
+        }
+    }
+    providers = {
+        "ollama-cloud": {
+            "type": "api_key",
+            "env": "OLLAMA_CLOUD_API_KEY",
+            "baseUrl": openai_base_url,
+        }
+    }
+    settings = {
+        "defaultModel": model,
+        "defaultProvider": "ollama-cloud",
+        "provider": "ollama-cloud",
+        "quietStartup": True,
+    }
+    return {
+        "harness/pi/models.json": json.dumps(models, indent=2, sort_keys=True),
+        "harness/pi/providers.json": json.dumps(providers, indent=2, sort_keys=True),
+        "harness/pi/settings.json": json.dumps(settings, indent=2, sort_keys=True),
     }
 
 
@@ -400,6 +462,10 @@ export AGENT_MODEL="${AGENT_MODEL:-}"
 export AGENT_PROMPT_FILE="${AGENT_PROMPT_FILE:-$CRAG_RUNTIME_DIR/prompt.txt}"
 export AGENT_SYSTEM_PROMPT_FILE="${AGENT_SYSTEM_PROMPT_FILE:-$CRAG_RUNTIME_DIR/system_prompt.txt}"
 export MCP_SERVERS_FILE="${MCP_SERVERS_FILE:-$CRAG_RUNTIME_DIR/mcp_servers.json}"
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
+if [ -n "${OLLAMA_API_KEY:-}" ] && [ -z "${OLLAMA_CLOUD_API_KEY:-}" ]; then
+  export OLLAMA_CLOUD_API_KEY="$OLLAMA_API_KEY"
+fi
 """
 
 
@@ -410,6 +476,21 @@ if [ ! -d "$WORKSPACE_DIR" ]; then
 fi
 if [ -f "$MCP_SERVERS_FILE" ]; then
   export MCP_SERVERS_JSON="$(cat "$MCP_SERVERS_FILE")"
+fi
+if [ -d "$WORKSPACE_DIR/.codex/skills" ]; then
+  mkdir -p "$HOME/.agents"
+  ln -sfn "$WORKSPACE_DIR/.codex/skills" "$HOME/.agents/skills"
+fi
+if [ -d "$CRAG_RUNTIME_DIR/harness/pi" ]; then
+  mkdir -p "$HOME/.pi/agent" "$WORKSPACE_DIR/.pi/agent"
+  cp "$CRAG_RUNTIME_DIR/harness/pi/models.json" "$HOME/.pi/agent/models.json"
+  cp "$CRAG_RUNTIME_DIR/harness/pi/providers.json" "$HOME/.pi/agent/providers.json"
+  cp "$CRAG_RUNTIME_DIR/harness/pi/settings.json" "$HOME/.pi/agent/settings.json"
+  ln -sfn "$HOME/.pi/agent/models.json" "$WORKSPACE_DIR/.pi/agent/models.json"
+  ln -sfn "$HOME/.pi/agent/providers.json" "$WORKSPACE_DIR/.pi/agent/providers.json"
+  ln -sfn "$HOME/.pi/agent/settings.json" "$WORKSPACE_DIR/.pi/agent/settings.json"
+  export PI_MODELS_FILE="$HOME/.pi/agent/models.json"
+  export PI_PROVIDERS_FILE="$HOME/.pi/agent/providers.json"
 fi
 """
 
@@ -471,6 +552,48 @@ if [ -n "$AGENT_MODEL" ]; then
   args+=(--model "$AGENT_MODEL")
 fi
 exec opencode "${args[@]}" "$prompt"
+"""
+
+
+def pi_harness_script() -> str:
+    return r"""#!/usr/bin/env bash
+set -euo pipefail
+if ! command -v pi >/dev/null 2>&1; then
+  exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
+fi
+mkdir -p "$CRAG_RUNTIME_DIR"
+prompt=""
+if [ -f "$AGENT_PROMPT_FILE" ]; then
+  prompt="$(cat "$AGENT_PROMPT_FILE")"
+fi
+args=()
+if [ -n "${AGENT_MODEL:-}" ]; then
+  args+=(--model "$AGENT_MODEL")
+fi
+if [ "${LLM_PROVIDER:-}" = "ollama_cloud" ]; then
+  args+=(--provider ollama-cloud)
+elif [ -n "${PI_PROVIDER:-}" ]; then
+  args+=(--provider "$PI_PROVIDER")
+fi
+response_file="${AGENT_RESPONSE_FILE:-$CRAG_RUNTIME_DIR/response.txt}"
+errors_file="${AGENT_ERRORS_FILE:-$CRAG_RUNTIME_DIR/errors.txt}"
+{
+  echo "model: ${AGENT_MODEL:-}"
+  echo "models_file: ${PI_MODELS_FILE:-$HOME/.pi/agent/models.json}"
+  echo "providers_file: ${PI_PROVIDERS_FILE:-$HOME/.pi/agent/providers.json}"
+  echo
+  set +e
+  pi "${args[@]}" -p "$prompt"
+  status=$?
+  set -e
+  echo
+  echo "[crag-agent] complete status=$status"
+  exit "$status"
+} > "$response_file" 2> "$errors_file"
+cat "$response_file"
+if [ -s "$errors_file" ]; then
+  cat "$errors_file" >&2
+fi
 """
 
 

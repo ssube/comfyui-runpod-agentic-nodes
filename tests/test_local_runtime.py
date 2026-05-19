@@ -4,7 +4,13 @@ from types import SimpleNamespace
 
 import yaml
 
-from comfyui_runpod_agentic.local_runtime import apply_compose_file, command_for_engine, compose_yaml_for_plan
+from comfyui_runpod_agentic.local_runtime import (
+    apply_compose_file,
+    command_for_engine,
+    compose_yaml_for_plan,
+    local_runtime_response_is_ready,
+    resolve_local_secret_placeholder,
+)
 from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
     RunpodComposeYAMLNode,
@@ -44,6 +50,25 @@ def test_compose_yaml_preserves_volume_retention_intent():
     compose = yaml.safe_load(compose_yaml_for_plan(plan))
 
     assert compose["volumes"]["vol-workspace"]["labels"]["comfyui-runpod-agentic.retention_policy"] == "delete_when_unused"
+
+
+def test_local_runtime_resolves_ollama_env_file_secret(tmp_path, monkeypatch):
+    env_dir = tmp_path / ".env.d"
+    env_dir.mkdir()
+    ollama_env = env_dir / "ollama.env"
+    ollama_env.write_text("export OLLAMA_API_KEY='ollama-test-key'\n")
+    monkeypatch.setenv("OLLAMA_ENV_FILE", str(ollama_env))
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+
+    value = resolve_local_secret_placeholder("{{ RUNPOD_SECRET_OLLAMA_API_KEY }}")
+
+    assert value == "ollama-test-key"
+
+
+def test_crag_agent_response_waits_for_completion_marker():
+    assert not local_runtime_response_is_ready("/workspace/.runpod_agentic/response.txt", "model: deepseek-v4-flash\n")
+    assert local_runtime_response_is_ready("/workspace/.runpod_agentic/response.txt", "answer\n[crag-agent] complete status=0\n")
+    assert local_runtime_response_is_ready("/workspace/e2e/command-2.txt", "startup-two\n")
 
 
 def test_agent_compose_command_runs_startup_commands():
@@ -120,6 +145,67 @@ def test_apply_node_can_request_sudo(monkeypatch, tmp_path):
     assert "CRAG_LOCAL_RUNTIME_SUDO" not in os.environ
 
 
+def test_apply_node_reads_response_file_after_up(monkeypatch, tmp_path):
+    deployment = build_local_runtime_deployment()
+    apply_path = tmp_path / "up.yaml"
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[:3] == ["docker", "ps", "--format"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout='[{"Config":{"Labels":{"comfyui-runpod-agentic.role":"agent"}}}]', stderr="")
+        if command == ["docker", "exec", "agent1", "cat", "/workspace/result.txt"]:
+            return SimpleNamespace(returncode=0, stdout="agent response\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result_text, response, errors, _compose_yaml, _saved_path = RunpodDockerComposeApplyNode().apply(
+        deployment,
+        project_name="crag-node",
+        output_path=str(apply_path),
+        action="up",
+        response_path="/workspace/result.txt",
+    )
+
+    assert json.loads(result_text)["returncode"] == 0
+    assert response == "agent response\n"
+    assert errors == ""
+    assert ["docker", "exec", "agent1", "cat", "/workspace/result.txt"] in calls
+
+
+def test_apply_node_falls_back_to_completed_container_logs(monkeypatch, tmp_path):
+    deployment = build_local_runtime_deployment()
+    apply_path = tmp_path / "up.yaml"
+
+    def fake_run(command, **kwargs):
+        if command[:3] == ["docker", "ps", "--format"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout='[{"Config":{"Labels":{"comfyui-runpod-agentic.role":"agent"}}}]', stderr="")
+        if command == ["docker", "exec", "agent1", "cat", "/workspace/missing.txt"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="cat: missing\n")
+        if command == ["docker", "logs", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout="[crag-local-runtime] startup mode is manual; launcher not started.\nscript response\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    _result_text, response, errors, _compose_yaml, _saved_path = RunpodDockerComposeApplyNode().apply(
+        deployment,
+        project_name="crag-node",
+        output_path=str(apply_path),
+        action="up",
+        response_path="/workspace/missing.txt",
+        response_timeout_seconds=1,
+    )
+
+    assert "script response" in response
+    assert errors == ""
+
+
 def test_missing_containerd_runtime_returns_error_result(monkeypatch, tmp_path):
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.shutil.which", lambda command: None)
     compose_path = tmp_path / "compose.yaml"
@@ -146,8 +232,10 @@ def test_compose_export_and_apply_nodes_save_files(monkeypatch, tmp_path):
         "comfyui_runpod_agentic.local_runtime.subprocess.run",
         lambda command, **kwargs: SimpleNamespace(returncode=0, stdout="valid\n", stderr=""),
     )
-    result_text, apply_yaml, apply_saved_path = RunpodDockerComposeApplyNode().apply(deployment, project_name="crag-node", output_path=str(apply_path), action="config")
+    result_text, response, errors, apply_yaml, apply_saved_path = RunpodDockerComposeApplyNode().apply(deployment, project_name="crag-node", output_path=str(apply_path), action="config")
 
     assert apply_saved_path == str(apply_path)
+    assert response == ""
+    assert errors == ""
     assert apply_yaml == apply_path.read_text()
     assert json.loads(result_text)["command"] == ["docker", "compose", "-f", str(apply_path), "-p", "crag-node", "config"]

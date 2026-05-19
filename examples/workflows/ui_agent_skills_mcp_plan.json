@@ -434,6 +434,16 @@
           "links": [
             9
           ]
+        },
+        {
+          "name": "response",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "errors",
+          "type": "STRING",
+          "links": null
         }
       ],
       "properties": {

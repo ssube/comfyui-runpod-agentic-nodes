@@ -106,7 +106,7 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
    Start with `mode=plan`. Inspect the JSON. Move to `apply`, `apply_and_wait`, `stop`, `terminate`, or `destroy` only after the plan is correct.
 
 9. Inspect outputs and logs.
-   Connect `Run on Runpod.result` to `PreviewAny`. Use `Runpod Logs` with a run ID to collect saved command stdout/stderr.
+   Connect `Run on Runpod.result`, `response`, and `errors` to preview nodes. Use `Runpod Logs` with a run ID to collect saved command stdout/stderr.
 
 10. Clean up.
    Use `terminate` or `destroy` when the deployment is no longer needed. For managed leftovers, use `scripts/cleanup-runpod-pods --action terminate`.
@@ -143,6 +143,8 @@ Output:
 | Output | Type | Use |
 | --- | --- | --- |
 | `result` | `RUNPOD_RUN_RESULT` | JSON plan or execution result, usually connected to `PreviewAny`. |
+| `response` | `STRING` | Captured stdout from remote startup commands and the agent launch command. |
+| `errors` | `STRING` | Captured stderr from remote startup commands and the agent launch command. |
 
 ### Runpod Startup Script
 
@@ -185,12 +187,17 @@ Inputs shared by the apply nodes:
 | `action` | `save_only`, `config`, `pull`, `up`, `down` | Runtime action. Use `save_only` or `config` first when inspecting a new graph. |
 | `use_sudo` | boolean | Prefix the local runtime command with `sudo`. Applies equally to Docker, Podman, and containerd. |
 | `timeout_seconds` | integer | Timeout for the local runtime command. |
+| `response_role` | string | Container role to read after `up`, usually `agent`. |
+| `response_path` | string | File to read from the role container after `up`, for example `/workspace/e2e/agent-skill-report.txt`. |
+| `response_timeout_seconds` | integer | How long to wait for the response file. Set `0` to skip response collection. If the file is missing but CRAG startup has completed, local runtime nodes fall back to the agent container logs. |
 
 Outputs:
 
 | Output | Type | Use |
 | --- | --- | --- |
 | `result` | `STRING` | JSON summary with command, return code, stdout, and stderr. |
+| `response` | `STRING` | Contents of `response_path` from the selected role container after `up`. |
+| `errors` | `STRING` | Runtime stderr plus response collection stderr. |
 | `compose_yaml` | `STRING` | Generated Compose YAML, useful with `PreviewAny`. |
 | `saved_path` | `STRING` | Path to the saved YAML file. |
 

@@ -5,16 +5,20 @@ import pytest
 from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
     RunpodBrowserNode,
+    RunpodLLMApiNode,
     RunpodMCPServerNode,
     RunpodPodNode,
+    RunpodRunNode,
     RunpodSkillFrameworkNode,
     RunpodSkillNode,
+    RunpodSSHCommandNode,
 )
 from comfyui_runpod_agentic.runner import (
     RunpodRunner,
     agent_launcher_script,
     first_ready_probe,
     launcher_runtime_files,
+    pi_runtime_files,
     readiness_probe_paths,
     startup_script_for_plan,
 )
@@ -56,13 +60,15 @@ class FakeRunpodClient:
 
 
 class FakeSSHClient:
-    def __init__(self):
+    def __init__(self, outputs=None):
         self.commands = []
         self.files = {}
+        self.outputs = outputs or {}
 
     def run(self, host, port, command, *, timeout_seconds=None):
         self.commands.append(command)
-        return type("Result", (), {"exit_code": 0, "stdout": "", "stderr": ""})()
+        stdout, stderr = self.outputs.get(command, ("", ""))
+        return type("Result", (), {"exit_code": 0, "stdout": stdout, "stderr": stderr})()
 
     def write_file(self, host, port, path, content):
         self.files[path] = content
@@ -85,6 +91,48 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
     assert any(path.endswith("launcher.d/harnesses/codex.sh") for path in ssh.files)
     assert any(resource["runpod_pod_id"] == "orphan" for resource in runner.state_store.list_resources())
     assert runner.state_store.list_commands(result["run_id"]) == []
+
+
+def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    command = "printf response && printf warning >&2"
+    agent = RunpodAgentNode().build("Pi", "model", "manual")[0]
+    commands = RunpodSSHCommandNode().build(command, "before_start", 10, "fail")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0, commands=commands)[0]
+    ssh = FakeSSHClient(outputs={command: ("response\n", "warning\n")})
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply")
+
+    assert result["response"] == "response\n"
+    assert result["errors"] == "warning\n"
+
+
+def test_run_node_plan_exposes_response_and_errors_slots():
+    agent = RunpodAgentNode().build("Pi", "model", "manual")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+
+    result, response, errors = RunpodRunNode().run(deployment, mode="plan")
+
+    assert '"resources"' in result
+    assert response == ""
+    assert errors == ""
+
+
+def test_run_node_apply_returns_errors_without_losing_output_slots(monkeypatch):
+    class FailingRunner:
+        def run(self, *_args, **_kwargs):
+            raise RuntimeError("remote apply failed")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.runner.RunpodRunner", FailingRunner)
+    agent = RunpodAgentNode().build("Pi", "model", "manual")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+
+    result, response, errors = RunpodRunNode().run(deployment, mode="apply")
+
+    assert '"status": "failed"' in result
+    assert response == ""
+    assert errors == "remote apply failed"
 
 
 def test_runner_apply_waits_for_dependency_endpoint(tmp_path, monkeypatch):
@@ -217,7 +265,34 @@ def test_launcher_runtime_files_include_common_harness_stubs():
     assert "launcher.d/harnesses/codex.sh" in files
     assert "launcher.d/harnesses/claude.sh" in files
     assert "launcher.d/harnesses/opencode.sh" in files
+    assert "launcher.d/harnesses/pi.sh" in files
     assert "No compatible agent launcher" in files["launcher.d/harnesses/generic.sh"]
+
+
+def test_pi_runtime_files_configure_ollama_cloud():
+    files = pi_runtime_files({"LLM_PROVIDER": "ollama_cloud", "OLLAMA_HOST": "https://ollama.com", "OLLAMA_MODEL": "deepseek-v4-flash"})
+
+    assert "harness/pi/models.json" in files
+    assert "harness/pi/providers.json" in files
+    assert "deepseek-v4-flash" in files["harness/pi/models.json"]
+    assert '"apiKey": "OLLAMA_CLOUD_API_KEY"' in files["harness/pi/models.json"]
+
+
+def test_runner_writes_pi_runtime_config_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    llm = RunpodLLMApiNode().build("Ollama Cloud", "deepseek-v4-flash", "OLLAMA_API_KEY")[0]
+    agent = RunpodAgentNode().build("Pi", "deepseek-v4-flash", "manual", llm=llm)[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+    runpod = FakeRunpodClient()
+    runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    runner.run(deployment, mode="apply")
+
+    assert any(path.endswith("harness/pi/models.json") for path in runner.ssh_client.files)
+    assert any(path.endswith("harness/pi/providers.json") for path in runner.ssh_client.files)
+    agent_env = runpod.created[-1]["env"]
+    assert agent_env["OLLAMA_API_KEY"] == "{{ RUNPOD_SECRET_OLLAMA_API_KEY }}"
+    assert agent_env["OLLAMA_CLOUD_API_KEY"] == "{{ RUNPOD_SECRET_OLLAMA_API_KEY }}"
 
 
 def test_startup_script_for_plan_is_pasteable_bash(tmp_path, monkeypatch):

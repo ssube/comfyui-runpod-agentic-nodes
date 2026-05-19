@@ -206,23 +206,26 @@ class RunpodLLMApiNode:
             base_url = base_url_override or "https://ollama.com"
             env_var = "OLLAMA_API_KEY"
             values = {"LLM_PROVIDER": "ollama_cloud", "LLM_API_FORMAT": api_format, "OLLAMA_HOST": base_url, "OLLAMA_MODEL": model, "LLM_MODEL": model, "LLM_API_BASE_URL": base_url}
+            secrets = [SecretRef(api_key_secret_name, "OLLAMA_API_KEY"), SecretRef(api_key_secret_name, "OLLAMA_CLOUD_API_KEY")] if api_key_secret_name else []
         elif provider_id == "claude":
             api_format = "anthropic"
             base_url = base_url_override or None
             env_var = "ANTHROPIC_API_KEY"
             values = {"LLM_PROVIDER": "claude", "LLM_API_FORMAT": api_format, "ANTHROPIC_MODEL": model, "LLM_MODEL": model}
+            secrets = [SecretRef(api_key_secret_name, env_var)] if api_key_secret_name else []
         else:
             provider_id = "codex"
             api_format = "openai"
             base_url = base_url_override or None
             env_var = "OPENAI_API_KEY"
             values = {"LLM_PROVIDER": "codex", "LLM_API_FORMAT": api_format, "OPENAI_MODEL": model, "LLM_MODEL": model}
+            secrets = [SecretRef(api_key_secret_name, env_var)] if api_key_secret_name else []
         if base_url:
             values["LLM_API_BASE_URL"] = base_url
             if api_format == "openai":
                 values["OPENAI_BASE_URL"] = base_url
         secret = SecretRef(api_key_secret_name, env_var) if api_key_secret_name else None
-        return (LLMApiSpec("llm_api", provider_id, model, api_format, base_url, RuntimeContract(EnvPatch(values, [secret] if secret else [])), secret, meta(node_id, provider)),)
+        return (LLMApiSpec("llm_api", provider_id, model, api_format, base_url, RuntimeContract(EnvPatch(values, secrets)), secret, meta(node_id, provider)),)
 
 
 class RunpodRemoteSQLDatabaseNode:
@@ -642,8 +645,8 @@ class RunpodPodNode:
 
 class RunpodRunNode:
     CATEGORY = "Runpod/Core"
-    RETURN_TYPES = (RUNPOD_RUN_RESULT,)
-    RETURN_NAMES = ("result",)
+    RETURN_TYPES = (RUNPOD_RUN_RESULT, "STRING", "STRING")
+    RETURN_NAMES = ("result", "response", "errors")
     FUNCTION = "run"
     OUTPUT_NODE = True
 
@@ -655,10 +658,13 @@ class RunpodRunNode:
         if mode != "plan":
             from .runner import RunpodRunner
 
-            result = RunpodRunner().run(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
-            return (json.dumps(result, indent=2, sort_keys=True),)
+            try:
+                result = RunpodRunner().run(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
+            except Exception as exc:
+                result = {"status": "failed", "mode": mode, "error": str(exc), "errors": str(exc)}
+            return (json.dumps(result, indent=2, sort_keys=True), str(result.get("response") or ""), str(result.get("errors") or ""))
         plan = Planner().build(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph)
-        return (json.dumps(plan.to_dict(), indent=2, sort_keys=True),)
+        return (json.dumps(plan.to_dict(), indent=2, sort_keys=True), "", "")
 
 
 class RunpodStartupScriptNode:
@@ -709,8 +715,8 @@ class RunpodComposeYAMLNode:
 class LocalComposeApplyMixin:
     ENGINE = ""
     CATEGORY = "Runpod/Local"
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("result", "compose_yaml", "saved_path")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("result", "response", "errors", "compose_yaml", "saved_path")
     FUNCTION = "apply"
     OUTPUT_NODE = True
 
@@ -725,14 +731,30 @@ class LocalComposeApplyMixin:
                 "action": (["save_only", "config", "pull", "up", "down"],),
                 "use_sudo": ("BOOLEAN", {"default": False}),
                 "timeout_seconds": ("INT", {"default": 1800, "min": 1}),
+                "response_role": ("STRING", {"default": "agent"}),
+                "response_path": ("STRING", {"default": "/workspace/e2e/agent-skill-report.txt"}),
+                "response_timeout_seconds": ("INT", {"default": 120, "min": 0}),
             },
             "hidden": {"workflow_graph": "PROMPT"},
         }
 
-    def apply(self, deployment: DeploymentSpec, prompt: str = "", project_name: str = "crag-local", output_path: str = "artifacts/local-runtime/compose.yaml", action: str = "config", use_sudo: bool = False, timeout_seconds: int = 1800, workflow_graph: Any = None):
+    def apply(
+        self,
+        deployment: DeploymentSpec,
+        prompt: str = "",
+        project_name: str = "crag-local",
+        output_path: str = "artifacts/local-runtime/compose.yaml",
+        action: str = "config",
+        use_sudo: bool = False,
+        timeout_seconds: int = 1800,
+        response_role: str = "agent",
+        response_path: str = "/workspace/e2e/agent-skill-report.txt",
+        response_timeout_seconds: int = 120,
+        workflow_graph: Any = None,
+    ):
         import os
 
-        from .local_runtime import apply_compose_file, compose_yaml_for_plan, write_compose_file
+        from .local_runtime import apply_compose_file, compose_yaml_for_plan, read_local_runtime_file, write_compose_file
 
         project = project_name.strip() or "crag-local"
         plan = Planner().build(deployment, mode="plan", prompt=prompt, workflow_graph=workflow_graph)
@@ -745,12 +767,19 @@ class LocalComposeApplyMixin:
             os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
         try:
             result = apply_compose_file(self.ENGINE, saved_path, project_name=project, action=action, timeout_seconds=int(timeout_seconds))
+            response = ""
+            response_errors = ""
+            if action == "up" and result.returncode == 0 and response_path.strip() and int(response_timeout_seconds) > 0:
+                read_result = read_local_runtime_file(self.ENGINE, project, response_role.strip() or "agent", response_path.strip(), timeout_seconds=int(response_timeout_seconds))
+                response = read_result.stdout
+                response_errors = read_result.stderr
         finally:
             if old_sudo is None:
                 os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
             else:
                 os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
-        return (result.to_text(), compose_yaml, saved_path)
+        errors = "\n".join(part for part in (result.stderr, response_errors) if part)
+        return (result.to_text(), response, errors, compose_yaml, saved_path)
 
 
 class RunpodDockerComposeApplyNode(LocalComposeApplyMixin):

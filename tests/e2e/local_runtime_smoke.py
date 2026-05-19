@@ -7,7 +7,13 @@ import shutil
 import subprocess
 import sys
 
-from comfyui_runpod_agentic.nodes import RunpodAgentNode, RunpodContainerdApplyNode, RunpodLLMServerNode, RunpodPodNode
+from comfyui_runpod_agentic.nodes import (
+    RunpodAgentNode,
+    RunpodContainerdApplyNode,
+    RunpodLLMServerNode,
+    RunpodPodNode,
+    RunpodSSHCommandNode,
+)
 
 
 def main() -> int:
@@ -28,7 +34,7 @@ def main() -> int:
     node = RunpodContainerdApplyNode()
 
     try:
-        up_result_text, compose_yaml, saved_path = node.apply(
+        up_result_text, response, errors, compose_yaml, saved_path = node.apply(
             deployment,
             prompt="Local runtime smoke test.",
             project_name=args.project_name,
@@ -40,6 +46,10 @@ def main() -> int:
         up_result = json.loads(up_result_text)
         if up_result["returncode"] != 0:
             raise AssertionError(f"Containerd apply failed:\n{up_result_text}")
+        if errors:
+            raise AssertionError(f"Unexpected local runtime apply errors:\n{errors}")
+        if "local runtime smoke response" not in response:
+            raise AssertionError(f"Did not collect the response file from the agent container:\n{response}")
 
         services = inspect_project(args.project_name)
         if len(services) != 2:
@@ -60,7 +70,7 @@ def main() -> int:
         if llm_service not in dns:
             raise AssertionError(f"Agent container could not resolve LLM service {llm_service}: {dns}")
 
-        print(json.dumps({"compose_path": saved_path, "services": services, "ollama_host": ollama_host, "dns": dns, "compose_yaml_bytes": len(compose_yaml.encode())}, indent=2, sort_keys=True))
+        print(json.dumps({"compose_path": saved_path, "services": services, "ollama_host": ollama_host, "dns": dns, "response": response, "compose_yaml_bytes": len(compose_yaml.encode())}, indent=2, sort_keys=True))
         return 0
     finally:
         node.apply(
@@ -77,7 +87,8 @@ def main() -> int:
 def build_deployment():
     llm = RunpodLLMServerNode().build("Ollama", "smoke", "own_pod", "none")[0]
     agent = RunpodAgentNode().build("Pi", "smoke", "manual", "/workspace", llm=llm)[0]
-    return RunpodPodNode().build(agent, gpu_count=0, expose_public_ip=False, reuse_policy="always_create")[0]
+    command = RunpodSSHCommandNode().build("mkdir -p /workspace/e2e && printf 'local runtime smoke response\\n' > /workspace/e2e/agent-skill-report.txt", "before_start", 10, "fail")[0]
+    return RunpodPodNode().build(agent, gpu_count=0, expose_public_ip=False, reuse_policy="always_create", commands=command)[0]
 
 
 def inspect_project(project_name: str) -> list[dict[str, str]]:

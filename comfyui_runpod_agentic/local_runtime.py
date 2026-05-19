@@ -6,13 +6,15 @@ import re
 import shlex
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
+from .config import read_env_file
 from .planner import DeploymentPlan, ResourcePlan
-from .runner import launch_command_for_plan, launcher_runtime_files, startup_script_for_plan
+from .runner import launch_command_for_plan, launcher_runtime_files, pi_runtime_files, startup_script_for_plan
 
 DEFAULT_IMAGES = {
     "agent": "ubuntu:24.04",
@@ -45,6 +47,36 @@ class LocalApplyResult:
                 "engine": self.engine,
                 "action": self.action,
                 "compose_path": self.compose_path,
+                "command": self.command,
+                "returncode": self.returncode,
+                "stdout": self.stdout,
+                "stderr": self.stderr,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+
+
+@dataclass(frozen=True)
+class LocalRuntimeReadResult:
+    engine: str
+    project_name: str
+    role: str
+    path: str
+    container_id: str
+    command: list[str]
+    returncode: int
+    stdout: str
+    stderr: str
+
+    def to_text(self) -> str:
+        return json.dumps(
+            {
+                "engine": self.engine,
+                "project_name": self.project_name,
+                "role": self.role,
+                "path": self.path,
+                "container_id": self.container_id,
                 "command": self.command,
                 "returncode": self.returncode,
                 "stdout": self.stdout,
@@ -94,12 +126,35 @@ def compose_yaml_for_plan(plan: DeploymentPlan, *, project_name: str = "crag-loc
 def compose_env(resource: ResourcePlan, service_names: dict[str, str]) -> dict[str, str]:
     env = dict(resource.pod_input.get("env") or {})
     for key, value in list(env.items()):
-        env[key] = resolve_crag_placeholders(str(value), service_names)
+        env[key] = resolve_local_secret_placeholder(resolve_crag_placeholders(str(value), service_names))
     if resource.role == "sql" and env.get("DATABASE_KIND") == "postgres":
         env.setdefault("POSTGRES_DB", env.get("DATABASE_NAME", "app"))
         env.setdefault("POSTGRES_USER", env.get("DATABASE_USER", "app"))
         env.setdefault("POSTGRES_PASSWORD", env.get("DATABASE_PASSWORD", "app"))
     return env
+
+
+def resolve_local_secret_placeholder(value: str) -> str:
+    match = re.fullmatch(r"\{\{\s*RUNPOD_SECRET_([A-Za-z_][A-Za-z0-9_]*)\s*\}\}", value)
+    if not match:
+        return value
+    key = match.group(1)
+    return local_secret_values().get(key, value)
+
+
+def local_secret_values() -> dict[str, str]:
+    values: dict[str, str] = {}
+    repo_root = Path(__file__).resolve().parents[1]
+    paths = (
+        repo_root / ".env.d/runpod.env",
+        repo_root / ".env.d/ollama.env",
+        Path(os.environ.get("RUNPOD_ENV_FILE", ".env.d/runpod.env")),
+        Path(os.environ.get("OLLAMA_ENV_FILE", ".env.d/ollama.env")),
+    )
+    for path in paths:
+        values.update(read_env_file(path))
+    values.update(os.environ)
+    return values
 
 
 def resolve_crag_placeholders(value: str, service_names: dict[str, str]) -> str:
@@ -228,6 +283,8 @@ def local_runtime_file_writes(plan: DeploymentPlan) -> list[str]:
         lines.extend(shell_write_file_lines(f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"]))
     if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
         lines.extend(shell_write_file_lines(f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"]))
+    for relative_path, content in pi_runtime_files(plan.runtime_contract.env.values).items():
+        lines.extend(shell_write_file_lines(f"{base}/{relative_path}", content))
     for relative_path, content in launcher_runtime_files().items():
         lines.extend(shell_write_file_lines(f"{base}/{relative_path}", content))
     lines.append("chmod +x \"$crag_dir/launcher.sh\" \"$crag_dir\"/launcher.d/*.sh \"$crag_dir\"/launcher.d/harnesses/*.sh 2>/dev/null || true")
@@ -328,6 +385,111 @@ def apply_compose_file(
     return LocalApplyResult(engine, action, path, command, completed.returncode, completed.stdout, completed.stderr)
 
 
+def read_local_runtime_file(
+    engine: str,
+    project_name: str,
+    role: str,
+    path: str,
+    *,
+    timeout_seconds: int = 120,
+) -> LocalRuntimeReadResult:
+    deadline = time.time() + int(timeout_seconds)
+    last_stderr = ""
+    command: list[str] = []
+    container_id = ""
+    while time.time() < deadline:
+        try:
+            container_id = find_local_runtime_container(engine, project_name, role) or ""
+        except RuntimeError as exc:
+            return LocalRuntimeReadResult(engine, project_name, role, path, "", command, 127, "", str(exc))
+        if not container_id:
+            last_stderr = f"No running {role} container found for project {project_name}."
+            time.sleep(1)
+            continue
+        try:
+            command = local_runtime_command(engine, ["exec", container_id, "cat", path])
+        except RuntimeError as exc:
+            return LocalRuntimeReadResult(engine, project_name, role, path, container_id, command, 127, "", str(exc))
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=min(10, int(timeout_seconds)), check=False)
+        if completed.returncode == 0 and local_runtime_response_is_ready(path, completed.stdout):
+            return LocalRuntimeReadResult(engine, project_name, role, path, container_id, command, completed.returncode, completed.stdout, completed.stderr)
+        last_stderr = completed.stderr
+        logs_result = read_local_runtime_logs(engine, project_name, role, container_id)
+        if logs_result.returncode == 0 and local_runtime_logs_are_complete(logs_result.stdout):
+            return LocalRuntimeReadResult(engine, project_name, role, path, container_id, logs_result.command, logs_result.returncode, logs_result.stdout, logs_result.stderr)
+        time.sleep(1)
+    return LocalRuntimeReadResult(engine, project_name, role, path, container_id, command, 1, "", last_stderr)
+
+
+def read_local_runtime_logs(engine: str, project_name: str, role: str, container_id: str) -> LocalRuntimeReadResult:
+    try:
+        command = local_runtime_command(engine, ["logs", container_id])
+    except RuntimeError as exc:
+        return LocalRuntimeReadResult(engine, project_name, role, "<logs>", container_id, [], 127, "", str(exc))
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+    return LocalRuntimeReadResult(engine, project_name, role, "<logs>", container_id, command, completed.returncode, completed.stdout, completed.stderr)
+
+
+def local_runtime_logs_are_complete(logs: str) -> bool:
+    return any(
+        marker in logs
+        for marker in (
+            "[crag-local-runtime] startup mode is manual; launcher not started.",
+            "No compatible agent launcher was found",
+        )
+    )
+
+
+def local_runtime_response_is_ready(path: str, text: str) -> bool:
+    if path.endswith("/.runpod_agentic/response.txt"):
+        return "[crag-agent] complete" in text
+    return True
+
+
+def find_local_runtime_container(engine: str, project_name: str, role: str) -> str | None:
+    command = local_runtime_command(engine, ps_args_for_engine(engine))
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+    if completed.returncode != 0:
+        return None
+    for item in parse_container_list(completed.stdout):
+        name = str(item.get("Names") or item.get("Name") or item.get("NamesString") or "")
+        container_id = str(item.get("ID") or item.get("Id") or item.get("ContainerID") or "")
+        if not container_id or not name.startswith(f"{project_name}-"):
+            continue
+        if inspect_container_role(engine, container_id) == role:
+            return container_id
+    return None
+
+
+def ps_args_for_engine(engine: str) -> list[str]:
+    if engine == "containerd":
+        return ["ps", "--format", "json"]
+    if engine in {"docker", "podman"}:
+        return ["ps", "--format", "{{json .}}"]
+    raise RuntimeError(f"Unsupported local runtime engine: {engine}")
+
+
+def parse_container_list(raw: str) -> list[dict[str, object]]:
+    stripped = raw.strip()
+    if not stripped:
+        return []
+    if stripped.startswith("["):
+        data = json.loads(stripped)
+        return data if isinstance(data, list) else []
+    return [json.loads(line) for line in stripped.splitlines() if line.strip()]
+
+
+def inspect_container_role(engine: str, container_id: str) -> str | None:
+    command = local_runtime_command(engine, ["inspect", container_id])
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+    if completed.returncode != 0:
+        return None
+    data = json.loads(completed.stdout)
+    inspect = data[0] if isinstance(data, list) and data else data
+    labels = ((inspect.get("Config") or {}).get("Labels") or inspect.get("Labels") or {}) if isinstance(inspect, dict) else {}
+    return labels.get("comfyui-runpod-agentic.role") if isinstance(labels, dict) else None
+
+
 def command_for_engine(engine: str, compose_path: str, project_name: str, action: str) -> list[str]:
     if engine == "docker":
         return compose_command_for(local_runtime_base_command(["docker", "compose"]), compose_path, project_name, action)
@@ -339,6 +501,20 @@ def command_for_engine(engine: str, compose_path: str, project_name: str, action
         if not shutil.which("nerdctl"):
             raise RuntimeError("Containerd local runtime requires `nerdctl` on PATH; raw ctr does not support compose semantics.")
         return compose_command_for(local_runtime_base_command(["nerdctl", "compose"]), compose_path, project_name, action)
+    raise RuntimeError(f"Unsupported local runtime engine: {engine}")
+
+
+def local_runtime_command(engine: str, args: list[str]) -> list[str]:
+    if engine == "docker":
+        return local_runtime_base_command(["docker", *args])
+    if engine == "podman":
+        if not shutil.which("podman"):
+            raise RuntimeError("Podman local runtime requires `podman` on PATH.")
+        return local_runtime_base_command(["podman", *args])
+    if engine == "containerd":
+        if not shutil.which("nerdctl"):
+            raise RuntimeError("Containerd local runtime requires `nerdctl` on PATH.")
+        return local_runtime_base_command(["nerdctl", *args])
     raise RuntimeError(f"Unsupported local runtime engine: {engine}")
 
 
