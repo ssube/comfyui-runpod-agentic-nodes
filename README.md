@@ -35,6 +35,19 @@ App mode:
 </details>
 
 <details>
+<summary>Local Runtime Preflight Plan</summary>
+
+Graph mode:
+
+![Local runtime workflow](docs/assets/workflows/ui_local_runtime_plan.png)
+
+App mode:
+
+![Local runtime app mode](docs/assets/workflows/ui_local_runtime_plan_app.png)
+
+</details>
+
+<details>
 <summary>Neko and Ollama Agent Plan</summary>
 
 Graph mode:
