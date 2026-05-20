@@ -919,7 +919,11 @@ def public_http_endpoint(pod: dict[str, Any]) -> str | None:
 
 
 def readiness_probe_paths(role: str, env: dict[str, Any]) -> list[str]:
-    provider = str(env.get("LLM_PROVIDER") or env.get("VECTOR_PROVIDER") or "").lower()
+    provider = str(env.get("LLM_PROVIDER") or env.get("VECTOR_KIND") or env.get("VECTOR_PROVIDER") or env.get("BROWSER_KIND") or "").lower()
+    if role == "browser" and provider == "playwright":
+        return ["/json/version", "/"]
+    if role == "browser" and provider == "neko":
+        return ["/", "/api/health"]
     if role == "llm" and provider == "ollama":
         return ["/api/tags"]
     if role == "llm" and provider == "vllm":
@@ -927,7 +931,7 @@ def readiness_probe_paths(role: str, env: dict[str, Any]) -> list[str]:
     if role == "vector" and provider == "qdrant":
         return ["/readyz", "/collections"]
     if role == "vector" and provider == "chroma":
-        return ["/api/v2/heartbeat"]
+        return ["/api/v2/heartbeat", "/api/v1/heartbeat"]
     return ["/"]
 
 

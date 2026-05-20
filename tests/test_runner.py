@@ -382,7 +382,9 @@ def test_runner_installs_skills_before_user_commands(tmp_path, monkeypatch):
 
 def test_readiness_probe_paths_use_service_health_endpoints():
     assert readiness_probe_paths("llm", {"LLM_PROVIDER": "ollama"}) == ["/api/tags"]
-    assert readiness_probe_paths("vector", {"VECTOR_PROVIDER": "qdrant"}) == ["/readyz", "/collections"]
+    assert readiness_probe_paths("vector", {"VECTOR_KIND": "qdrant"}) == ["/readyz", "/collections"]
+    assert readiness_probe_paths("vector", {"VECTOR_KIND": "chroma"}) == ["/api/v2/heartbeat", "/api/v1/heartbeat"]
+    assert readiness_probe_paths("browser", {"BROWSER_KIND": "playwright"}) == ["/json/version", "/"]
 
 
 def test_first_ready_probe_accepts_successful_http_status(monkeypatch):
