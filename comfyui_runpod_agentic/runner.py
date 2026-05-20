@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .planner import DeploymentPlan, Planner
 from .runpod_client import RunpodClient, RunpodClientProtocol
@@ -26,12 +26,22 @@ def dependency_ready_timeout_seconds() -> int:
     return int(os.environ.get("RUNPOD_DEPENDENCY_READY_TIMEOUT_SECONDS", "1200"))
 
 
+def agent_response_timeout_seconds() -> int:
+    return int(os.environ.get("CRAG_AGENT_RESPONSE_TIMEOUT_SECONDS", "120"))
+
+
+class ProgressReporter(Protocol):
+    def set_total(self, total: int) -> None: ...
+    def update(self, message: str = "") -> None: ...
+
+
 @dataclass
 class RunpodRunner:
     runpod_client: RunpodClientProtocol | None = None
     ssh_client: SSHClientProtocol | None = None
     state_store: StateStore | None = None
     planner: Planner | None = None
+    progress: ProgressReporter | None = None
 
     def __post_init__(self) -> None:
         if self.runpod_client is None:
@@ -46,6 +56,7 @@ class RunpodRunner:
     def run(self, deployment: DeploymentSpec, *, mode: str, prompt: str = "", workflow_graph: Any = None, on_error: str = "stop_created") -> dict[str, Any]:
         validate_deployment(deployment, mode=mode, require_api_key=True)
         plan = self.planner.build(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph)
+        self._set_progress_total(plan)
         self.reconcile_managed_pods()
         self.state_store.record_run(plan.run_id, plan.workflow_hash, plan.deployment_hash, mode, "started")
         try:
@@ -53,6 +64,7 @@ class RunpodRunner:
                 return self._lifecycle(plan, mode)
             result = self._apply(plan, wait=mode == "apply_and_wait")
             self.state_store.record_run(plan.run_id, plan.workflow_hash, plan.deployment_hash, mode, "completed")
+            self._progress_step("completed")
             return result
         except Exception as exc:
             self.state_store.add_event(plan.run_id, "error", str(exc))
@@ -65,6 +77,7 @@ class RunpodRunner:
         created: dict[str, dict[str, Any]] = {}
         resource_ids: dict[str, str] = {}
         for resource in plan.resources:
+            self._progress_step(f"create {resource.role}")
             pending_resource_id = self.state_store.record_resource(plan.run_id, resource, status="creating")
             self.state_store.add_event(
                 plan.run_id,
@@ -89,23 +102,32 @@ class RunpodRunner:
             resource_ids[resource.name] = resource_id
             self.state_store.add_event(plan.run_id, "pod_created", resource.name, resource_id=resource_id, payload={"pod_id": pod.get("id")})
             if resource.role != "agent":
+                self._progress_step(f"wait {resource.role}")
                 created[resource.name] = self._wait_dependency_ready(resource, pod, plan.run_id, resource_id)
 
         agent = next(resource for resource in plan.resources if resource.role == "agent")
         resolved_contract = resolve_dependency_endpoints(plan, created)
         plan = replace(plan, runtime_contract=resolved_contract)
         agent_pod = created[agent.name]
+        self._progress_step("wait ssh")
         host, port = self._wait_ssh_endpoint(agent_pod, plan)
         self._wait_ssh_ready(host, port)
-        response, errors = self._run_agent_ssh_steps(plan, host, port, resource_ids.get(agent.name))
+        response, errors = self._run_agent_ssh_steps(plan, host, port, resource_ids.get(agent.name), wait=wait)
+        keep_alive_result = self._enforce_response_keep_alive(plan, agent_pod, response_collected=bool(response))
         status = "waiting" if wait else "launched"
-        return {"run_id": plan.run_id, "status": status, "pods": {name: pod.get("id") for name, pod in created.items()}, "response": response, "errors": errors, "plan": plan.to_dict()}
+        if wait and response:
+            status = "completed"
+        result = {"run_id": plan.run_id, "status": status, "pods": {name: pod.get("id") for name, pod in created.items()}, "response": response, "errors": errors, "plan": plan.to_dict()}
+        if keep_alive_result:
+            result["keep_alive"] = keep_alive_result
+        return result
 
-    def _run_agent_ssh_steps(self, plan: DeploymentPlan, host: str, port: int, resource_id: str | None) -> tuple[str, str]:
+    def _run_agent_ssh_steps(self, plan: DeploymentPlan, host: str, port: int, resource_id: str | None, *, wait: bool = False) -> tuple[str, str]:
         commands = [action for action in plan.actions if action.action == "RUN_SSH_COMMAND"]
         response_parts = []
         error_parts = []
         for action in commands:
+            self._progress_step(f"ssh {action.detail.get('phase', 'command')}")
             command = action.detail["command"]
             log_paths = self._command_log_paths(plan.run_id, action.detail)
             command_id = self.state_store.start_command(
@@ -129,11 +151,13 @@ class RunpodRunner:
             self.state_store.add_event(plan.run_id, "ssh_command", command, payload={"exit_code": result.exit_code})
             if result.exit_code != 0 and action.detail.get("failure_policy") == "fail":
                 raise RuntimeError(f"SSH command failed with exit code {result.exit_code}: {command}")
+        self._progress_step("write runtime")
         self._write_runtime_files(plan, host, port)
         launch = self._launch_command(plan)
         if not launch:
             self.state_store.add_event(plan.run_id, "agent_launch_skipped", "manual startup mode")
             return "".join(response_parts), "".join(error_parts)
+        self._progress_step("launch agent")
         result = self.ssh_client.run(host, port, launch)
         if result.stdout:
             response_parts.append(result.stdout)
@@ -142,7 +166,83 @@ class RunpodRunner:
         self.state_store.add_event(plan.run_id, "agent_launch", launch, payload={"exit_code": result.exit_code})
         if result.exit_code != 0:
             raise RuntimeError(f"Agent launch failed with exit code {result.exit_code}.")
+        if wait:
+            self._progress_step("wait response")
+            response, errors = self._wait_agent_response(plan, host, port)
+            if response:
+                response_parts.append(response)
+            if errors:
+                error_parts.append(errors)
         return "".join(response_parts), "".join(error_parts)
+
+    def _wait_agent_response(self, plan: DeploymentPlan, host: str, port: int, timeout_seconds: int | None = None, interval_seconds: int = 2) -> tuple[str, str]:
+        workspace = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"].get("WORKSPACE_DIR", "/workspace")
+        base = workspace.rstrip("/") + "/.runpod_agentic"
+        response_path = plan.runtime_contract.env.values.get("AGENT_RESPONSE_FILE", f"{base}/response.txt")
+        errors_path = plan.runtime_contract.env.values.get("AGENT_ERRORS_FILE", f"{base}/errors.txt")
+        log_path = f"{base}/agent.log"
+        deadline = time.monotonic() + (timeout_seconds if timeout_seconds is not None else agent_response_timeout_seconds())
+        last_error = ""
+        while time.monotonic() < deadline:
+            response = self._read_remote_file(host, port, response_path)
+            errors = self._read_remote_file(host, port, errors_path)
+            if response is not None:
+                self.state_store.add_event(plan.run_id, "agent_response_collected", response_path)
+                return response, errors or ""
+            log_text = self._read_remote_file(host, port, log_path)
+            if log_text and "[crag-agent] complete status=" in log_text:
+                self.state_store.add_event(plan.run_id, "agent_log_collected", log_path)
+                return log_text, errors or ""
+            last_error = errors or last_error
+            time.sleep(interval_seconds)
+        self.state_store.add_event(plan.run_id, "agent_response_timeout", response_path, payload={"timeout_seconds": timeout_seconds if timeout_seconds is not None else agent_response_timeout_seconds()})
+        return "", last_error
+
+    def _read_remote_file(self, host: str, port: int, path: str) -> str | None:
+        result = self.ssh_client.run(host, port, f"test -s {shell_env(path)} && cat {shell_env(path)}", timeout_seconds=20)
+        if result.exit_code != 0:
+            return None
+        return result.stdout
+
+    def _enforce_response_keep_alive(self, plan: DeploymentPlan, agent_pod: dict[str, Any], *, response_collected: bool) -> dict[str, Any] | None:
+        policy = plan.keep_alive
+        if not policy or policy.mode in {"manual", "time"} or policy.enforcement not in {"server_side", "both"}:
+            return None
+        pod_id = agent_pod.get("id")
+        if not pod_id:
+            return None
+        if policy.mode == "turns":
+            turns = self.state_store.increment_counter(plan.run_id, "turns") if response_collected else 0
+            if policy.turn_limit and turns >= policy.turn_limit:
+                self._apply_keep_alive_action(pod_id, policy)
+                return {"mode": "turns", "action": policy.action, "turns": turns}
+            return {"mode": "turns", "turns": turns}
+        if policy.mode == "cost" and policy.cost_limit_usd:
+            cost_per_hr = float(agent_pod.get("adjustedCostPerHr") or agent_pod.get("costPerHr") or 0)
+            created = (agent_pod.get("runtime") or {}).get("uptimeInSeconds") or 0
+            estimated = (float(created) / 3600.0) * cost_per_hr
+            if estimated >= policy.cost_limit_usd:
+                self._apply_keep_alive_action(pod_id, policy)
+                return {"mode": "cost", "action": policy.action, "estimated_cost_usd": estimated}
+            return {"mode": "cost", "estimated_cost_usd": estimated}
+        return None
+
+    def _apply_keep_alive_action(self, pod_id: str, policy: KeepAlivePolicy) -> None:
+        self._progress_step(f"keep alive {policy.action}")
+        if policy.action == "terminate":
+            self.runpod_client.terminate_pod(pod_id)
+        else:
+            self.runpod_client.stop_pod(pod_id)
+
+    def _set_progress_total(self, plan: DeploymentPlan) -> None:
+        if not self.progress:
+            return
+        total = max(1, len(plan.resources) + len(plan.actions) + 2)
+        self.progress.set_total(total)
+
+    def _progress_step(self, message: str) -> None:
+        if self.progress:
+            self.progress.update(message)
 
     def _wait_dependency_ready(self, resource, pod: dict[str, Any], run_id: str, resource_id: str, timeout_seconds: int | None = None, interval_seconds: int = 5) -> dict[str, Any]:
         pod_id = pod.get("id")

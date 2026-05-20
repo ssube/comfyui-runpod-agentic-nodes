@@ -31,6 +31,7 @@ class FakeRunpodClient:
     def __init__(self, fail_create=False):
         self.created = []
         self.stopped = []
+        self.terminated = []
         self.pods = {}
         self.fail_create = fail_create
 
@@ -38,7 +39,7 @@ class FakeRunpodClient:
         self.created.append(input)
         if self.fail_create:
             raise RuntimeError("create failed")
-        pod = {"id": f"pod-{len(self.created)}", "name": input["name"], "desiredStatus": "RUNNING", "runtime": {"ports": [{"ip": "127.0.0.1", "privatePort": 22, "publicPort": 2222, "type": "tcp"}]}}
+        pod = {"id": f"pod-{len(self.created)}", "name": input["name"], "desiredStatus": "RUNNING", "costPerHr": 0.1, "runtime": {"uptimeInSeconds": 0, "ports": [{"ip": "127.0.0.1", "privatePort": 22, "publicPort": 2222, "type": "tcp"}]}}
         if any(port.get("container_port") == 3000 for port in input.get("ports", [])):
             pod["runtime"]["ports"].append({"ip": "127.0.0.1", "privatePort": 3000, "publicPort": 3000, "type": "http"})
         self.pods[pod["id"]] = pod
@@ -58,6 +59,7 @@ class FakeRunpodClient:
         return {"id": pod_id, "desiredStatus": "RUNNING"}
 
     def terminate_pod(self, pod_id):
+        self.terminated.append(pod_id)
         return None
 
 
@@ -74,6 +76,18 @@ class FakeSSHClient:
 
     def write_file(self, host, port, path, content):
         self.files[path] = content
+
+
+class FakeProgress:
+    def __init__(self):
+        self.total = 0
+        self.messages = []
+
+    def set_total(self, total):
+        self.total = total
+
+    def update(self, message=""):
+        self.messages.append(message)
 
 
 def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
@@ -97,6 +111,21 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
     assert any(command.endswith("pi --help >/dev/null") for command in ssh.commands)
 
 
+def test_runner_reports_progress(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    progress = FakeProgress()
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"), progress=progress)
+
+    runner.run(deployment, mode="apply")
+
+    assert progress.total > 1
+    assert "create agent" in progress.messages
+    assert "write runtime" in progress.messages
+    assert "completed" in progress.messages
+
+
 def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     command = "printf response && printf warning >&2"
@@ -110,6 +139,42 @@ def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):
 
     assert result["response"] == "response\n"
     assert result["errors"] == "warning\n"
+
+
+def test_runner_apply_and_wait_collects_agent_response_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setenv("CRAG_AGENT_RESPONSE_TIMEOUT_SECONDS", "1")
+    agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    ssh = FakeSSHClient(
+        outputs={
+            "test -s '/workspace/.runpod_agentic/response.txt' && cat '/workspace/.runpod_agentic/response.txt'": ("agent done\n", ""),
+            "test -s '/workspace/.runpod_agentic/errors.txt' && cat '/workspace/.runpod_agentic/errors.txt'": ("", ""),
+        }
+    )
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply_and_wait")
+
+    assert result["status"] == "completed"
+    assert result["response"].endswith("agent done\n")
+    assert any(event["event_type"] == "agent_response_collected" for event in runner.state_store.list_events(result["run_id"]))
+
+
+def test_runner_apply_and_wait_enforces_turn_keep_alive(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setenv("CRAG_AGENT_RESPONSE_TIMEOUT_SECONDS", "1")
+    agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
+    keep_alive = KeepAliveNode().build("turns", "stop", 0, "seconds", 1, 0.0, 0, "server_side")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, keep_alive=keep_alive)[0]
+    ssh = FakeSSHClient(outputs={"test -s '/workspace/.runpod_agentic/response.txt' && cat '/workspace/.runpod_agentic/response.txt'": ("one turn\n", "")})
+    runpod = FakeRunpodClient()
+    runner = RunpodRunner(runpod_client=runpod, ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply_and_wait")
+
+    assert result["keep_alive"] == {"mode": "turns", "action": "stop", "turns": 1.0}
+    assert runpod.stopped == ["pod-1"]
 
 
 def test_run_node_plan_exposes_response_and_errors_slots():

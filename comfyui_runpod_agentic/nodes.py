@@ -753,16 +753,57 @@ class RunOnRunpodNode:
         return {"required": {"deployment": (RUNPOD_DEPLOYMENT_SPEC,), "mode": (["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"],), "prompt": ("STRING", {"multiline": True, "default": ""}), "on_error": (["stop_created", "terminate_created", "leave_running"],), "log_level": (["info", "debug"],)}, "hidden": {"workflow_graph": "PROMPT"}}
 
     def run(self, deployment: DeploymentSpec, mode: str = "plan", prompt: str = "", on_error: str = "stop_created", log_level: str = "info", workflow_graph: Any = None):
+        progress = ComfyProgress()
         if mode != "plan":
             from .runner import RunpodRunner
 
             try:
-                result = RunpodRunner().run(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
+                try:
+                    runner = RunpodRunner(progress=progress)
+                except TypeError:
+                    runner = RunpodRunner()
+                result = runner.run(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
             except Exception as exc:
                 result = {"status": "failed", "mode": mode, "error": str(exc), "errors": str(exc)}
             return (json.dumps(result, indent=2, sort_keys=True), str(result.get("response") or ""), str(result.get("errors") or ""))
         plan = Planner().build(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph)
+        progress.set_total(max(1, len(plan.actions)))
+        progress.update("plan")
         return (json.dumps(plan.to_dict(), indent=2, sort_keys=True), "", "")
+
+
+class ComfyProgress:
+    def __init__(self):
+        self.total = 1
+        self.current = 0
+        self.bar = None
+        try:
+            from comfy.utils import ProgressBar  # type: ignore
+
+            self.bar = ProgressBar(self.total)
+        except Exception:
+            self.bar = None
+
+    def set_total(self, total: int) -> None:
+        self.total = max(1, int(total))
+        self.current = 0
+        if self.bar is None:
+            return
+        try:
+            from comfy.utils import ProgressBar  # type: ignore
+
+            self.bar = ProgressBar(self.total)
+        except Exception:
+            self.bar = None
+
+    def update(self, _message: str = "") -> None:
+        self.current = min(self.total, self.current + 1)
+        if self.bar is None:
+            return
+        if hasattr(self.bar, "update_absolute"):
+            self.bar.update_absolute(self.current, self.total)
+        elif hasattr(self.bar, "update"):
+            self.bar.update(1)
 
 
 class StartupScriptNode:
