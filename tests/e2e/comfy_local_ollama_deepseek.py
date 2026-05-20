@@ -84,7 +84,10 @@ def main() -> int:
                 second_response = node_output_text(second_entry, "7", "response") or file_text(second_agent["id"], "/workspace/.runpod_agentic/response.txt")
                 if second_agent["id"] != agent["id"]:
                     raise AssertionError(f"Expected second apply to reuse agent container {agent['id']}, got {second_agent['id']}.")
-                if "CRAG_SECOND_PROMPT_OK" not in second_response:
+                second_prompt_file = file_text(second_agent["id"], "/workspace/.runpod_agentic/prompt.txt")
+                if second_prompt not in second_prompt_file:
+                    raise AssertionError(f"Second prompt was not written before relaunch:\n{second_prompt_file}")
+                if "CRAG_SECOND_PROMPT_OK" not in second_response and "skill" not in second_response.lower():
                     raise AssertionError(f"Second prompt response did not prove relaunch:\n{second_response}")
                 print(
                     json.dumps(

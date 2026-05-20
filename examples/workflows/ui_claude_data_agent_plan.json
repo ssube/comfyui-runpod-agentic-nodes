@@ -527,12 +527,6 @@
           "shape": 7,
           "type": "RUNPOD_KEEPALIVE_POLICY",
           "link": 9
-        },
-        {
-          "name": "ssh_access",
-          "shape": 7,
-          "type": "RUNPOD_SSH_ACCESS_POLICY",
-          "link": null
         }
       ],
       "outputs": [
@@ -548,15 +542,7 @@
       "properties": {
         "Node name for S&R": "Deploy"
       },
-      "widgets_values": [
-        "NVIDIA RTX A4000",
-        1,
-        "SECURE",
-        40,
-        20,
-        true,
-        "always_create"
-      ]
+      "widgets_values": []
     },
     {
       "id": 11,
@@ -610,8 +596,15 @@
         "Node name for S&R": "RunOnRunpod"
       },
       "widgets_values": [
-        "plan",
         "Plan a research workspace with Claude API, Postgres, Qdrant, Playwright, and one downloaded skill.",
+        "plan",
+        "NVIDIA RTX A4000",
+        1,
+        "SECURE",
+        40,
+        20,
+        true,
+        "always_create",
         "terminate_created",
         "info"
       ]
@@ -915,9 +908,9 @@
       "title": "External Inputs",
       "bounding": [
         80,
-        90,
+        80,
         380,
-        520
+        550
       ],
       "color": "#355f9c",
       "font_size": 24,
@@ -927,9 +920,9 @@
       "title": "Stateful Storage",
       "bounding": [
         80,
-        650,
-        380,
-        470
+        640,
+        400,
+        460
       ],
       "color": "#355f9c",
       "font_size": 24,
@@ -939,9 +932,9 @@
       "title": "Data Services And Skills",
       "bounding": [
         500,
-        250,
-        470,
-        920
+        240,
+        460,
+        908
       ],
       "color": "#6b5c9d",
       "font_size": 24,
@@ -951,9 +944,9 @@
       "title": "Agent Policy",
       "bounding": [
         980,
-        90,
+        80,
         440,
-        950
+        940
       ],
       "color": "#3f7f5f",
       "font_size": 24,
@@ -963,9 +956,9 @@
       "title": "Deployment",
       "bounding": [
         1440,
-        460,
-        870,
-        790
+        440,
+        1225,
+        780
       ],
       "color": "#8a6f38",
       "font_size": 24,

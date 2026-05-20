@@ -10,8 +10,8 @@ import sys
 from comfyui_runpod_agentic.nodes import (
     AgentNode,
     DeployNode,
-    DeployWithContainerdNode,
     LLMServerNode,
+    RunLocalContainersNode,
     SSHCommandNode,
 )
 
@@ -27,17 +27,19 @@ def main() -> int:
 
     if not shutil.which("nerdctl"):
         raise SystemExit("nerdctl is required for the containerd local runtime smoke test.")
-    if not containerd_runtime_ready():
-        raise SystemExit("containerd local runtime is not running; start rootless containerd before running local e2e.")
+    if not containerd_runtime_ready(args.sudo_runtime):
+        hint = "start rootless containerd or pass --sudo-runtime for a system containerd socket"
+        raise SystemExit(f"containerd local runtime is not running; {hint} before running local e2e.")
     if args.sudo_runtime:
         os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = "1"
 
     deployment = build_deployment()
-    node = DeployWithContainerdNode()
+    node = RunLocalContainersNode()
 
     try:
         up_result_text, response, errors, compose_yaml, saved_path = node.apply(
             deployment,
+            engine=args.engine,
             prompt="Local runtime smoke test.",
             project_name=args.project_name,
             output_path=args.output_path,
@@ -49,7 +51,7 @@ def main() -> int:
         up_result = json.loads(up_result_text)
         if up_result["returncode"] != 0:
             raise AssertionError(f"Containerd apply failed:\n{up_result_text}")
-        if errors:
+        if any(marker in errors.lower() for marker in ("level=fatal", "level=error", "error while")):
             raise AssertionError(f"Unexpected local runtime apply errors:\n{errors}")
         if "fake pi harness response" not in response or "[crag-agent] complete status=0" not in response:
             raise AssertionError(f"Did not collect the response file from the agent container:\n{response}")
@@ -107,11 +109,14 @@ def _build_deployment():
         "before_start",
         "fail",
     )[0]
-    return DeployNode().build(agent, gpu_count=0, expose_public_ip=False, reuse_policy="always_create", commands=command)[0]
+    return DeployNode().build(agent, commands=command)[0]
 
 
-def containerd_runtime_ready() -> bool:
-    return subprocess.run(["nerdctl", "info"], capture_output=True, text=True, check=False).returncode == 0
+def containerd_runtime_ready(use_sudo: bool) -> bool:
+    command = ["nerdctl", "info"]
+    if use_sudo:
+        command = ["sudo", *command]
+    return subprocess.run(command, capture_output=True, text=True, check=False).returncode == 0
 
 
 def inspect_project(project_name: str) -> list[dict[str, str]]:

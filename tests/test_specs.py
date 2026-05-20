@@ -7,7 +7,6 @@ from comfyui_runpod_agentic.nodes import (
     BrowserNode,
     BuildContainerNode,
     DeployNode,
-    DeployWithContainerdNode,
     LanguageRuntimeNode,
     LLMApiNode,
     LLMServerNode,
@@ -16,11 +15,13 @@ from comfyui_runpod_agentic.nodes import (
     NetworkStorageNode,
     PackageNode,
     RemoteSQLDatabaseNode,
+    RunLocalContainersNode,
+    RunOnRunpodNode,
     SkillFrameworkNode,
     SkillNode,
     SSHCommandNode,
 )
-from comfyui_runpod_agentic.setup_commands import harness_install_command
+from comfyui_runpod_agentic.setup_commands import container_snapshot_command, harness_install_command
 from comfyui_runpod_agentic.validation import ValidationError
 
 
@@ -32,9 +33,7 @@ def test_user_facing_core_node_names():
     assert NODE_DISPLAY_NAME_MAPPINGS["RunOnRunpod"] == "Run on Runpod"
     assert NODE_DISPLAY_NAME_MAPPINGS["StartupScript"] == "Startup Script"
     assert NODE_DISPLAY_NAME_MAPPINGS["ComposeYAML"] == "Compose YAML"
-    assert NODE_DISPLAY_NAME_MAPPINGS["DeployWithDocker"] == "Deploy with Docker"
-    assert NODE_DISPLAY_NAME_MAPPINGS["DeployWithPodman"] == "Deploy with Podman"
-    assert NODE_DISPLAY_NAME_MAPPINGS["DeployWithContainerd"] == "Deploy with Containerd"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunLocalContainers"] == "Run Local Containers"
     assert NODE_DISPLAY_NAME_MAPPINGS["RemoteSQLDatabase"] == "Remote SQL Database"
     assert NODE_DISPLAY_NAME_MAPPINGS["LocalSQLDatabase"] == "Local SQL Database"
     assert "RunpodPod" not in NODE_DISPLAY_NAME_MAPPINGS
@@ -47,11 +46,32 @@ def test_llm_nodes_are_grouped_under_apis_category():
 
 
 def test_local_runtime_nodes_expose_deployment_actions_only():
-    action_choices = DeployWithContainerdNode.INPUT_TYPES()["required"]["action"][0]
+    action_choices = RunLocalContainersNode.INPUT_TYPES()["required"]["action"][0]
 
     assert action_choices == ["save_only", "plan", "apply", "apply_and_wait", "stop", "terminate"]
     assert "config" not in action_choices
     assert "pull" not in action_choices
+
+
+def test_terminal_run_nodes_put_prompt_first():
+    assert next(iter(RunOnRunpodNode.INPUT_TYPES()["required"])) == "prompt"
+    assert next(iter(RunLocalContainersNode.INPUT_TYPES()["required"])) == "prompt"
+
+
+def test_deploy_is_graph_only_and_runpod_terminal_owns_placement_options():
+    deploy_required = DeployNode.INPUT_TYPES()["required"]
+    deploy_optional = DeployNode.INPUT_TYPES()["optional"]
+    runpod_required = RunOnRunpodNode.INPUT_TYPES()["required"]
+    local_required = RunLocalContainersNode.INPUT_TYPES()["required"]
+
+    assert list(deploy_required) == ["app"]
+    assert list(deploy_optional) == ["network_storage", "s3_storage", "commands", "keep_alive"]
+    assert "ssh_access" not in deploy_optional
+    assert {"gpu_type_id", "gpu_count", "cloud_type", "container_disk_gb", "volume_gb", "expose_public_ip", "reuse_policy"} <= set(runpod_required)
+    assert "ssh_access" in RunOnRunpodNode.INPUT_TYPES()["optional"]
+    assert "engine" in local_required
+    assert "reuse_policy" in local_required
+    assert not {"gpu_type_id", "gpu_count", "cloud_type", "container_disk_gb", "volume_gb", "expose_public_ip"} & set(local_required)
 
 
 def test_ollama_deepseek_example_uses_setup_nodes_for_packages():
@@ -73,10 +93,12 @@ def test_container_snapshot_example_uses_build_container_plan():
     class_types = [node["class_type"] for node in workflow.values()]
 
     assert "BuildContainer" in class_types
-    assert workflow["3"]["inputs"]["previous"] == ["2", 0]
+    assert "RunLocalContainers" not in class_types
+    assert workflow["3"]["inputs"]["deployment"] == ["6", 0]
+    assert "previous" not in workflow["3"]["inputs"]
+    assert workflow["3"]["inputs"]["container_runtime"] == "nerdctl"
     assert workflow["3"]["inputs"]["push_to_docker_hub"] is False
-    assert workflow["7"]["inputs"]["action"] == "plan"
-    assert workflow["7"]["inputs"]["response_timeout_seconds"] == 0
+    assert workflow["6"]["inputs"]["commands"] == ["2", 0]
 
 
 def test_ollama_deepseek_ui_example_has_groups_and_positions():
@@ -98,9 +120,35 @@ def test_ui_examples_are_screenshot_ready_with_named_groups_and_positions():
         assert all(group.get("title") for group in workflow["groups"]), path
         assert all(isinstance(node.get("pos"), list) and len(node["pos"]) == 2 for node in workflow["nodes"]), path
         assert all(isinstance(node.get("size"), list) and len(node["size"]) == 2 for node in workflow["nodes"]), path
+        assert all(any(group_contains_node(group["bounding"], node["pos"], node["size"]) for group in workflow["groups"]) for node in workflow["nodes"]), path
         for index, first in enumerate(workflow["groups"]):
             for second in workflow["groups"][index + 1 :]:
                 assert group_overlap_area(first["bounding"], second["bounding"]) == 0, path
+
+
+def test_ui_examples_match_terminal_widget_order():
+    for path in sorted(Path("examples/workflows").glob("ui_*.json")):
+        workflow = json.loads(path.read_text())
+        for node in workflow["nodes"]:
+            values = node.get("widgets_values") or []
+            if node["type"] == "RunOnRunpod":
+                assert len(values) == 11, path
+                assert isinstance(values[0], str) and values[1] in {"plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"}, path
+                assert values[4] in {"auto", "SECURE", "COMMUNITY"}, path
+                assert values[9] in {"stop_created", "terminate_created", "leave_running"}, path
+                assert values[10] in {"info", "debug"}, path
+            if node["type"] == "RunLocalContainers":
+                assert len(values) == 11, path
+                assert isinstance(values[0], str) and values[1] in {"containerd", "docker", "podman"}, path
+                assert values[4] in {"save_only", "plan", "apply", "apply_and_wait", "stop", "terminate"}, path
+                assert values[10] in {"reuse_matching", "always_create", "resume_stopped"}, path
+
+
+def group_contains_node(group: list[float], position: list[float], size: list[float]) -> bool:
+    group_x, group_y, group_width, group_height = group
+    node_x, node_y = position
+    node_width, node_height = size
+    return group_x <= node_x and group_y <= node_y and node_x + node_width <= group_x + group_width and node_y + node_height <= group_y + group_height
 
 
 def group_overlap_area(first: list[float], second: list[float]) -> float:
@@ -191,15 +239,17 @@ def test_language_runtime_node_installs_node_from_nodesource_and_python_from_apt
 
 
 def test_build_container_node_commits_and_pushes_with_dockerhub_env():
-    snapshot = BuildContainerNode().build("docker.io/example/crag:latest", "nerdctl", True)[0]
+    inputs = BuildContainerNode.INPUT_TYPES()["required"]
+    command = container_snapshot_command("docker.io/example/crag:latest", "nerdctl", True, "DOCKERHUB_USERNAME", "DOCKERHUB_TOKEN")
 
-    command = snapshot.commands[0]
-    assert command.phase == "after_ready"
-    assert "nerdctl" in command.command
-    assert "commit \"$container_id\" \"$image_tag\"" in command.command
-    assert "DOCKERHUB_USERNAME" in command.command
-    assert "DOCKERHUB_TOKEN" in command.command
-    assert "push \"$image_tag\"" in command.command
+    assert "deployment" in inputs
+    assert "container_runtime" in inputs
+    assert BuildContainerNode.OUTPUT_NODE is True
+    assert "nerdctl" in command
+    assert "commit \"$container_id\" \"$image_tag\"" in command
+    assert "DOCKERHUB_USERNAME" in command
+    assert "DOCKERHUB_TOKEN" in command
+    assert "push \"$image_tag\"" in command
 
 
 def test_command_nodes_ignore_legacy_order_argument_and_infer_from_chain():

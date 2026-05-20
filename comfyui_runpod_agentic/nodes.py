@@ -4,6 +4,7 @@ import json
 import os
 import shlex
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +83,26 @@ def generated_volume_id(node_id: str | None, volume_name: str | None) -> str:
     suffix = "".join(ch for ch in str(node_id or uuid.uuid4().hex[:8]).lower() if ch.isalnum())[:8] or uuid.uuid4().hex[:8]
     base = norm(volume_name or "crag-workspace").replace("_", "-")
     return f"{base}-{suffix}"
+
+
+def default_resource_hints() -> PodResourceHints:
+    return PodResourceHints(None, 1, None, 40, None, True, False)
+
+
+def with_terminal_options(
+    deployment: DeploymentSpec,
+    *,
+    gpu_type_id: str = "",
+    gpu_count: int = 1,
+    cloud_type: str = "auto",
+    container_disk_gb: int = 40,
+    volume_gb: int = 0,
+    expose_public_ip: bool = True,
+    reuse_policy: str = "reuse_matching",
+    ssh_access: SSHAccessPolicy | None = None,
+) -> DeploymentSpec:
+    hints = PodResourceHints(gpu_type_id or None, int(gpu_count), None if cloud_type == "auto" else cloud_type, int(container_disk_gb), int(volume_gb) or None, bool(expose_public_ip), int(gpu_count) == 0)
+    return replace(deployment, resource_hints=hints, reuse_policy=reuse_policy, ssh_access=ssh_access or deployment.ssh_access)
 
 
 class BrowserNode:
@@ -658,31 +679,73 @@ class LanguageRuntimeNode:
 
 
 class BuildContainerNode:
-    CATEGORY = "Runpod/Command"
-    RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
-    RETURN_NAMES = ("commands",)
-    FUNCTION = "build"
+    CATEGORY = "Runpod/Core"
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("result", "response", "errors", "compose_yaml", "saved_path")
+    FUNCTION = "apply"
+    OUTPUT_NODE = True
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "deployment": (RUNPOD_DEPLOYMENT_SPEC,),
                 "image_tag": ("STRING", {"default": "docker.io/user/crag-agent:latest"}),
-                "runtime": (["nerdctl", "docker", "podman"],),
+                "container_runtime": (["nerdctl", "docker", "podman"],),
                 "push_to_docker_hub": ("BOOLEAN", {"default": False}),
                 "dockerhub_username_env": ("STRING", {"default": "DOCKERHUB_USERNAME"}),
                 "dockerhub_token_env": ("STRING", {"default": "DOCKERHUB_TOKEN"}),
                 "failure_policy": (["fail", "continue", "retry"],),
                 "retry_count": ("INT", {"default": 0, "min": 0}),
+                "project_name": ("STRING", {"default": "crag-build"}),
+                "output_path": ("STRING", {"default": "artifacts/local-runtime/build-compose.yaml"}),
+                "use_sudo": ("BOOLEAN", {"default": False}),
+                "timeout_seconds": ("INT", {"default": 1800, "min": 1}),
             },
-            "optional": {"previous": (RUNPOD_COMMAND_SSH,)},
-            "hidden": {"node_id": "UNIQUE_ID"},
+            "hidden": {"workflow_graph": "PROMPT"},
         }
 
-    def build(self, image_tag: str, runtime: str = "nerdctl", push_to_docker_hub: bool = False, dockerhub_username_env: str = "DOCKERHUB_USERNAME", dockerhub_token_env: str = "DOCKERHUB_TOKEN", failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
-        commands = list(previous.commands) if previous else []
-        commands.append(SSHCommand(container_snapshot_command(image_tag, runtime, bool(push_to_docker_hub), dockerhub_username_env, dockerhub_token_env), "after_ready", inferred_command_order(previous), failure_policy, int(retry_count)))
-        return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Build Container")),)
+    def apply(
+        self,
+        deployment: DeploymentSpec,
+        image_tag: str,
+        container_runtime: str = "nerdctl",
+        push_to_docker_hub: bool = False,
+        dockerhub_username_env: str = "DOCKERHUB_USERNAME",
+        dockerhub_token_env: str = "DOCKERHUB_TOKEN",
+        failure_policy: str = "fail",
+        retry_count: int = 0,
+        project_name: str = "crag-build",
+        output_path: str = "artifacts/local-runtime/build-compose.yaml",
+        use_sudo: bool = False,
+        timeout_seconds: int = 1800,
+        workflow_graph: Any = None,
+    ):
+        from .local_runtime import apply_local_runtime_plan, compose_yaml_for_plan, write_compose_file
+
+        build_command = SSHCommand(container_snapshot_command(image_tag, container_runtime, bool(push_to_docker_hub), dockerhub_username_env, dockerhub_token_env), "after_ready", 50000, failure_policy, int(retry_count))
+        commands = [*(deployment.ssh_commands.commands if deployment.ssh_commands else []), build_command]
+        build_deployment = replace(deployment, ssh_commands=SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(None, "Build Container")), reuse_policy="always_create")
+        plan = Planner().build(build_deployment, mode="plan", prompt=f"Build container {image_tag}", workflow_graph=workflow_graph)
+        project = project_name.strip() or "crag-build"
+        compose_yaml = compose_yaml_for_plan(plan, project_name=project)
+        saved_path = write_compose_file(output_path, compose_yaml)
+        old_sudo = os.environ.get("CRAG_LOCAL_RUNTIME_SUDO")
+        if use_sudo:
+            os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = "1"
+        else:
+            os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
+        engine = {"nerdctl": "containerd", "docker": "docker", "podman": "podman"}[container_runtime]
+        try:
+            result, reused = apply_local_runtime_plan(engine, saved_path, project, plan, action="apply_and_wait", timeout_seconds=int(timeout_seconds))
+        finally:
+            if old_sudo is None:
+                os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
+            else:
+                os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
+        payload = json.loads(result.to_text())
+        payload["reused"] = reused
+        return (json.dumps(payload, indent=2, sort_keys=True), result.stdout, result.stderr, compose_yaml, saved_path)
 
 
 class KeepAliveNode:
@@ -744,14 +807,13 @@ class DeployNode:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {"app": (RUNPOD_APP_AGENT,), "gpu_type_id": ("STRING", {"default": ""}), "gpu_count": ("INT", {"default": 1, "min": 0}), "cloud_type": (["auto", "SECURE", "COMMUNITY"],), "container_disk_gb": ("INT", {"default": 40, "min": 5}), "volume_gb": ("INT", {"default": 0, "min": 0}), "expose_public_ip": ("BOOLEAN", {"default": True}), "reuse_policy": (["reuse_matching", "always_create", "resume_stopped"],)},
-            "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,), "s3_storage": (RUNPOD_STORAGE_S3,), "commands": (RUNPOD_COMMAND_SSH,), "keep_alive": (RUNPOD_KEEPALIVE_POLICY,), "ssh_access": (RUNPOD_SSH_ACCESS_POLICY,)},
+            "required": {"app": (RUNPOD_APP_AGENT,)},
+            "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,), "s3_storage": (RUNPOD_STORAGE_S3,), "commands": (RUNPOD_COMMAND_SSH,), "keep_alive": (RUNPOD_KEEPALIVE_POLICY,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, app: AgentSpec, gpu_type_id: str = "", gpu_count: int = 1, cloud_type: str = "auto", container_disk_gb: int = 40, volume_gb: int = 0, expose_public_ip: bool = True, reuse_policy: str = "reuse_matching", network_storage=None, s3_storage=None, commands=None, keep_alive=None, ssh_access=None, node_id: str | None = None):
-        hints = PodResourceHints(gpu_type_id or None, int(gpu_count), None if cloud_type == "auto" else cloud_type, int(container_disk_gb), int(volume_gb) or None, bool(expose_public_ip), int(gpu_count) == 0)
-        deployment = DeploymentSpec(app, network_storage, s3_storage, commands, keep_alive, ssh_access or SSHAccessPolicy(), hints, reuse_policy, meta(node_id, "Pod"))
+    def build(self, app: AgentSpec, network_storage=None, s3_storage=None, commands=None, keep_alive=None, node_id: str | None = None):
+        deployment = DeploymentSpec(app, network_storage, s3_storage, commands, keep_alive, SSHAccessPolicy(), default_resource_hints(), "reuse_matching", meta(node_id, "Deploy"))
         validate_deployment(deployment, mode="plan", require_api_key=False)
         return (deployment,)
 
@@ -765,10 +827,44 @@ class RunOnRunpodNode:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"deployment": (RUNPOD_DEPLOYMENT_SPEC,), "mode": (["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"],), "prompt": ("STRING", {"multiline": True, "default": ""}), "on_error": (["stop_created", "terminate_created", "leave_running"],), "log_level": (["info", "debug"],)}, "hidden": {"workflow_graph": "PROMPT"}}
+        return {
+            "required": {
+                "prompt": ("STRING", {"multiline": True, "default": ""}),
+                "deployment": (RUNPOD_DEPLOYMENT_SPEC,),
+                "mode": (["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"],),
+                "gpu_type_id": ("STRING", {"default": ""}),
+                "gpu_count": ("INT", {"default": 1, "min": 0}),
+                "cloud_type": (["auto", "SECURE", "COMMUNITY"],),
+                "container_disk_gb": ("INT", {"default": 40, "min": 5}),
+                "volume_gb": ("INT", {"default": 0, "min": 0}),
+                "expose_public_ip": ("BOOLEAN", {"default": True}),
+                "reuse_policy": (["reuse_matching", "always_create", "resume_stopped"],),
+                "on_error": (["stop_created", "terminate_created", "leave_running"],),
+                "log_level": (["info", "debug"],),
+            },
+            "optional": {"ssh_access": (RUNPOD_SSH_ACCESS_POLICY,)},
+            "hidden": {"workflow_graph": "PROMPT"},
+        }
 
-    def run(self, deployment: DeploymentSpec, mode: str = "plan", prompt: str = "", on_error: str = "stop_created", log_level: str = "info", workflow_graph: Any = None):
+    def run(
+        self,
+        deployment: DeploymentSpec,
+        mode: str = "plan",
+        prompt: str = "",
+        gpu_type_id: str = "",
+        gpu_count: int = 1,
+        cloud_type: str = "auto",
+        container_disk_gb: int = 40,
+        volume_gb: int = 0,
+        expose_public_ip: bool = True,
+        reuse_policy: str = "reuse_matching",
+        on_error: str = "stop_created",
+        log_level: str = "info",
+        ssh_access=None,
+        workflow_graph: Any = None,
+    ):
         progress = ComfyProgress()
+        deployment = with_terminal_options(deployment, gpu_type_id=gpu_type_id, gpu_count=gpu_count, cloud_type=cloud_type, container_disk_gb=container_disk_gb, volume_gb=volume_gb, expose_public_ip=expose_public_ip, reuse_policy=reuse_policy, ssh_access=ssh_access)
         if mode != "plan":
             from .runner import RunpodRunner
 
@@ -866,8 +962,7 @@ class ComposeYAMLNode:
         return (compose_yaml, saved_path)
 
 
-class LocalComposeApplyMixin:
-    ENGINE = ""
+class RunLocalContainersNode:
     CATEGORY = "Runpod/Local"
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("result", "response", "errors", "compose_yaml", "saved_path")
@@ -878,8 +973,9 @@ class LocalComposeApplyMixin:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "deployment": (RUNPOD_DEPLOYMENT_SPEC,),
                 "prompt": ("STRING", {"multiline": True, "default": ""}),
+                "deployment": (RUNPOD_DEPLOYMENT_SPEC,),
+                "engine": (["containerd", "docker", "podman"],),
                 "project_name": ("STRING", {"default": "crag-local"}),
                 "output_path": ("STRING", {"default": "artifacts/local-runtime/compose.yaml"}),
                 "action": (["save_only", "plan", "apply", "apply_and_wait", "stop", "terminate"],),
@@ -888,6 +984,7 @@ class LocalComposeApplyMixin:
                 "response_role": ("STRING", {"default": "agent"}),
                 "response_path": ("STRING", {"default": "/workspace/e2e/agent-skill-report.txt"}),
                 "response_timeout_seconds": ("INT", {"default": 120, "min": 0}),
+                "reuse_policy": (["reuse_matching", "always_create", "resume_stopped"],),
             },
             "hidden": {"workflow_graph": "PROMPT"},
         }
@@ -895,6 +992,7 @@ class LocalComposeApplyMixin:
     def apply(
         self,
         deployment: DeploymentSpec,
+        engine: str = "containerd",
         prompt: str = "",
         project_name: str = "crag-local",
         output_path: str = "artifacts/local-runtime/compose.yaml",
@@ -904,6 +1002,7 @@ class LocalComposeApplyMixin:
         response_role: str = "agent",
         response_path: str = "/workspace/e2e/agent-skill-report.txt",
         response_timeout_seconds: int = 120,
+        reuse_policy: str = "reuse_matching",
         workflow_graph: Any = None,
     ):
         import os
@@ -918,6 +1017,7 @@ class LocalComposeApplyMixin:
 
         project = project_name.strip() or "crag-local"
         workflow_graph = populate_local_volume_ids(workflow_graph)
+        deployment = replace(deployment, reuse_policy=reuse_policy)
         plan = Planner().build(deployment, mode="plan", prompt=prompt, workflow_graph=workflow_graph)
         compose_yaml = compose_yaml_for_plan(plan, project_name=project)
         saved_path = write_compose_file(output_path, compose_yaml)
@@ -927,17 +1027,17 @@ class LocalComposeApplyMixin:
         else:
             os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
         try:
-            result, reused = apply_local_runtime_plan(self.ENGINE, saved_path, project, plan, action=action, timeout_seconds=int(timeout_seconds))
+            result, reused = apply_local_runtime_plan(engine, saved_path, project, plan, action=action, timeout_seconds=int(timeout_seconds))
             response = ""
             response_errors = ""
             keep_alive_result = None
             if action in {"apply", "apply_and_wait"} and result.returncode == 0:
-                keep_alive_result = enforce_local_keep_alive(self.ENGINE, saved_path, project, plan, response_collected=False)
+                keep_alive_result = enforce_local_keep_alive(engine, saved_path, project, plan, response_collected=False)
                 if response_path.strip() and int(response_timeout_seconds) > 0:
-                    read_result = read_local_runtime_file(self.ENGINE, project, response_role.strip() or "agent", response_path.strip(), timeout_seconds=int(response_timeout_seconds))
+                    read_result = read_local_runtime_file(engine, project, response_role.strip() or "agent", response_path.strip(), timeout_seconds=int(response_timeout_seconds))
                     response = read_result.stdout
                     response_errors = read_result.stderr
-                    response_keep_alive_result = enforce_local_keep_alive(self.ENGINE, saved_path, project, plan, response_collected=bool(response))
+                    response_keep_alive_result = enforce_local_keep_alive(engine, saved_path, project, plan, response_collected=bool(response))
                     keep_alive_result = response_keep_alive_result or keep_alive_result
         finally:
             if old_sudo is None:
@@ -950,18 +1050,6 @@ class LocalComposeApplyMixin:
             result_payload["keep_alive"] = json.loads(keep_alive_result.to_text())
         errors = "\n".join(part for part in (result.stderr, response_errors, keep_alive_result.stderr if keep_alive_result else "") if part)
         return (json.dumps(result_payload, indent=2, sort_keys=True), response, errors, compose_yaml, saved_path)
-
-
-class DeployWithDockerNode(LocalComposeApplyMixin):
-    ENGINE = "docker"
-
-
-class DeployWithPodmanNode(LocalComposeApplyMixin):
-    ENGINE = "podman"
-
-
-class DeployWithContainerdNode(LocalComposeApplyMixin):
-    ENGINE = "containerd"
 
 
 def populate_local_volume_ids(workflow_graph: Any) -> Any:
@@ -1086,8 +1174,6 @@ NODE_CLASSES = [
     RunOnRunpodNode,
     StartupScriptNode,
     ComposeYAMLNode,
-    DeployWithDockerNode,
-    DeployWithPodmanNode,
-    DeployWithContainerdNode,
+    RunLocalContainersNode,
     LogsNode,
 ]

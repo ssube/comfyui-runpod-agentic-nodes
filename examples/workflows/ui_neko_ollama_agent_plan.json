@@ -437,12 +437,6 @@
           "shape": 7,
           "type": "RUNPOD_KEEPALIVE_POLICY",
           "link": 7
-        },
-        {
-          "name": "ssh_access",
-          "shape": 7,
-          "type": "RUNPOD_SSH_ACCESS_POLICY",
-          "link": 6
         }
       ],
       "outputs": [
@@ -457,15 +451,7 @@
       "properties": {
         "Node name for S&R": "Deploy"
       },
-      "widgets_values": [
-        "NVIDIA RTX A4000",
-        1,
-        "SECURE",
-        20,
-        0,
-        true,
-        "always_create"
-      ]
+      "widgets_values": []
     },
     {
       "id": 9,
@@ -519,8 +505,15 @@
         "Node name for S&R": "RunOnRunpod"
       },
       "widgets_values": [
-        "plan",
         "Plan a Neko plus Ollama agent deployment.",
+        "plan",
+        "NVIDIA RTX A4000",
+        1,
+        "SECURE",
+        20,
+        0,
+        true,
+        "always_create",
         "terminate_created",
         "info"
       ]
@@ -701,8 +694,8 @@
       "bounding": [
         80,
         90,
-        410,
-        500
+        400,
+        490
       ],
       "color": "#355f9c",
       "font_size": 24,
@@ -713,8 +706,8 @@
       "bounding": [
         520,
         90,
-        390,
-        560
+        380,
+        618
       ],
       "color": "#6b5c9d",
       "font_size": 24,
@@ -724,9 +717,9 @@
       "title": "Agent Policy",
       "bounding": [
         970,
-        90,
+        70,
         440,
-        1060
+        1078
       ],
       "color": "#3f7f5f",
       "font_size": 24,
@@ -736,9 +729,9 @@
       "title": "Deployment",
       "bounding": [
         1440,
-        370,
-        870,
-        530
+        350,
+        1205,
+        541.312
       ],
       "color": "#8a6f38",
       "font_size": 24,

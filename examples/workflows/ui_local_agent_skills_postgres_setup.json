@@ -365,12 +365,6 @@
           "shape": 7,
           "type": "RUNPOD_KEEPALIVE_POLICY",
           "link": null
-        },
-        {
-          "name": "ssh_access",
-          "shape": 7,
-          "type": "RUNPOD_SSH_ACCESS_POLICY",
-          "link": null
         }
       ],
       "outputs": [
@@ -385,15 +379,7 @@
       "properties": {
         "Node name for S&R": "Deploy"
       },
-      "widgets_values": [
-        "",
-        0,
-        "auto",
-        20,
-        0,
-        false,
-        "reuse_matching"
-      ]
+      "widgets_values": []
     },
     {
       "id": 9,
@@ -439,7 +425,7 @@
     },
     {
       "id": 10,
-      "type": "DeployWithContainerd",
+      "type": "RunLocalContainers",
       "pos": [
         2370,
         220
@@ -500,10 +486,11 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "DeployWithContainerd"
+        "Node name for S&R": "RunLocalContainers"
       },
       "widgets_values": [
         "List the skills available to you. Include the Postgres database URL host and the Ollama Cloud endpoint you were configured with.",
+        "containerd",
         "crag-local-agent-skills-e2e",
         "artifacts/local-runtime/agent-skills-e2e-compose.yaml",
         "apply",
@@ -511,7 +498,8 @@
         900,
         "agent",
         "/workspace/e2e/agent-skill-report.txt",
-        120
+        120,
+        "reuse_matching"
       ]
     },
     {
@@ -732,7 +720,7 @@
         80,
         90,
         1230,
-        350
+        340
       ],
       "color": "#355f9c",
       "flags": {}
@@ -743,7 +731,7 @@
       "bounding": [
         80,
         460,
-        1010,
+        1020,
         410
       ],
       "color": "#6b5c9d",
@@ -755,8 +743,8 @@
       "bounding": [
         1350,
         90,
-        440,
-        720
+        490,
+        710
       ],
       "color": "#3f7f5f",
       "flags": {}
@@ -765,9 +753,9 @@
       "id": 4,
       "title": "Local Deployment",
       "bounding": [
-        1810,
+        1840,
         100,
-        990,
+        960,
         740
       ],
       "color": "#8a6f38",
@@ -777,10 +765,10 @@
       "id": 5,
       "title": "Results",
       "bounding": [
-        2810,
-        90,
+        2800,
+        70,
         320,
-        700
+        716
       ],
       "color": "#5f6673",
       "flags": {}

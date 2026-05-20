@@ -1,8 +1,10 @@
 import json
 import os
 import subprocess
+from dataclasses import replace
 from types import SimpleNamespace
 
+import pytest
 import yaml
 
 from comfyui_runpod_agentic.local_runtime import (
@@ -19,27 +21,32 @@ from comfyui_runpod_agentic.nodes import (
     AgentNode,
     ComposeYAMLNode,
     DeployNode,
-    DeployWithDockerNode,
     KeepAliveNode,
     LLMServerNode,
     NetworkStorageNode,
+    RunLocalContainersNode,
     SSHCommandNode,
     populate_local_volume_ids,
 )
 from comfyui_runpod_agentic.planner import Planner
 
 
+@pytest.fixture(autouse=True)
+def isolate_local_runtime_sudo(monkeypatch):
+    monkeypatch.delenv("CRAG_LOCAL_RUNTIME_SUDO", raising=False)
+
+
 def build_local_runtime_deployment(retention_policy="preserve"):
     storage = NetworkStorageNode().build("vol-workspace", "/workspace", retention_policy)[0]
     llm = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
     agent = AgentNode().build("Pi", "model", "manual", "/workspace", llm=llm)[0]
-    return DeployNode().build(agent, gpu_count=0, network_storage=storage)[0]
+    return DeployNode().build(agent, network_storage=storage)[0]
 
 
 def build_reusable_local_runtime_deployment():
     agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
     keep_alive = KeepAliveNode().build("turns", "stop", 0, "seconds", 1, 0.0, 0)[0]
-    return DeployNode().build(agent, gpu_count=0, keep_alive=keep_alive, reuse_policy="reuse_matching")[0]
+    return replace(DeployNode().build(agent, keep_alive=keep_alive)[0], reuse_policy="reuse_matching")
 
 
 def test_compose_yaml_resolves_dependency_env_and_volumes():
@@ -87,7 +94,7 @@ def test_agent_compose_command_runs_startup_commands():
     llm = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
     agent = AgentNode().build("Pi", "model", "manual", "/workspace", llm=llm)[0]
     commands = SSHCommandNode().build("printf startup-ok > /workspace/startup.txt", "before_start", "fail")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, commands=commands)[0]
+    deployment = DeployNode().build(agent, commands=commands)[0]
     plan = Planner().build(deployment, prompt="List installed skills.")
 
     compose = yaml.safe_load(compose_yaml_for_plan(plan))
@@ -104,7 +111,7 @@ def test_agent_compose_command_runs_startup_commands():
 def test_agent_compose_command_layers_pod_side_keep_alive():
     agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
     keep_alive = KeepAliveNode().build("time", "terminate", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, keep_alive=keep_alive)[0]
+    deployment = DeployNode().build(agent, keep_alive=keep_alive)[0]
     plan = Planner().build(deployment, prompt="wait")
 
     compose = yaml.safe_load(compose_yaml_for_plan(plan))
@@ -119,7 +126,7 @@ def test_agent_compose_command_layers_pod_side_keep_alive():
 def test_agent_auto_start_with_keep_alive_generates_valid_shell():
     agent = AgentNode().build("Pi", "model", "auto_start", "/workspace")[0]
     keep_alive = KeepAliveNode().build("time", "stop", 5, "minutes", 0, 0.0, 0, "both")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, keep_alive=keep_alive)[0]
+    deployment = DeployNode().build(agent, keep_alive=keep_alive)[0]
     plan = Planner().build(deployment, prompt="run once")
     script = agent_run_script(plan, keep_container_alive=True)
 
@@ -151,7 +158,7 @@ def test_apply_local_runtime_reuses_matching_agent_container(monkeypatch, tmp_pa
     llm = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
     agent_spec = AgentNode().build("Pi", "model", "manual", "/workspace", llm=llm)[0]
     keep_alive = KeepAliveNode().build("turns", "stop", 0, "seconds", 1, 0.0, 0)[0]
-    deployment = DeployNode().build(agent_spec, gpu_count=0, keep_alive=keep_alive, reuse_policy="reuse_matching")[0]
+    deployment = replace(DeployNode().build(agent_spec, keep_alive=keep_alive)[0], reuse_policy="reuse_matching")
     plan = Planner().build(deployment, prompt="second prompt")
     agent = next(resource for resource in plan.resources if resource.role == "agent")
     llm_resource = next(resource for resource in plan.resources if resource.role == "llm")
@@ -185,7 +192,7 @@ def test_apply_local_runtime_reuses_matching_agent_container(monkeypatch, tmp_pa
 def test_apply_local_runtime_recreates_when_dependency_container_is_missing(monkeypatch, tmp_path):
     llm = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
     agent_spec = AgentNode().build("Pi", "model", "manual", "/workspace", llm=llm)[0]
-    deployment = DeployNode().build(agent_spec, gpu_count=0, reuse_policy="reuse_matching")[0]
+    deployment = replace(DeployNode().build(agent_spec)[0], reuse_policy="reuse_matching")
     plan = Planner().build(deployment, prompt="second prompt")
     agent = next(resource for resource in plan.resources if resource.role == "agent")
     compose_path = tmp_path / "compose.yaml"
@@ -211,7 +218,7 @@ def test_apply_local_runtime_recreates_when_dependency_container_is_missing(monk
 
 def test_apply_local_runtime_creates_when_reuse_is_disabled(monkeypatch, tmp_path):
     agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, reuse_policy="always_create")[0]
+    deployment = replace(DeployNode().build(agent)[0], reuse_policy="always_create")
     plan = Planner().build(deployment, prompt="first prompt")
     compose_path = tmp_path / "compose.yaml"
     compose_path.write_text("services: {}\n")
@@ -286,7 +293,7 @@ def test_enforce_local_keep_alive_turn_limit_stops_after_response(monkeypatch, t
 def test_enforce_local_keep_alive_skips_server_timer_for_pod_side(monkeypatch, tmp_path):
     agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
     keep_alive = KeepAliveNode().build("time", "stop", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, keep_alive=keep_alive)[0]
+    deployment = DeployNode().build(agent, keep_alive=keep_alive)[0]
     plan = Planner().build(deployment, prompt="one turn")
     compose_path = tmp_path / "compose.yaml"
     compose_path.write_text("services: {}\n")
@@ -334,7 +341,7 @@ def test_apply_node_can_request_sudo(monkeypatch, tmp_path):
     monkeypatch.delenv("CRAG_LOCAL_RUNTIME_SUDO", raising=False)
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
 
-    DeployWithDockerNode().apply(deployment, project_name="crag-node", output_path=str(apply_path), action="apply", use_sudo=True, response_timeout_seconds=0)
+    RunLocalContainersNode().apply(deployment, engine="docker", project_name="crag-node", output_path=str(apply_path), action="apply", use_sudo=True, response_timeout_seconds=0)
 
     assert seen["command"] == ["sudo", "docker", "compose", "-f", str(apply_path), "-p", "crag-node", "up", "-d"]
     assert "CRAG_LOCAL_RUNTIME_SUDO" not in os.environ
@@ -357,8 +364,9 @@ def test_apply_node_reads_response_file_after_up(monkeypatch, tmp_path):
 
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
 
-    result_text, response, errors, _compose_yaml, _saved_path = DeployWithDockerNode().apply(
+    result_text, response, errors, _compose_yaml, _saved_path = RunLocalContainersNode().apply(
         deployment,
+        engine="docker",
         project_name="crag-node",
         output_path=str(apply_path),
         action="apply",
@@ -388,8 +396,9 @@ def test_apply_node_falls_back_to_completed_container_logs(monkeypatch, tmp_path
 
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
 
-    _result_text, response, errors, _compose_yaml, _saved_path = DeployWithDockerNode().apply(
+    _result_text, response, errors, _compose_yaml, _saved_path = RunLocalContainersNode().apply(
         deployment,
+        engine="docker",
         project_name="crag-node",
         output_path=str(apply_path),
         action="apply",
@@ -427,7 +436,7 @@ def test_compose_export_and_apply_nodes_save_files(monkeypatch, tmp_path):
         "comfyui_runpod_agentic.local_runtime.subprocess.run",
         lambda command, **kwargs: SimpleNamespace(returncode=0, stdout="valid\n", stderr=""),
     )
-    result_text, response, errors, apply_yaml, apply_saved_path = DeployWithDockerNode().apply(deployment, project_name="crag-node", output_path=str(apply_path), action="plan")
+    result_text, response, errors, apply_yaml, apply_saved_path = RunLocalContainersNode().apply(deployment, engine="docker", project_name="crag-node", output_path=str(apply_path), action="plan")
 
     assert apply_saved_path == str(apply_path)
     assert response == ""

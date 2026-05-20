@@ -67,18 +67,23 @@
     }
   },
   "7": {
-    "class_type": "DeployWithContainerd",
+    "class_type": "RunLocalContainers",
     "inputs": {
+      "prompt": "List the first few skill files available to you, then say that the DeepSeek v4 flash Ollama Cloud call succeeded.",
       "deployment": [
         "9",
         0
       ],
-      "prompt": "List the first few skill files available to you, then say that the DeepSeek v4 flash Ollama Cloud call succeeded.",
       "project_name": "crag-local-ollama-deepseek-e2e",
       "output_path": "artifacts/local-runtime/ollama-deepseek-e2e-compose.yaml",
       "action": "terminate",
       "use_sudo": true,
-      "timeout_seconds": 900
+      "timeout_seconds": 900,
+      "reuse_policy": "always_create",
+      "engine": "containerd",
+      "response_role": "agent",
+      "response_path": "/workspace/e2e/agent-skill-report.txt",
+      "response_timeout_seconds": 0
     }
   },
   "8": {
@@ -113,14 +118,7 @@
       "keep_alive": [
         "10",
         0
-      ],
-      "gpu_type_id": "",
-      "gpu_count": 0,
-      "cloud_type": "auto",
-      "container_disk_gb": 20,
-      "volume_gb": 0,
-      "expose_public_ip": false,
-      "reuse_policy": "always_create"
+      ]
     }
   },
   "10": {

@@ -164,8 +164,8 @@ For a complete walkthrough of the CRAG node mission, graph model, node inputs, c
 
 Core:
 
-- `Deploy`: creates a deployment spec around the primary agent.
-- `Run on Runpod`: plan/apply/stop/terminate/destroy output node with the per-run agent prompt.
+- `Deploy`: creates the portable workload spec around the primary agent.
+- `Run on Runpod`: plan/apply/stop/terminate/destroy output node for the Runpod target with the per-run agent prompt and placement settings.
 - `Keep Alive`: time, turns, cost, or manual policy with server-side, pod-side, or layered enforcement.
 - `Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
 
@@ -188,7 +188,7 @@ Apps and services:
 - `Build Container`: commits a configured container to a tagged image and can push it to Docker Hub for reuse.
 - `Startup Script`: ready-to-paste bash startup script for a deployment.
 - `Compose YAML`: exports a local Docker Compose compatible projection.
-- `Deploy with Docker`, `Deploy with Podman`, `Deploy with Containerd`: save or plan the Compose projection, then optionally apply, reuse, stop, or terminate it with Docker, Podman, or `nerdctl compose`.
+- `Run Local Containers`: save or plan the same deployment against a local Docker, Podman, or containerd engine, then optionally apply, reuse, stop, or terminate it.
 
 ## Example Workflows
 

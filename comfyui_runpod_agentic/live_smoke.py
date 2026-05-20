@@ -5,7 +5,7 @@ import json
 import time
 from pathlib import Path
 
-from .nodes import AgentNode, DeployNode, KeepAliveNode, SSHAccessNode, SSHCommandNode
+from .nodes import AgentNode, DeployNode, KeepAliveNode, SSHAccessNode, SSHCommandNode, with_terminal_options
 from .runner import RunpodRunner
 
 
@@ -18,20 +18,8 @@ def build_smoke_deployment(gpu_type_id: str, gpu_count: int, keepalive_minutes: 
     keep_alive = KeepAliveNode().build("time", "stop", keepalive_minutes, "minutes", 0, 0.0, 0)[0]
     ssh_access = SSHAccessNode().build("runpod_proxy", "root", "~/.ssh/id_ed25519", "", 22, False)[0]
     agent = AgentNode().build("Pi", "manual-smoke", "manual", "/workspace", node_id="live-smoke-agent")[0]
-    return DeployNode().build(
-        agent,
-        gpu_type_id=gpu_type_id,
-        gpu_count=gpu_count,
-        cloud_type=cloud_type,
-        container_disk_gb=20,
-        volume_gb=0,
-        expose_public_ip=True,
-        reuse_policy="always_create",
-        commands=command,
-        keep_alive=keep_alive,
-        ssh_access=ssh_access,
-        node_id="live-smoke-pod",
-    )[0]
+    deployment = DeployNode().build(agent, commands=command, keep_alive=keep_alive, node_id="live-smoke-pod")[0]
+    return with_terminal_options(deployment, gpu_type_id=gpu_type_id, gpu_count=gpu_count, cloud_type=cloud_type, container_disk_gb=20, volume_gb=0, expose_public_ip=True, reuse_policy="always_create", ssh_access=ssh_access)
 
 
 def main() -> int:

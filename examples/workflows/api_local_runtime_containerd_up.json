@@ -56,24 +56,17 @@
       "commands": [
         "2",
         0
-      ],
-      "gpu_type_id": "",
-      "gpu_count": 0,
-      "cloud_type": "auto",
-      "container_disk_gb": 20,
-      "volume_gb": 0,
-      "expose_public_ip": false,
-      "reuse_policy": "reuse_matching"
+      ]
     }
   },
   "6": {
-    "class_type": "DeployWithContainerd",
+    "class_type": "RunLocalContainers",
     "inputs": {
+      "prompt": "Launch the local runtime e2e stack.",
       "deployment": [
         "5",
         0
       ],
-      "prompt": "Launch the local runtime e2e stack.",
       "project_name": "crag-comfy-local-e2e",
       "output_path": "artifacts/local-runtime/comfy-e2e-compose.yaml",
       "action": "apply",
@@ -81,7 +74,9 @@
       "timeout_seconds": 600,
       "response_role": "agent",
       "response_path": "/workspace/e2e/command-2.txt",
-      "response_timeout_seconds": 120
+      "response_timeout_seconds": 120,
+      "reuse_policy": "reuse_matching",
+      "engine": "containerd"
     }
   }
 }

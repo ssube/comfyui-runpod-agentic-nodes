@@ -4,9 +4,6 @@ from .nodes import (
     BuildContainerNode,
     ComposeYAMLNode,
     DeployNode,
-    DeployWithContainerdNode,
-    DeployWithDockerNode,
-    DeployWithPodmanNode,
     KeepAliveNode,
     LanguageRuntimeNode,
     LLMApiNode,
@@ -17,6 +14,7 @@ from .nodes import (
     NetworkStorageNode,
     PackageNode,
     RemoteSQLDatabaseNode,
+    RunLocalContainersNode,
     RunOnRunpodNode,
     S3StorageNode,
     SkillFrameworkNode,
@@ -50,9 +48,7 @@ NODE_CLASS_MAPPINGS = {
     "RunOnRunpod": RunOnRunpodNode,
     "StartupScript": StartupScriptNode,
     "ComposeYAML": ComposeYAMLNode,
-    "DeployWithDocker": DeployWithDockerNode,
-    "DeployWithPodman": DeployWithPodmanNode,
-    "DeployWithContainerd": DeployWithContainerdNode,
+    "RunLocalContainers": RunLocalContainersNode,
     "Logs": LogsNode,
 }
 
@@ -79,9 +75,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RunOnRunpod": "Run on Runpod",
     "StartupScript": "Startup Script",
     "ComposeYAML": "Compose YAML",
-    "DeployWithDocker": "Deploy with Docker",
-    "DeployWithPodman": "Deploy with Podman",
-    "DeployWithContainerd": "Deploy with Containerd",
+    "RunLocalContainers": "Run Local Containers",
     "Logs": "Logs",
 }
 

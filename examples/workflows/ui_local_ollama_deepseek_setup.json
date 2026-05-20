@@ -423,12 +423,6 @@
           "shape": 7,
           "type": "RUNPOD_KEEPALIVE_POLICY",
           "link": 9
-        },
-        {
-          "name": "ssh_access",
-          "shape": 7,
-          "type": "RUNPOD_SSH_ACCESS_POLICY",
-          "link": null
         }
       ],
       "outputs": [
@@ -443,15 +437,7 @@
       "properties": {
         "Node name for S&R": "Deploy"
       },
-      "widgets_values": [
-        "",
-        0,
-        "auto",
-        20,
-        0,
-        false,
-        "reuse_matching"
-      ]
+      "widgets_values": []
     },
     {
       "id": 11,
@@ -487,7 +473,7 @@
     },
     {
       "id": 12,
-      "type": "DeployWithContainerd",
+      "type": "RunLocalContainers",
       "pos": [
         2340,
         260
@@ -544,10 +530,11 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "DeployWithContainerd"
+        "Node name for S&R": "RunLocalContainers"
       },
       "widgets_values": [
         "List the first few skill files available to you, then say that the DeepSeek v4 flash Ollama Cloud call succeeded.",
+        "containerd",
         "crag-local-ollama-deepseek-e2e",
         "artifacts/local-runtime/ollama-deepseek-e2e-compose.yaml",
         "apply_and_wait",
@@ -555,7 +542,8 @@
         900,
         "agent",
         "/workspace/.runpod_agentic/response.txt",
-        900
+        900,
+        "reuse_matching"
       ]
     },
     {
@@ -700,9 +688,9 @@
       "title": "Agent Inputs",
       "bounding": [
         80,
-        90,
-        1240,
-        360
+        80,
+        1250,
+        350
       ],
       "color": "#355f9c",
       "flags": {}
@@ -713,7 +701,7 @@
       "bounding": [
         80,
         470,
-        1210,
+        1200,
         470
       ],
       "color": "#6b5c9d",
@@ -724,9 +712,9 @@
       "title": "Agent Deployment",
       "bounding": [
         1360,
-        90,
-        930,
-        820
+        70,
+        940,
+        830
       ],
       "color": "#3f7f5f",
       "flags": {}
@@ -736,9 +724,9 @@
       "title": "Local Runtime Execution",
       "bounding": [
         2320,
-        170,
-        770,
-        500
+        180,
+        790,
+        420
       ],
       "color": "#8a6f38",
       "flags": {}

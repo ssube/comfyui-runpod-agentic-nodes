@@ -83,24 +83,17 @@
       "commands": [
         "3",
         0
-      ],
-      "gpu_type_id": "",
-      "gpu_count": 0,
-      "cloud_type": "auto",
-      "container_disk_gb": 20,
-      "volume_gb": 0,
-      "expose_public_ip": false,
-      "reuse_policy": "reuse_matching"
+      ]
     }
   },
   "8": {
-    "class_type": "DeployWithContainerd",
+    "class_type": "RunLocalContainers",
     "inputs": {
+      "prompt": "List the skills available to you. Include the Postgres database URL host and the Ollama Cloud endpoint you were configured with.",
       "deployment": [
         "7",
         0
       ],
-      "prompt": "List the skills available to you. Include the Postgres database URL host and the Ollama Cloud endpoint you were configured with.",
       "project_name": "crag-local-agent-skills-e2e",
       "output_path": "artifacts/local-runtime/agent-skills-e2e-compose.yaml",
       "action": "apply",
@@ -108,7 +101,9 @@
       "timeout_seconds": 900,
       "response_role": "agent",
       "response_path": "/workspace/e2e/agent-skill-report.txt",
-      "response_timeout_seconds": 120
+      "response_timeout_seconds": 120,
+      "reuse_policy": "reuse_matching",
+      "engine": "containerd"
     }
   }
 }

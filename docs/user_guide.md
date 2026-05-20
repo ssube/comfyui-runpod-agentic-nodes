@@ -2,16 +2,16 @@
 
 ComfyUI Agentic workflow nodes, or CRAG nodes, let you design, launch, connect, monitor, and shut down agentic systems on Runpod from a ComfyUI graph.
 
-The CRAG node mission is to make infrastructure for agents visible and repeatable. A workflow should show the agent, its model, browser, databases, storage, skills, MCP servers, setup commands, lifetime policy, and run prompt as typed nodes. Most nodes only describe intent. The only node that creates, mutates, or cleans up real Runpod resources is `Run on Runpod`.
+The CRAG node mission is to make infrastructure for agents visible and repeatable. A workflow should show the agent, its model, browser, databases, storage, skills, MCP servers, setup commands, lifetime policy, and run prompt as typed nodes. Most nodes only describe intent. Terminal nodes are the side-effect boundary: `Run on Runpod` can create, mutate, or clean up Runpod resources, local runtime terminals can create or clean local containers, and `Build Container` can commit a local container image.
 
 ## Core Mental Model
 
 Build workflows in two layers:
 
 1. Describe resources with typed nodes.
-2. Execute the deployment with `Run on Runpod`.
+2. Execute or export the deployment with a terminal node.
 
-CRAG resource nodes return Python spec objects. They do not call Runpod, start containers, SSH into pods, or write state. This makes the graph safe to edit and inspect. `Run on Runpod` compiles the graph into a Terraform-style plan, reconciles it with existing managed resources, executes commands, writes runtime configuration, launches the agent, and applies cleanup behavior.
+CRAG resource nodes return Python spec objects. They do not call Runpod, start containers, SSH into pods, or write state. This makes the graph safe to edit and inspect. `Deploy` is the portable workload spec, like a Kubernetes `kind: Deployment`: the same deployment can be planned for Runpod, projected to local containers, exported as Compose YAML, or used to build a container image. Terminal nodes select the target and operation, then compile the graph into a Terraform-style plan or local Compose projection, reconcile it with existing managed resources when requested, execute commands, write runtime configuration, launch the agent, and apply cleanup behavior.
 
 The low-level contract is intentionally small:
 
@@ -20,7 +20,7 @@ The low-level contract is intentionally small:
 | Create or reuse a Runpod resource and pass env forward | `ResourcePlan` plus `RuntimeContract.env`, `ports`, and storage hints | Browser pod, LLM server pod, remote SQL pod, vector DB pod |
 | Queue a command to run after pods launch | `RuntimeContract.commands` | Local SQLite setup, skill download, framework install, user SSH commands |
 
-Higher-level nodes should compose these effects rather than calling providers themselves. A future node should either describe a pod-like resource that `Run on Runpod` can materialize, contribute environment/runtime files to the later agent pod, or add idempotent SSH commands to the runtime contract.
+Higher-level nodes should compose these effects rather than calling providers themselves. A future node should either describe a pod-like resource that a terminal can materialize, contribute environment/runtime files to the later agent pod, or add idempotent SSH commands to the runtime contract.
 
 The most important graph shape is:
 
@@ -28,11 +28,24 @@ The most important graph shape is:
 LLM / Browser / DB / MCP / Skills
               -> Agent
               -> Deploy
-              -> Run on Runpod
+              -> Run on Runpod / local terminal / Build Container
               -> PreviewAny or Logs
 ```
 
 Use `Run on Runpod` in `plan` mode first. A plan should explain what pods would be created or reused, what dependencies must become ready, what commands would run, what runtime files and environment contracts would be written, and what cleanup policy would apply.
+
+## Node Taxonomy For Agents
+
+For automated graph generation, classify nodes by effect instead of by palette location:
+
+| Category | Nodes | Effect |
+| --- | --- | --- |
+| Queue commands | `SSH Command`, `Package`, `Language Runtime` | Produce `RUNPOD_COMMAND_SSH` chains that connect to `Deploy.commands`. |
+| Queue implicit commands | `Agent`, `Local SQL Database`, `Skill`, `Skill Framework` | Add setup commands through their runtime contracts when connected to `Agent`. |
+| Add containers | `Agent`, `Browser` with `own_pod`, `LLM Server`, `Remote SQL Database` with `own_pod`, `Vector Database` | Add pod/service resources to the deployment plan. |
+| Add storage or env | `Network Storage`, `S3 Storage`, `LLM API`, `MCP Server`, `Remote SQL Database` with `env_only`, `Local SQL Database` | Add volumes, environment variables, secret references, or runtime config without creating a standalone terminal. |
+| Graph assembly | `Deploy`, `Keep Alive`, `SSH Access` | Build deployment policy and lifecycle/access settings. `Deploy` does not choose Runpod placement. |
+| Terminals | `Run on Runpod`, `Run Local Containers`, `Build Container`, `Compose YAML`, `Startup Script`, `Logs` | End a workflow branch by planning, applying, exporting, building, or reading results. `Build Container` internally queues the snapshot command for its local build run. |
 
 ## Resource Materialization
 
@@ -96,14 +109,14 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
 5. Add startup commands if needed.
    Chain command nodes through their `previous` input and connect the final output to `Deploy.commands`.
 
-6. Add lifecycle and access policy.
-   Connect `Keep Alive` and, when command execution or direct access is needed, `SSH Access` to the pod.
+6. Add graph-level lifecycle policy.
+   Connect `Keep Alive` to `Deploy` when you want automatic stop or terminate behavior.
 
 7. Add `Deploy`.
-   Connect the agent to `app`, choose GPU hints, disk size, exposure, and reuse policy.
+   Connect the agent to `app` and attach storage, commands, and keep-alive policy. This is the portable workload spec.
 
 8. Add `Run on Runpod`.
-   Start with `mode=plan`. Inspect the JSON. Move to `apply`, `apply_and_wait`, `stop`, `terminate`, or `destroy` only after the plan is correct.
+   Choose GPU hints, disk size, exposure, reuse policy, and optional `SSH Access`. Start with `mode=plan`. Inspect the JSON. Move to `apply`, `apply_and_wait`, `stop`, `terminate`, or `destroy` only after the plan is correct.
 
 9. Inspect outputs and logs.
    Connect `Run on Runpod.result`, `response`, and `errors` to preview nodes. Use `Logs` with a run ID to collect saved command stdout/stderr.
@@ -115,7 +128,7 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
 
 ### Run on Runpod
 
-`Run on Runpod` is the terminal execution node and the only side-effecting node.
+`Run on Runpod` is the remote terminal execution node. It owns Runpod placement, reuse, SSH access, and cleanup behavior.
 
 Inputs:
 
@@ -126,6 +139,14 @@ Inputs:
 | `prompt` | multiline string | The task prompt for this run. |
 | `on_error` | `stop_created`, `terminate_created`, `leave_running` | Cleanup behavior if apply fails after resources were created. |
 | `log_level` | `info`, `debug` | Verbosity for result JSON. |
+| `gpu_type_id` | string | Runpod GPU type hint, for example `NVIDIA RTX A4000`. |
+| `gpu_count` | integer | GPU count. `0` marks a CPU-only intent where supported by templates/API. |
+| `cloud_type` | `auto`, `SECURE`, `COMMUNITY` | Runpod cloud selection. |
+| `container_disk_gb` | integer | Container disk size. |
+| `volume_gb` | integer | Pod volume size. |
+| `expose_public_ip` | boolean | Whether public IP exposure is requested. |
+| `reuse_policy` | `reuse_matching`, `always_create`, `resume_stopped` | How to reconcile with existing managed pods. |
+| `ssh_access` | `RUNPOD_SSH_ACCESS_POLICY` | Optional SSH connection policy. |
 
 Modes:
 
@@ -172,19 +193,19 @@ Local runtime nodes project the same deployment graph into a Compose YAML file s
 | Node | Purpose |
 | --- | --- |
 | `Compose YAML` | Builds and optionally saves the Compose YAML without applying it. |
-| `Deploy with Docker` | Saves the YAML, then runs `docker compose`. |
-| `Deploy with Podman` | Saves the YAML, then runs `podman compose`. |
-| `Deploy with Containerd` | Saves the YAML, then runs `nerdctl compose` for containerd-backed local testing. |
+| `Run Local Containers` | Saves the YAML, then runs Docker, Podman, or containerd through the selected `engine`. |
 
 Inputs shared by the apply nodes:
 
 | Input | Type | Use |
 | --- | --- | --- |
 | `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled deployment from `Deploy`. |
+| `engine` | `containerd`, `docker`, `podman` | Local runtime engine. `containerd` uses `nerdctl compose`. |
 | `prompt` | multiline string | Task prompt injected as `AGENT_PROMPT`. |
 | `project_name` | string | Compose project name and container-name prefix. |
 | `output_path` | string | File path where the generated YAML is saved. |
 | `action` | `save_only`, `plan`, `apply`, `apply_and_wait`, `stop`, `terminate` | Runtime action. Use `save_only` to write YAML without shelling out, or `plan` to return a service summary. Use `apply` to create or reuse local containers. |
+| `reuse_policy` | `reuse_matching`, `always_create`, `resume_stopped` | How to reconcile with existing local containers. |
 | `use_sudo` | boolean | Prefix the local runtime command with `sudo`. Applies equally to Docker, Podman, and containerd. |
 | `timeout_seconds` | integer | Timeout for the local runtime command. |
 | `response_role` | string | Container role to read after `up`, usually `agent`. |
@@ -201,31 +222,23 @@ Outputs:
 | `compose_yaml` | `STRING` | Generated Compose YAML, useful with `PreviewAny`. |
 | `saved_path` | `STRING` | Path to the saved YAML file. |
 
-`Deploy with Containerd` uses `nerdctl compose` rather than raw `ctr`; direct `ctr` does not provide the Compose-level dependency, env, port, and volume model these workflows need. If `nerdctl` is not installed, the node reports that as an apply error and still leaves the YAML on disk.
+With `engine=containerd`, `Run Local Containers` uses `nerdctl compose` rather than raw `ctr`; direct `ctr` does not provide the Compose-level dependency, env, port, and volume model these workflows need. If the selected engine is not installed, the node reports that as an apply error and still leaves the YAML on disk.
 
 Local apply follows the same lifecycle vocabulary as `Run on Runpod`. With `reuse_matching`, a later `apply` for the same deployment reuses the existing agent container while it is still alive, rewrites the runtime config and prompt files, and launches the harness again. Keep-alive policies are enforced locally: time policies schedule `stop` or `terminate`, and a new apply refreshes that timer.
 
 ### Deploy
 
-`Deploy` wraps the primary agent and deployment policy. The underlying workflow class remains `Deploy` for compatibility with existing saved workflows.
+`Deploy` wraps the primary agent and graph-level deployment policy. Runpod placement and reuse live on terminal nodes so the same deployment graph can be exported, built locally, or run remotely.
 
 Inputs:
 
 | Input | Type | Use |
 | --- | --- | --- |
 | `app` | `RUNPOD_APP_AGENT` | Required agent spec. |
-| `gpu_type_id` | string | Runpod GPU type hint, for example `NVIDIA RTX A4000`. |
-| `gpu_count` | integer | GPU count. `0` marks a CPU-only intent where supported by templates/API. |
-| `cloud_type` | `auto`, `SECURE`, `COMMUNITY` | Runpod cloud selection. |
-| `container_disk_gb` | integer | Container disk size. |
-| `volume_gb` | integer | Pod volume size. |
-| `expose_public_ip` | boolean | Whether public IP exposure is requested. |
-| `reuse_policy` | `reuse_matching`, `always_create`, `resume_stopped` | How to reconcile with existing managed pods. |
 | `network_storage` | `RUNPOD_STORAGE_NETWORK` | Optional storage for the agent pod workspace. |
 | `s3_storage` | `RUNPOD_STORAGE_S3` | Optional S3 env/config contract. |
 | `commands` | `RUNPOD_COMMAND_SSH` | Optional command chain. |
 | `keep_alive` | `RUNPOD_KEEPALIVE_POLICY` | Optional lifecycle policy. |
-| `ssh_access` | `RUNPOD_SSH_ACCESS_POLICY` | Optional SSH connection policy. |
 
 Output:
 
@@ -616,7 +629,6 @@ Inputs:
 | --- | --- | --- |
 | `command` | multiline string | Command body. |
 | `phase` | `before_start`, `after_start`, `after_ready`, `teardown` | Execution phase. |
-| `order` | integer | Sort key within the command chain. |
 | `failure_policy` | `fail`, `continue`, `retry` | Error behavior. |
 | `retry_count` | integer | Retry count when `failure_policy=retry`. |
 | `previous` | `RUNPOD_COMMAND_SSH` | Optional previous command chain. |
@@ -639,7 +651,6 @@ Inputs:
 | --- | --- | --- |
 | `package_manager` | `apt`, `npm`, `pip` | Package tool to use. |
 | `packages` | string | Space-separated packages. Quotes are supported. |
-| `order` | integer | Sort key within the command chain. |
 | `failure_policy` | `fail`, `continue`, `retry` | Error behavior. |
 | `retry_count` | integer | Retry count when `failure_policy=retry`. |
 | `previous` | `RUNPOD_COMMAND_SSH` | Optional previous command chain. |
@@ -656,7 +667,6 @@ Inputs:
 | --- | --- | --- |
 | `runtime` | `nodejs`, `python` | Runtime to install. |
 | `node_major_version` | integer | NodeSource major version for Node.js. |
-| `order` | integer | Sort key within the command chain. |
 | `failure_policy` | `fail`, `continue`, `retry` | Error behavior. |
 | `retry_count` | integer | Retry count when `failure_policy=retry`. |
 | `previous` | `RUNPOD_COMMAND_SSH` | Optional previous command chain. |
@@ -671,17 +681,20 @@ Inputs:
 
 | Input | Choices / Type | Use |
 | --- | --- | --- |
+| `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The portable deployment from `Deploy`. |
 | `image_tag` | string | Full image tag, for example `docker.io/user/crag-agent:latest`. |
-| `runtime` | `nerdctl`, `docker`, `podman` | Container CLI available inside the environment. |
+| `container_runtime` | `nerdctl`, `docker`, `podman` | Container CLI used to commit and optionally push the running agent container. |
 | `push_to_docker_hub` | boolean | Whether to push after committing. |
 | `dockerhub_username_env` | string | Env var that contains the Docker Hub username. |
 | `dockerhub_token_env` | string | Env var that contains the Docker Hub token/password. |
-| `order` | integer | Sort key within the command chain. |
 | `failure_policy` | `fail`, `continue`, `retry` | Error behavior. |
 | `retry_count` | integer | Retry count when `failure_policy=retry`. |
-| `previous` | `RUNPOD_COMMAND_SSH` | Optional previous command chain. |
+| `project_name` | string | Local Compose project name for the build run. |
+| `output_path` | string | File path where the generated build Compose YAML is saved. |
+| `use_sudo` | boolean | Prefix local runtime commands with `sudo`. |
+| `timeout_seconds` | integer | Timeout for the local build run. |
 
-Use this after package/runtime setup when you want to turn a one-time configured container into a reusable image. The node only emits a command chain; the target environment still needs access to the selected container CLI and Docker Hub credentials when pushing.
+Use this as a terminal when you want to turn a one-time configured agent container into a reusable image. Connect setup command chains to `Deploy.commands`; `Build Container` appends the snapshot command internally and runs the deployment locally.
 
 ## Common Workflow Patterns
 
@@ -694,8 +707,8 @@ PrimitiveStringMultiline(system prompt)
 PrimitiveStringMultiline(task prompt)
 LLM API(provider=Claude or Codex)
 Agent(llm=LLM API, system_prompt=system prompt)
-Deploy(app=Agent, reuse_policy=reuse_matching)
-Run on Runpod(mode=plan, prompt=task prompt)
+Deploy(app=Agent)
+Run on Runpod(mode=plan, reuse_policy=reuse_matching, prompt=task prompt)
 PreviewAny(source=Run on Runpod.result)
 ```
 
@@ -749,12 +762,10 @@ Keep commands idempotent when using `reuse_matching` or `resume_stopped`, becaus
 
 ```text
 Agent -> Deploy -> Compose YAML -> PreviewAny
-Agent -> Deploy -> Deploy with Docker(action=save_only or apply)
-Agent -> Deploy -> Deploy with Podman(action=save_only or apply)
-Agent -> Deploy -> Deploy with Containerd(action=save_only or apply)
+Agent -> Deploy -> Run Local Containers(engine=containerd, action=save_only or apply)
 ```
 
-Use local rehearsal to verify service wiring, environment variables, ports, and startup commands. Treat it as a topology test, not a perfect Runpod emulator: GPU scheduling, Runpod secrets, public proxy ports, and Runpod lifecycle policies still need live Runpod validation.
+Use local rehearsal to verify service wiring, environment variables, internal service ports, and startup commands. Treat it as a topology test, not a perfect Runpod emulator: GPU scheduling, Runpod secrets, public proxy ports, and Runpod lifecycle policies still need live Runpod validation. Local services are reachable by Compose DNS from other workflow containers; their ports are not published to the host by default.
 
 ## Example Workflows
 
@@ -764,7 +775,7 @@ UI-format examples for loading into ComfyUI:
 | --- | --- |
 | `examples/workflows/ui_agent_skills_mcp_plan.json` | Agent with MCP servers and skills. |
 | `examples/workflows/ui_claude_data_agent_plan.json` | Claude API, Playwright, Postgres, Qdrant, and prompts. |
-| `examples/workflows/ui_container_snapshot_plan.json` | Plan-mode local runtime workflow that installs setup packages and queues a `Build Container` snapshot command. |
+| `examples/workflows/ui_container_snapshot_plan.json` | Local build workflow that installs setup packages and ends at `Build Container`. |
 | `examples/workflows/ui_local_agent_skills_postgres_setup.json` | Local runtime preflight with Superpowers skills, Postgres, Ollama Cloud env, startup commands, and response previews. |
 | `examples/workflows/ui_local_ollama_deepseek_setup.json` | Local Ollama Cloud DeepSeek workflow with language runtime, apt/npm packages, skills, and grouped layout. |
 | `examples/workflows/ui_local_runtime_plan.json` | Local Compose/containerd rehearsal with generated YAML and apply result previews. |
@@ -774,7 +785,7 @@ API-format examples:
 
 | File | Purpose |
 | --- | --- |
-| `examples/workflows/api_container_snapshot_plan.json` | API-format plan-mode workflow for the `Build Container` snapshot command. |
+| `examples/workflows/api_container_snapshot_plan.json` | API-format local build workflow ending at `Build Container`. |
 | `examples/workflows/api_local_agent_skills_postgres_up.json` | Comprehensive local runtime preflight: Postgres, Ollama Cloud env, Superpowers skills, package install, harness prompt output. |
 | `examples/workflows/api_local_agent_skills_postgres_down.json` | Teardown pair for the comprehensive local runtime preflight. |
 | `examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json` | Real Pi + Ollama Cloud DeepSeek local runtime workflow using language and package setup nodes. |

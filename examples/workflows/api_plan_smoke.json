@@ -48,30 +48,20 @@
         "4",
         0
       ],
-      "cloud_type": "COMMUNITY",
       "commands": [
         "1",
         0
       ],
-      "container_disk_gb": 20,
-      "expose_public_ip": true,
-      "gpu_count": 1,
-      "gpu_type_id": "NVIDIA GeForce RTX 3090",
       "keep_alive": [
         "3",
         0
-      ],
-      "reuse_policy": "always_create",
-      "ssh_access": [
-        "2",
-        0
-      ],
-      "volume_gb": 0
+      ]
     }
   },
   "6": {
     "class_type": "RunOnRunpod",
     "inputs": {
+      "prompt": "Plan the smoke test deployment.",
       "deployment": [
         "5",
         0
@@ -79,7 +69,17 @@
       "log_level": "info",
       "mode": "plan",
       "on_error": "terminate_created",
-      "prompt": "Plan the smoke test deployment."
+      "cloud_type": "COMMUNITY",
+      "container_disk_gb": 20,
+      "expose_public_ip": true,
+      "gpu_count": 1,
+      "gpu_type_id": "NVIDIA GeForce RTX 3090",
+      "reuse_policy": "always_create",
+      "ssh_access": [
+        "2",
+        0
+      ],
+      "volume_gb": 0
     }
   }
 }

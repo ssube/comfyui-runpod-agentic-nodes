@@ -109,9 +109,6 @@ def compose_yaml_for_plan(plan: DeploymentPlan, *, project_name: str = "crag-loc
                 "comfyui-runpod-agentic.desired_hash": resource.desired_hash,
             },
         }
-        ports = compose_ports(resource)
-        if ports:
-            service["ports"] = ports
         command = compose_command(resource, plan)
         if command:
             service["command"] = escape_compose_interpolation(command)
@@ -191,18 +188,6 @@ def first_service_for_role(service_names: dict[str, str], role: str) -> str | No
         if f"-{role}-" in name or name.startswith(f"crag-{role}-"):
             return service_name
     return None
-
-
-def compose_ports(resource: ResourcePlan) -> list[str]:
-    ports = []
-    for port in resource.ports:
-        container_port = int(port.get("container_port") or port.get("privatePort") or 0)
-        if not container_port or container_port == 22:
-            continue
-        protocol = str(port.get("protocol") or port.get("type") or "tcp").lower()
-        container_protocol = "tcp" if protocol == "http" else protocol
-        ports.append(f"{container_port}:{container_port}/{container_protocol}")
-    return ports
 
 
 def compose_command(resource: ResourcePlan, plan: DeploymentPlan) -> str | None:

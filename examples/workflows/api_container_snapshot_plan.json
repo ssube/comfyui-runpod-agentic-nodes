@@ -24,17 +24,21 @@
   "3": {
     "class_type": "BuildContainer",
     "inputs": {
-      "previous": [
-        "2",
-        0
-      ],
       "image_tag": "docker.io/example/crag-agent-base:dev",
-      "runtime": "nerdctl",
       "push_to_docker_hub": false,
       "dockerhub_username_env": "DOCKERHUB_USERNAME",
       "dockerhub_token_env": "DOCKERHUB_TOKEN",
       "failure_policy": "fail",
-      "retry_count": 0
+      "retry_count": 0,
+      "deployment": [
+        "6",
+        0
+      ],
+      "container_runtime": "nerdctl",
+      "project_name": "crag-container-snapshot-plan",
+      "output_path": "artifacts/local-runtime/container-snapshot-compose.yaml",
+      "use_sudo": false,
+      "timeout_seconds": 1800
     }
   },
   "4": {
@@ -70,34 +74,9 @@
         0
       ],
       "commands": [
-        "3",
+        "2",
         0
-      ],
-      "gpu_type_id": "",
-      "gpu_count": 0,
-      "cloud_type": "auto",
-      "container_disk_gb": 20,
-      "volume_gb": 0,
-      "expose_public_ip": false,
-      "reuse_policy": "always_create"
-    }
-  },
-  "7": {
-    "class_type": "DeployWithContainerd",
-    "inputs": {
-      "deployment": [
-        "6",
-        0
-      ],
-      "prompt": "Generate a local runtime plan that installs packages and snapshots the configured agent container image.",
-      "project_name": "crag-container-snapshot-plan",
-      "output_path": "artifacts/local-runtime/container-snapshot-compose.yaml",
-      "action": "plan",
-      "use_sudo": true,
-      "timeout_seconds": 300,
-      "response_role": "agent",
-      "response_path": "/workspace/.runpod_agentic/response.txt",
-      "response_timeout_seconds": 0
+      ]
     }
   }
 }

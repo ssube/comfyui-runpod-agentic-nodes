@@ -368,12 +368,6 @@
           "shape": 7,
           "type": "RUNPOD_KEEPALIVE_POLICY",
           "link": 5
-        },
-        {
-          "name": "ssh_access",
-          "shape": 7,
-          "type": "RUNPOD_SSH_ACCESS_POLICY",
-          "link": null
         }
       ],
       "outputs": [
@@ -388,15 +382,7 @@
       "properties": {
         "Node name for S&R": "Deploy"
       },
-      "widgets_values": [
-        "NVIDIA RTX A4000",
-        1,
-        "SECURE",
-        20,
-        0,
-        true,
-        "always_create"
-      ]
+      "widgets_values": []
     },
     {
       "id": 7,
@@ -450,8 +436,15 @@
         "Node name for S&R": "RunOnRunpod"
       },
       "widgets_values": [
-        "plan",
         "Plan an agent with Superpowers skills and filesystem MCP.",
+        "plan",
+        "NVIDIA RTX A4000",
+        1,
+        "SECURE",
+        20,
+        0,
+        true,
+        "always_create",
         "terminate_created",
         "info"
       ]
@@ -616,8 +609,8 @@
       "bounding": [
         80,
         90,
-        430,
-        860
+        460,
+        874
       ],
       "color": "#355f9c",
       "font_size": 24,
@@ -627,9 +620,9 @@
       "title": "Agent Policy",
       "bounding": [
         610,
-        70,
+        50,
         440,
-        880
+        890
       ],
       "color": "#3f7f5f",
       "font_size": 24,
@@ -639,9 +632,9 @@
       "title": "Deployment",
       "bounding": [
         1090,
-        300,
-        870,
-        520
+        280,
+        1195,
+        541.312
       ],
       "color": "#8a6f38",
       "font_size": 24,

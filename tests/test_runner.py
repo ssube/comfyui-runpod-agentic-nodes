@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -119,7 +120,7 @@ class FakeProgress:
 def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runpod = FakeRunpodClient()
     ssh = FakeSSHClient()
     runner = RunpodRunner(runpod_client=runpod, ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
@@ -140,7 +141,7 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
 def test_runner_reports_progress(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     progress = FakeProgress()
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"), progress=progress)
 
@@ -155,7 +156,7 @@ def test_runner_reports_progress(tmp_path, monkeypatch):
 def test_runner_reuses_matching_running_pod(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, reuse_policy="reuse_matching")[0]
+    deployment = replace(DeployNode().build(agent)[0], reuse_policy="reuse_matching")
     runpod = FakeRunpodClient()
     runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
@@ -170,7 +171,7 @@ def test_runner_reuses_matching_running_pod(tmp_path, monkeypatch):
 def test_runner_resumes_matching_stopped_pod(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, reuse_policy="resume_stopped")[0]
+    deployment = replace(DeployNode().build(agent)[0], reuse_policy="resume_stopped")
     runpod = FakeRunpodClient()
     runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
@@ -187,7 +188,7 @@ def test_runner_resumes_matching_stopped_pod(tmp_path, monkeypatch):
 def test_runner_fails_unresolved_template_key_before_create(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Codex", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runpod = FakeRunpodClient()
     planner = Planner(TemplateResolver(template_ids={}))
     runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"), planner=planner)
@@ -203,7 +204,7 @@ def test_runner_materializes_generated_llm_token(tmp_path, monkeypatch):
     monkeypatch.setattr("comfyui_runpod_agentic.runner.first_ready_probe", lambda endpoint, role, env: "/")
     llm = LLMServerNode().build("Ollama", "llama3", "own_pod", "generated_token")[0]
     agent = AgentNode().build("Pi", "model", "manual", llm=llm)[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runpod = FakeRunpodClient()
     runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
@@ -220,7 +221,7 @@ def test_runner_creates_network_volume_from_size(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Pi", "model", "manual")[0]
     storage = NetworkStorageNode().build("", "/workspace", "delete_with_deployment", 25, "US-KS-2", "crag-test")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, network_storage=storage)[0]
+    deployment = DeployNode().build(agent, network_storage=storage)[0]
     runpod = FakeRunpodClient()
     runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
@@ -236,7 +237,7 @@ def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):
     command = "printf response && printf warning >&2"
     agent = AgentNode().build("Pi", "model", "manual")[0]
     commands = SSHCommandNode().build(command, "before_start", "fail")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, commands=commands)[0]
+    deployment = DeployNode().build(agent, commands=commands)[0]
     ssh = FakeSSHClient(outputs={command: ("response\n", "warning\n")})
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
 
@@ -253,7 +254,7 @@ def test_runner_executes_command_phases_around_launch(tmp_path, monkeypatch):
     after_start = SSHCommandNode().build("echo after-start", "after_start", "fail", previous=before)[0]
     after_ready = SSHCommandNode().build("echo after-ready", "after_ready", "fail", previous=after_start)[0]
     agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, commands=after_ready)[0]
+    deployment = DeployNode().build(agent, commands=after_ready)[0]
     ssh = FakeSSHClient()
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
 
@@ -271,7 +272,7 @@ def test_runner_retries_retry_commands(tmp_path, monkeypatch):
     command = "echo maybe"
     commands = SSHCommandNode().build(command, "before_start", "retry", retry_count=1)[0]
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, commands=commands)[0]
+    deployment = DeployNode().build(agent, commands=commands)[0]
     ssh = FakeSSHClient(outputs={command: [("", "failed\n", 1), ("ok\n", "", 0)]})
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
 
@@ -286,7 +287,7 @@ def test_runner_executes_teardown_commands_on_stop(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     teardown = SSHCommandNode().build("echo teardown", "teardown", "fail")[0]
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, commands=teardown)[0]
+    deployment = DeployNode().build(agent, commands=teardown)[0]
     runpod = FakeRunpodClient()
     ssh = FakeSSHClient()
     runner = RunpodRunner(runpod_client=runpod, ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
@@ -303,7 +304,7 @@ def test_runner_apply_and_wait_collects_agent_response_file(tmp_path, monkeypatc
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     monkeypatch.setenv("CRAG_AGENT_RESPONSE_TIMEOUT_SECONDS", "1")
     agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     ssh = FakeSSHClient(
         outputs={
             "test -s '/workspace/.runpod_agentic/response.txt' && cat '/workspace/.runpod_agentic/response.txt'": ("agent done\n", ""),
@@ -324,7 +325,7 @@ def test_runner_apply_and_wait_enforces_turn_keep_alive(tmp_path, monkeypatch):
     monkeypatch.setenv("CRAG_AGENT_RESPONSE_TIMEOUT_SECONDS", "1")
     agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
     keep_alive = KeepAliveNode().build("turns", "stop", 0, "seconds", 1, 0.0, 0, "server_side")[0]
-    deployment = DeployNode().build(agent, gpu_count=0, keep_alive=keep_alive)[0]
+    deployment = DeployNode().build(agent, keep_alive=keep_alive)[0]
     ssh = FakeSSHClient(outputs={"test -s '/workspace/.runpod_agentic/response.txt' && cat '/workspace/.runpod_agentic/response.txt'": ("one turn\n", "")})
     runpod = FakeRunpodClient()
     runner = RunpodRunner(runpod_client=runpod, ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
@@ -337,7 +338,7 @@ def test_runner_apply_and_wait_enforces_turn_keep_alive(tmp_path, monkeypatch):
 
 def test_run_node_plan_exposes_response_and_errors_slots():
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
 
     result, response, errors = RunOnRunpodNode().run(deployment, mode="plan")
 
@@ -353,7 +354,7 @@ def test_run_node_apply_returns_errors_without_losing_output_slots(monkeypatch):
 
     monkeypatch.setattr("comfyui_runpod_agentic.runner.RunpodRunner", FailingRunner)
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
 
     result, response, errors = RunOnRunpodNode().run(deployment, mode="apply")
 
@@ -368,7 +369,7 @@ def test_runner_apply_waits_for_dependency_endpoint(tmp_path, monkeypatch):
     monkeypatch.setattr("comfyui_runpod_agentic.runner.first_ready_probe", lambda endpoint, role, env: "/")
     browser = BrowserNode().build("Playwright", "own_pod", "chromium")[0]
     agent = AgentNode().build("Pi", "model", "manual", browser=browser)[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runpod = FakeRunpodClient()
     runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
@@ -382,7 +383,7 @@ def test_runner_apply_waits_for_dependency_endpoint(tmp_path, monkeypatch):
 def test_runner_logs_sanitized_pod_create_failure(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runner = RunpodRunner(runpod_client=FakeRunpodClient(fail_create=True), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
     with pytest.raises(RuntimeError, match="create failed"):
@@ -398,7 +399,7 @@ def test_runner_writes_mcp_runtime_file(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     mcp = MCPServerNode().build("filesystem", "stdio", "npx", "-y @modelcontextprotocol/server-filesystem /workspace", "", "{}", "")[0]
     agent = AgentNode().build("Pi", "model", "manual", system_prompt="Stay concise.", mcp_servers=mcp)[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
     result = runner.run(deployment, mode="apply", prompt="List available files.")
@@ -416,7 +417,7 @@ def test_runner_installs_skills_before_user_commands(tmp_path, monkeypatch):
     skill = SkillNode().build("frontend-design", "https://github.com/example/skills.git", "frontend-design", "", "main")[0]
     skills = SkillFrameworkNode().build("Superpowers", "", "", previous=skill)[0]
     agent = AgentNode().build("Pi", "model", "manual", skills=skills)[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
     runner.run(deployment, mode="apply")
@@ -456,7 +457,7 @@ def test_launch_command_can_use_configured_launcher(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     monkeypatch.setenv("CRAG_AGENT_LAUNCH_COMMAND", "echo launch-agent")
     agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
     plan = runner.planner.build(deployment, mode="apply", workflow_graph={"test": True})
 
@@ -467,7 +468,7 @@ def test_launch_command_uses_injected_launcher_by_default(tmp_path, monkeypatch)
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     monkeypatch.delenv("CRAG_AGENT_LAUNCH_COMMAND", raising=False)
     agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
     plan = runner.planner.build(deployment, mode="apply", workflow_graph={"test": True})
 
@@ -525,7 +526,7 @@ def test_runner_writes_pi_runtime_config_files(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     llm = LLMApiNode().build("Ollama Cloud", "deepseek-v4-flash", "OLLAMA_API_KEY")[0]
     agent = AgentNode().build("Pi", "deepseek-v4-flash", "manual", llm=llm)[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runpod = FakeRunpodClient()
     runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
 
@@ -541,7 +542,7 @@ def test_runner_writes_pi_runtime_config_files(tmp_path, monkeypatch):
 def test_startup_script_for_plan_is_pasteable_bash(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
-    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    deployment = DeployNode().build(agent)[0]
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
     plan = runner.planner.build(deployment, mode="plan", prompt="Do it.", workflow_graph={"test": True})
 

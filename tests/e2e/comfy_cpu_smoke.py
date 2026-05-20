@@ -34,9 +34,7 @@ EXPECTED_NODES = {
     "RunOnRunpod",
     "StartupScript",
     "ComposeYAML",
-    "DeployWithDocker",
-    "DeployWithPodman",
-    "DeployWithContainerd",
+    "RunLocalContainers",
     "Logs",
 }
 

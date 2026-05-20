@@ -75,30 +75,20 @@
         "3",
         0
       ],
-      "cloud_type": "SECURE",
       "commands": [
         "4",
         0
       ],
-      "container_disk_gb": 20,
-      "expose_public_ip": true,
-      "gpu_count": 1,
-      "gpu_type_id": "NVIDIA RTX A4000",
       "keep_alive": [
         "5",
         0
-      ],
-      "reuse_policy": "always_create",
-      "ssh_access": [
-        "6",
-        0
-      ],
-      "volume_gb": 0
+      ]
     }
   },
   "8": {
     "class_type": "RunOnRunpod",
     "inputs": {
+      "prompt": "Run the smoke command and save the generated runtime config files.",
       "deployment": [
         "7",
         0
@@ -106,7 +96,17 @@
       "log_level": "info",
       "mode": "apply",
       "on_error": "terminate_created",
-      "prompt": "Run the smoke command and save the generated runtime config files."
+      "cloud_type": "SECURE",
+      "container_disk_gb": 20,
+      "expose_public_ip": true,
+      "gpu_count": 1,
+      "gpu_type_id": "NVIDIA RTX A4000",
+      "reuse_policy": "always_create",
+      "ssh_access": [
+        "6",
+        0
+      ],
+      "volume_gb": 0
     }
   }
 }
