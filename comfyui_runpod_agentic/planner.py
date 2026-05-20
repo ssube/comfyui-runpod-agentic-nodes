@@ -244,6 +244,9 @@ class Planner:
                 actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, to_plain(command)))
         if deployment.keep_alive:
             actions.append(PlanAction("MONITOR_KEEP_ALIVE", "agent", agent.name, to_plain(deployment.keep_alive)))
+        for command in sorted((deployment.ssh_commands.commands if deployment.ssh_commands else []), key=lambda item: item.order):
+            if command.phase == "teardown":
+                actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, to_plain(command)))
         return actions
 
 

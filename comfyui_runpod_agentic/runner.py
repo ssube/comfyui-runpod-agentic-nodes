@@ -123,50 +123,41 @@ class RunpodRunner:
         return result
 
     def _run_agent_ssh_steps(self, plan: DeploymentPlan, host: str, port: int, resource_id: str | None, *, wait: bool = False) -> tuple[str, str]:
-        commands = [action for action in plan.actions if action.action == "RUN_SSH_COMMAND"]
         response_parts = []
         error_parts = []
-        for action in commands:
-            self._progress_step(f"ssh {action.detail.get('phase', 'command')}")
-            command = action.detail["command"]
-            log_paths = self._command_log_paths(plan.run_id, action.detail)
-            command_id = self.state_store.start_command(
-                plan.run_id,
-                resource_id,
-                action.detail["phase"],
-                int(action.detail["order"]),
-                action.detail.get("command_hash") or stable_command_hash(command),
-                str(log_paths["stdout"]),
-                str(log_paths["stderr"]),
-            )
-            result = self.ssh_client.run(host, port, command)
-            log_paths["stdout"].write_text(result.stdout)
-            log_paths["stderr"].write_text(result.stderr)
-            if result.stdout:
-                response_parts.append(result.stdout)
-            if result.stderr:
-                error_parts.append(result.stderr)
-            status = "completed" if result.exit_code == 0 else "failed"
-            self.state_store.finish_command(command_id, status, result.exit_code)
-            self.state_store.add_event(plan.run_id, "ssh_command", command, payload={"exit_code": result.exit_code})
-            if result.exit_code != 0 and action.detail.get("failure_policy") == "fail":
-                raise RuntimeError(f"SSH command failed with exit code {result.exit_code}: {command}")
-        self._progress_step("write runtime")
-        self._write_runtime_files(plan, host, port)
-        launch = self._launch_command(plan)
-        if not launch:
-            self.state_store.add_event(plan.run_id, "agent_launch_skipped", "manual startup mode")
-            return "".join(response_parts), "".join(error_parts)
-        self._progress_step("launch agent")
-        result = self.ssh_client.run(host, port, launch)
-        if result.stdout:
-            response_parts.append(result.stdout)
-        if result.stderr:
-            error_parts.append(result.stderr)
-        self.state_store.add_event(plan.run_id, "agent_launch", launch, payload={"exit_code": result.exit_code})
-        if result.exit_code != 0:
-            raise RuntimeError(f"Agent launch failed with exit code {result.exit_code}.")
-        if wait:
+        launched = False
+        for action in plan.actions:
+            if action.role != "agent":
+                continue
+            if action.action == "RUN_SSH_COMMAND":
+                if action.detail.get("phase") == "teardown":
+                    continue
+                result = self._run_ssh_command_action(plan, action, host, port, resource_id)
+                if result.stdout:
+                    response_parts.append(result.stdout)
+                if result.stderr:
+                    error_parts.append(result.stderr)
+            elif action.action == "WRITE_RUNTIME_CONFIG":
+                self._progress_step("write runtime")
+                self._write_runtime_files(plan, host, port)
+            elif action.action == "LAUNCH_AGENT":
+                launch = self._launch_command(plan)
+                if not launch:
+                    self.state_store.add_event(plan.run_id, "agent_launch_skipped", "manual startup mode")
+                    continue
+                self._progress_step("launch agent")
+                result = self.ssh_client.run(host, port, launch)
+                launched = True
+                if result.stdout:
+                    response_parts.append(result.stdout)
+                if result.stderr:
+                    error_parts.append(result.stderr)
+                self.state_store.add_event(plan.run_id, "agent_launch", launch, payload={"exit_code": result.exit_code})
+                if result.exit_code != 0:
+                    raise RuntimeError(f"Agent launch failed with exit code {result.exit_code}.")
+            elif action.action == "MONITOR_KEEP_ALIVE":
+                continue
+        if wait and launched:
             self._progress_step("wait response")
             response, errors = self._wait_agent_response(plan, host, port)
             if response:
@@ -174,6 +165,39 @@ class RunpodRunner:
             if errors:
                 error_parts.append(errors)
         return "".join(response_parts), "".join(error_parts)
+
+    def _run_ssh_command_action(self, plan: DeploymentPlan, action, host: str, port: int, resource_id: str | None):
+        self._progress_step(f"ssh {action.detail.get('phase', 'command')}")
+        command = action.detail["command"]
+        log_paths = self._command_log_paths(plan.run_id, action.detail)
+        command_id = self.state_store.start_command(
+            plan.run_id,
+            resource_id,
+            action.detail["phase"],
+            int(action.detail["order"]),
+            action.detail.get("command_hash") or stable_command_hash(command),
+            str(log_paths["stdout"]),
+            str(log_paths["stderr"]),
+        )
+        attempts = max(1, int(action.detail.get("retry_count") or 0) + 1)
+        result = None
+        for attempt in range(attempts):
+            result = self.ssh_client.run(host, port, command)
+            if result.exit_code == 0:
+                break
+            if action.detail.get("failure_policy") != "retry" or attempt >= attempts - 1:
+                break
+            self.state_store.add_event(plan.run_id, "ssh_command_retry", command, payload={"attempt": attempt + 1, "exit_code": result.exit_code})
+            time.sleep(1)
+        assert result is not None
+        log_paths["stdout"].write_text(result.stdout)
+        log_paths["stderr"].write_text(result.stderr)
+        status = "completed" if result.exit_code == 0 else "failed"
+        self.state_store.finish_command(command_id, status, result.exit_code)
+        self.state_store.add_event(plan.run_id, "ssh_command", command, payload={"exit_code": result.exit_code})
+        if result.exit_code != 0 and action.detail.get("failure_policy") in {"fail", "retry"}:
+            raise RuntimeError(f"SSH command failed with exit code {result.exit_code}: {command}")
+        return result
 
     def _wait_agent_response(self, plan: DeploymentPlan, host: str, port: int, timeout_seconds: int | None = None, interval_seconds: int = 2) -> tuple[str, str]:
         workspace = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"].get("WORKSPACE_DIR", "/workspace")
@@ -339,11 +363,27 @@ class RunpodRunner:
             pod_id = resource.get("runpod_pod_id")
             if not pod_id:
                 continue
+            self._run_teardown_commands(plan, resource)
             if action == "terminate":
                 self.runpod_client.terminate_pod(pod_id)
             else:
                 self.runpod_client.stop_pod(pod_id)
         return {"run_id": plan.run_id, "status": action, "resources": matched}
+
+    def _run_teardown_commands(self, plan: DeploymentPlan, resource: dict[str, Any]) -> None:
+        if resource.get("role") != "agent":
+            return
+        pod_id = resource.get("runpod_pod_id")
+        if not pod_id:
+            return
+        teardown_actions = [action for action in plan.actions if action.action == "RUN_SSH_COMMAND" and action.detail.get("phase") == "teardown"]
+        if not teardown_actions:
+            return
+        pod = self.runpod_client.get_pod(pod_id)
+        host, port = self._wait_ssh_endpoint(pod, plan)
+        self._wait_ssh_ready(host, port)
+        for action in teardown_actions:
+            self._run_ssh_command_action(plan, action, host, port, resource.get("id"))
 
     def _cleanup_created(self, plan: DeploymentPlan, *, terminate: bool) -> None:
         for resource in self.state_store.list_resources():

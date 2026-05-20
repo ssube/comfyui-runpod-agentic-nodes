@@ -24,6 +24,7 @@ from comfyui_runpod_agentic.runner import (
     readiness_probe_paths,
     startup_script_for_plan,
 )
+from comfyui_runpod_agentic.ssh_client import CommandResult
 from comfyui_runpod_agentic.state_store import StateStore
 
 
@@ -71,8 +72,15 @@ class FakeSSHClient:
 
     def run(self, host, port, command, *, timeout_seconds=None):
         self.commands.append(command)
-        stdout, stderr = self.outputs.get(command, ("", ""))
-        return type("Result", (), {"exit_code": 0, "stdout": stdout, "stderr": stderr})()
+        output = self.outputs.get(command, ("", ""))
+        if isinstance(output, list):
+            stdout, stderr, exit_code = output.pop(0)
+            return CommandResult(exit_code, stdout, stderr)
+        if len(output) == 3:
+            stdout, stderr, exit_code = output
+            return CommandResult(exit_code, stdout, stderr)
+        stdout, stderr = output
+        return CommandResult(0, stdout, stderr)
 
     def write_file(self, host, port, path, content):
         self.files[path] = content
@@ -139,6 +147,59 @@ def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):
 
     assert result["response"] == "response\n"
     assert result["errors"] == "warning\n"
+
+
+def test_runner_executes_command_phases_around_launch(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setenv("CRAG_AGENT_LAUNCH_COMMAND", "echo launch-agent")
+    before = SSHCommandNode().build("echo before", "before_start", "fail")[0]
+    after_start = SSHCommandNode().build("echo after-start", "after_start", "fail", previous=before)[0]
+    after_ready = SSHCommandNode().build("echo after-ready", "after_ready", "fail", previous=after_start)[0]
+    agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, commands=after_ready)[0]
+    ssh = FakeSSHClient()
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+
+    runner.run(deployment, mode="apply")
+
+    before_index = ssh.commands.index("echo before")
+    launch_index = next(index for index, command in enumerate(ssh.commands) if "echo launch-agent" in command)
+    after_start_index = ssh.commands.index("echo after-start")
+    after_ready_index = ssh.commands.index("echo after-ready")
+    assert before_index < launch_index < after_start_index < after_ready_index
+
+
+def test_runner_retries_retry_commands(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    command = "echo maybe"
+    commands = SSHCommandNode().build(command, "before_start", "retry", retry_count=1)[0]
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, commands=commands)[0]
+    ssh = FakeSSHClient(outputs={command: [("", "failed\n", 1), ("ok\n", "", 0)]})
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply")
+
+    assert result["response"].endswith("ok\n")
+    assert ssh.commands.count(command) == 2
+    assert any(event["event_type"] == "ssh_command_retry" for event in runner.state_store.list_events(result["run_id"]))
+
+
+def test_runner_executes_teardown_commands_on_stop(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    teardown = SSHCommandNode().build("echo teardown", "teardown", "fail")[0]
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, commands=teardown)[0]
+    runpod = FakeRunpodClient()
+    ssh = FakeSSHClient()
+    runner = RunpodRunner(runpod_client=runpod, ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+    runner.run(deployment, mode="apply")
+
+    result = runner.run(deployment, mode="stop")
+
+    assert result["status"] == "stop"
+    assert "echo teardown" in ssh.commands
+    assert runpod.stopped == ["pod-1"]
 
 
 def test_runner_apply_and_wait_collects_agent_response_file(tmp_path, monkeypatch):
