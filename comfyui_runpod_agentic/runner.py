@@ -15,6 +15,7 @@ from .runtime_contracts import with_env
 from .specs import DeploymentSpec, KeepAlivePolicy, RuntimeContract, to_plain
 from .ssh_client import SSHClientProtocol, SSHConfig, SubprocessSSHClient, extract_ssh_endpoint, runpod_proxy_ssh_endpoint
 from .state_store import StateStore
+from .template_resolver import is_unresolved_template_key
 from .validation import validate_deployment
 
 
@@ -105,6 +106,8 @@ class RunpodRunner:
         return result
 
     def _reuse_or_create_pod(self, plan: DeploymentPlan, resource, pending_resource_id: str) -> dict[str, Any]:
+        if is_unresolved_template_key(resource.template_id):
+            raise RuntimeError(f"Template key {resource.template_id} is not resolved to a Runpod template id. Run scripts/create-runpod-templates or update defaults/runpod_template_ids.json.")
         existing = self._matching_existing_resource(plan, resource)
         if existing:
             pod_id = existing.get("runpod_pod_id")

@@ -26,6 +26,8 @@ from comfyui_runpod_agentic.runner import (
 )
 from comfyui_runpod_agentic.ssh_client import CommandResult
 from comfyui_runpod_agentic.state_store import StateStore
+from comfyui_runpod_agentic.template_resolver import TemplateResolver
+from comfyui_runpod_agentic.planner import Planner
 
 
 class FakeRunpodClient:
@@ -168,6 +170,20 @@ def test_runner_resumes_matching_stopped_pod(tmp_path, monkeypatch):
     assert len(runpod.created) == 1
     assert runpod.resumed == ["pod-1"]
     assert any(event["event_type"] == "pod_resumed" for event in runner.state_store.list_events(second["run_id"]))
+
+
+def test_runner_fails_unresolved_template_key_before_create(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = AgentNode().build("Codex", "model", "manual")[0]
+    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    runpod = FakeRunpodClient()
+    planner = Planner(TemplateResolver(template_ids={}))
+    runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"), planner=planner)
+
+    with pytest.raises(RuntimeError, match="not resolved"):
+        runner.run(deployment, mode="apply")
+
+    assert runpod.created == []
 
 
 def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):

@@ -90,3 +90,7 @@ def load_template_id_map(path: str | Path = "defaults/runpod_template_ids.json")
     if not isinstance(data, dict):
         raise TemplateResolutionError(f"Template ID map must be a JSON object: {candidate}")
     return {str(key): str(value) for key, value in data.items()}
+
+
+def is_unresolved_template_key(template_id: str | None) -> bool:
+    return bool(template_id and template_id.startswith("rp-"))

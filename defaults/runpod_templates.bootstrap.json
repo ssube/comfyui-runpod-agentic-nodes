@@ -4,6 +4,61 @@
       "containerDiskInGb": 20,
       "dockerArgs": "sleep infinity",
       "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-codex",
+      "name": "crag-agent-codex",
+      "ports": "22/tcp",
+      "readme": "CRAG Codex agent placeholder. Bake Codex CLI and runpod-agent-launch before production use.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 20,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-codex-playwright",
+      "name": "crag-agent-codex-playwright",
+      "ports": "22/tcp",
+      "readme": "CRAG Codex Playwright agent placeholder. Bake Codex, Playwright, and runpod-agent-launch before production use.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 20,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-claude",
+      "name": "crag-agent-claude",
+      "ports": "22/tcp",
+      "readme": "CRAG Claude agent placeholder. Bake Claude CLI and runpod-agent-launch before production use.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 20,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-claude-playwright",
+      "name": "crag-agent-claude-playwright",
+      "ports": "22/tcp",
+      "readme": "CRAG Claude Playwright agent placeholder. Bake Claude, Playwright, and runpod-agent-launch before production use.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 20,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-hermes",
+      "name": "crag-agent-hermes",
+      "ports": "22/tcp",
+      "readme": "CRAG Hermes agent placeholder. Bake Hermes CLI and runpod-agent-launch before production use.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 20,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
       "key": "rp-agent-pi",
       "name": "crag-agent-pi",
       "ports": "22/tcp",
@@ -19,6 +74,17 @@
       "name": "crag-agent-opencode",
       "ports": "22/tcp",
       "readme": "CRAG OpenCode agent template placeholder. Bake OpenCode and runpod-agent-launch before production use.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 30,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-opencode-playwright",
+      "name": "crag-agent-opencode-playwright",
+      "ports": "22/tcp",
+      "readme": "CRAG OpenCode Playwright agent placeholder. Bake OpenCode, Playwright, and runpod-agent-launch before production use.",
       "volumeInGb": 10,
       "volumeMountPath": "/workspace"
     },
@@ -54,6 +120,17 @@
       "volumeMountPath": "/root/.ollama"
     },
     {
+      "containerDiskInGb": 30,
+      "dockerArgs": "python -m vllm.entrypoints.openai.api_server --host 0.0.0.0",
+      "imageName": "vllm/vllm-openai:latest",
+      "key": "rp-llm-vllm",
+      "name": "crag-llm-vllm",
+      "ports": "8000/http,22/tcp",
+      "readme": "CRAG vLLM template placeholder. Pin the vLLM image and model startup args before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/root/.cache"
+    },
+    {
       "containerDiskInGb": 10,
       "imageName": "qdrant/qdrant:v1.16.2",
       "key": "rp-vector-qdrant",
@@ -62,6 +139,16 @@
       "readme": "CRAG Qdrant vector database template.",
       "volumeInGb": 10,
       "volumeMountPath": "/qdrant/storage"
+    },
+    {
+      "containerDiskInGb": 10,
+      "imageName": "chromadb/chroma:latest",
+      "key": "rp-vector-chroma",
+      "name": "crag-vector-chroma",
+      "ports": "8000/http,22/tcp",
+      "readme": "CRAG Chroma vector database template. Pin the Chroma image before production use.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/chroma/chroma"
     },
     {
       "containerDiskInGb": 10,
@@ -82,6 +169,26 @@
       "readme": "CRAG Postgres template. Provide POSTGRES_PASSWORD via Runpod secret/env at deploy time.",
       "volumeInGb": 10,
       "volumeMountPath": "/var/lib/postgresql/data"
+    },
+    {
+      "containerDiskInGb": 10,
+      "env": [
+        {
+          "key": "MYSQL_DATABASE",
+          "value": "app"
+        },
+        {
+          "key": "MYSQL_USER",
+          "value": "app"
+        }
+      ],
+      "imageName": "mysql:8.4",
+      "key": "rp-db-mysql",
+      "name": "crag-db-mysql",
+      "ports": "3306/tcp,22/tcp",
+      "readme": "CRAG MySQL template. Provide MYSQL_PASSWORD and MYSQL_ROOT_PASSWORD via Runpod secret/env at deploy time.",
+      "volumeInGb": 10,
+      "volumeMountPath": "/var/lib/mysql"
     }
   ]
 }
