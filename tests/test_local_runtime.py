@@ -117,9 +117,13 @@ def test_apply_compose_file_runs_docker_compose(monkeypatch, tmp_path):
 
 
 def test_apply_local_runtime_reuses_matching_agent_container(monkeypatch, tmp_path):
-    deployment = build_reusable_local_runtime_deployment()
+    llm = RunpodLLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
+    agent_spec = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", llm=llm)[0]
+    keep_alive = RunpodKeepAliveNode().build("turns", "stop", 0, "seconds", 1, 0.0, 0)[0]
+    deployment = RunpodPodNode().build(agent_spec, gpu_count=0, keep_alive=keep_alive, reuse_policy="reuse_matching")[0]
     plan = Planner().build(deployment, prompt="second prompt")
     agent = next(resource for resource in plan.resources if resource.role == "agent")
+    llm_resource = next(resource for resource in plan.resources if resource.role == "llm")
     compose_path = tmp_path / "compose.yaml"
     compose_path.write_text("services: {}\n")
     calls = []
@@ -127,7 +131,9 @@ def test_apply_local_runtime_reuses_matching_agent_container(monkeypatch, tmp_pa
     def fake_run(command, **kwargs):
         calls.append(command)
         if command[:3] == ["docker", "ps", "--format"]:
-            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+            return SimpleNamespace(returncode=0, stdout='{"ID":"llm1","Names":"crag-node-llm"}\n{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "llm1"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "llm", "comfyui-runpod-agentic.desired_hash": llm_resource.desired_hash}}}]), stderr="")
         if command == ["docker", "inspect", "agent1"]:
             return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": agent.desired_hash}}}]), stderr="")
         if command[:4] == ["docker", "exec", "agent1", "bash"]:
@@ -143,6 +149,33 @@ def test_apply_local_runtime_reuses_matching_agent_container(monkeypatch, tmp_pa
     assert result.stdout == "relaunched\n"
     assert not any(command[:3] == ["docker", "compose", "-f"] for command in calls)
     assert any(command[:4] == ["docker", "exec", "agent1", "bash"] and "second prompt" in command[-1] for command in calls)
+
+
+def test_apply_local_runtime_recreates_when_dependency_container_is_missing(monkeypatch, tmp_path):
+    llm = RunpodLLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
+    agent_spec = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", llm=llm)[0]
+    deployment = RunpodPodNode().build(agent_spec, gpu_count=0, reuse_policy="reuse_matching")[0]
+    plan = Planner().build(deployment, prompt="second prompt")
+    agent = next(resource for resource in plan.resources if resource.role == "agent")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[:3] == ["docker", "ps", "--format"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": agent.desired_hash}}}]), stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    _result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="apply")
+
+    assert reused is False
+    assert ["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "up", "-d"] in calls
+    assert not any(command[:4] == ["docker", "exec", "agent1", "bash"] for command in calls)
 
 
 def test_apply_local_runtime_creates_when_reuse_is_disabled(monkeypatch, tmp_path):

@@ -402,10 +402,14 @@ def apply_local_runtime_plan(
 ) -> tuple[LocalApplyResult, bool]:
     if action in {"apply", "apply_and_wait"} and plan.reuse_policy != "always_create":
         agent = next(resource for resource in plan.resources if resource.role == "agent")
-        container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=agent.desired_hash)
+        container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=agent.desired_hash) if all_local_runtime_resources_running(engine, project_name, plan) else None
         if container_id:
             return exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds), True
     return apply_compose_file(engine, compose_path, project_name=project_name, action=action, timeout_seconds=timeout_seconds), False
+
+
+def all_local_runtime_resources_running(engine: str, project_name: str, plan: DeploymentPlan) -> bool:
+    return all(find_local_runtime_container(engine, project_name, resource.role, desired_hash=resource.desired_hash) for resource in plan.resources)
 
 
 def exec_agent_in_local_container(
