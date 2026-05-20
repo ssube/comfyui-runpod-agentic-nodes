@@ -1,6 +1,6 @@
 {
   "1": {
-    "class_type": "RunpodSkillFramework",
+    "class_type": "SkillFramework",
     "inputs": {
       "framework": "Superpowers",
       "custom_github_repo_url": "",
@@ -10,7 +10,7 @@
     }
   },
   "2": {
-    "class_type": "RunpodLanguageRuntime",
+    "class_type": "LanguageRuntime",
     "inputs": {
       "runtime": "nodejs",
       "node_major_version": 22,
@@ -20,7 +20,7 @@
     }
   },
   "3": {
-    "class_type": "RunpodPackage",
+    "class_type": "Package",
     "inputs": {
       "package_manager": "apt",
       "packages": "ca-certificates curl git jq gnupg",
@@ -34,7 +34,7 @@
     }
   },
   "4": {
-    "class_type": "RunpodPackage",
+    "class_type": "Package",
     "inputs": {
       "package_manager": "npm",
       "packages": "@earendil-works/pi-coding-agent",
@@ -48,7 +48,7 @@
     }
   },
   "5": {
-    "class_type": "RunpodSSHCommand",
+    "class_type": "SSHCommand",
     "inputs": {
       "previous": [
         "4",
@@ -62,7 +62,7 @@
     }
   },
   "6": {
-    "class_type": "RunpodLLMApi",
+    "class_type": "LLMApi",
     "inputs": {
       "provider": "Ollama Cloud",
       "model": "deepseek-v4-flash",
@@ -71,7 +71,7 @@
     }
   },
   "7": {
-    "class_type": "RunpodContainerdApply",
+    "class_type": "DeployWithContainerd",
     "inputs": {
       "deployment": [
         "9",
@@ -89,7 +89,7 @@
     }
   },
   "8": {
-    "class_type": "RunpodAgent",
+    "class_type": "Agent",
     "inputs": {
       "harness": "Pi",
       "model": "deepseek-v4-flash",
@@ -107,7 +107,7 @@
     }
   },
   "9": {
-    "class_type": "RunpodPod",
+    "class_type": "Deploy",
     "inputs": {
       "app": [
         "8",
@@ -131,7 +131,7 @@
     }
   },
   "10": {
-    "class_type": "RunpodKeepAlive",
+    "class_type": "KeepAlive",
     "inputs": {
       "mode": "time",
       "action": "stop",

@@ -1,31 +1,31 @@
 import json
 
 from comfyui_runpod_agentic.nodes import (
-    RunpodAgentNode,
-    RunpodBrowserNode,
-    RunpodKeepAliveNode,
-    RunpodLLMApiNode,
-    RunpodLLMServerNode,
-    RunpodLocalSQLDatabaseNode,
-    RunpodNetworkStorageNode,
-    RunpodPodNode,
-    RunpodRemoteSQLDatabaseNode,
-    RunpodSSHAccessNode,
-    RunpodSSHCommandNode,
-    RunpodVectorDatabaseNode,
+    AgentNode,
+    BrowserNode,
+    DeployNode,
+    KeepAliveNode,
+    LLMApiNode,
+    LLMServerNode,
+    LocalSQLDatabaseNode,
+    NetworkStorageNode,
+    RemoteSQLDatabaseNode,
+    SSHAccessNode,
+    SSHCommandNode,
+    VectorDatabaseNode,
 )
 from comfyui_runpod_agentic.planner import Planner
 
 
 def build_deployment():
-    llm = RunpodLLMApiNode().build("Claude", "claude-sonnet", "anthropic_key")[0]
-    sql = RunpodRemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", "pg_password")[0]
-    vector = RunpodVectorDatabaseNode().build("Qdrant", "docs")[0]
-    browser = RunpodBrowserNode().build("Playwright", "same_pod", "chromium")[0]
-    agent = RunpodAgentNode().build("OpenCode", "claude-sonnet", "wait_for_commands", browser=browser, llm=llm, sql_database=sql, vector_database=vector, node_id="agent1")[0]
-    commands = RunpodSSHCommandNode().build("echo setup", "before_start", 10, "fail")[0]
-    keep_alive = RunpodKeepAliveNode().build("time", "stop", 30, "minutes", 0, 0.0, 0)[0]
-    return RunpodPodNode().build(agent, gpu_type_id="NVIDIA A40", commands=commands, keep_alive=keep_alive)[0]
+    llm = LLMApiNode().build("Claude", "claude-sonnet", "anthropic_key")[0]
+    sql = RemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", "pg_password")[0]
+    vector = VectorDatabaseNode().build("Qdrant", "docs")[0]
+    browser = BrowserNode().build("Playwright", "same_pod", "chromium")[0]
+    agent = AgentNode().build("OpenCode", "claude-sonnet", "wait_for_commands", browser=browser, llm=llm, sql_database=sql, vector_database=vector, node_id="agent1")[0]
+    commands = SSHCommandNode().build("echo setup", "before_start", 10, "fail")[0]
+    keep_alive = KeepAliveNode().build("time", "stop", 30, "minutes", 0, 0.0, 0)[0]
+    return DeployNode().build(agent, gpu_type_id="NVIDIA A40", commands=commands, keep_alive=keep_alive)[0]
 
 
 def test_planner_orders_dependencies_before_agent():
@@ -49,12 +49,12 @@ def test_plan_is_json_serializable():
 
 
 def test_keep_alive_enforcement_controls_runpod_server_fields():
-    agent = RunpodAgentNode().build("Pi", "model", "manual")[0]
-    server_policy = RunpodKeepAliveNode().build("time", "stop", 30, "seconds", 0, 0.0, 0, "server_side")[0]
-    pod_policy = RunpodKeepAliveNode().build("time", "stop", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    server_policy = KeepAliveNode().build("time", "stop", 30, "seconds", 0, 0.0, 0, "server_side")[0]
+    pod_policy = KeepAliveNode().build("time", "stop", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
 
-    server_plan = Planner().build(RunpodPodNode().build(agent, gpu_count=0, keep_alive=server_policy)[0])
-    pod_plan = Planner().build(RunpodPodNode().build(agent, gpu_count=0, keep_alive=pod_policy)[0])
+    server_plan = Planner().build(DeployNode().build(agent, gpu_count=0, keep_alive=server_policy)[0])
+    pod_plan = Planner().build(DeployNode().build(agent, gpu_count=0, keep_alive=pod_policy)[0])
 
     assert "stopAfter" in server_plan.resources[-1].pod_input
     assert "stopAfter" not in pod_plan.resources[-1].pod_input
@@ -66,11 +66,11 @@ def test_ollama_dependency_binds_to_local_interface_but_agent_gets_placeholder(t
     key_path = tmp_path / "id_ed25519"
     key_path.write_text("private")
     key_path.with_suffix(".pub").write_text("ssh-ed25519 test-key")
-    browser = RunpodBrowserNode().build("Neko", "own_pod", "chromium")[0]
-    llm = RunpodLLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual", browser=browser, llm=llm)[0]
-    ssh_access = RunpodSSHAccessNode().build("runpod_proxy", "root", str(key_path), "suffix", 22, True)[0]
-    deployment = RunpodPodNode().build(agent, gpu_count=0, ssh_access=ssh_access)[0]
+    browser = BrowserNode().build("Neko", "own_pod", "chromium")[0]
+    llm = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
+    agent = AgentNode().build("Pi", "model", "manual", browser=browser, llm=llm)[0]
+    ssh_access = SSHAccessNode().build("runpod_proxy", "root", str(key_path), "suffix", 22, True)[0]
+    deployment = DeployNode().build(agent, gpu_count=0, ssh_access=ssh_access)[0]
 
     plan = Planner().build(deployment)
 
@@ -86,10 +86,10 @@ def test_ollama_dependency_binds_to_local_interface_but_agent_gets_placeholder(t
 
 
 def test_dependency_pods_use_their_own_network_storage():
-    storage = RunpodNetworkStorageNode().build("vol-sql", "/var/lib/postgresql/data")[0]
-    sql = RunpodRemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", "pg_password", network_storage=storage)[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
-    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+    storage = NetworkStorageNode().build("vol-sql", "/var/lib/postgresql/data")[0]
+    sql = RemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", "pg_password", network_storage=storage)[0]
+    agent = AgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
+    deployment = DeployNode().build(agent, gpu_count=0)[0]
 
     plan = Planner().build(deployment)
 
@@ -101,9 +101,9 @@ def test_dependency_pods_use_their_own_network_storage():
 
 
 def test_network_storage_retention_policy_is_visible_in_plan_warnings():
-    storage = RunpodNetworkStorageNode().build("vol-workspace", "/workspace", "delete_when_unused")[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual")[0]
-    deployment = RunpodPodNode().build(agent, gpu_count=0, network_storage=storage)[0]
+    storage = NetworkStorageNode().build("vol-workspace", "/workspace", "delete_when_unused")[0]
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, network_storage=storage)[0]
 
     plan = Planner().build(deployment)
 
@@ -112,10 +112,10 @@ def test_network_storage_retention_policy_is_visible_in_plan_warnings():
 
 
 def test_local_sql_adds_sqlite_setup_before_user_commands():
-    sql = RunpodLocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
-    commands = RunpodSSHCommandNode().build("echo user", "before_start", 10, "fail")[0]
-    deployment = RunpodPodNode().build(agent, gpu_count=0, commands=commands)[0]
+    sql = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
+    agent = AgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
+    commands = SSHCommandNode().build("echo user", "before_start", 10, "fail")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, commands=commands)[0]
 
     plan = Planner().build(deployment)
 
@@ -126,9 +126,9 @@ def test_local_sql_adds_sqlite_setup_before_user_commands():
 
 
 def test_remote_env_sql_does_not_create_dependency_pod():
-    sql = RunpodRemoteSQLDatabaseNode().build("Postgres", "env_only", "app", "app", database_url_env_var="APP_DATABASE_URL")[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
-    deployment = RunpodPodNode().build(agent, gpu_count=0)[0]
+    sql = RemoteSQLDatabaseNode().build("Postgres", "env_only", "app", "app", database_url_env_var="APP_DATABASE_URL")[0]
+    agent = AgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
+    deployment = DeployNode().build(agent, gpu_count=0)[0]
 
     plan = Planner().build(deployment)
 

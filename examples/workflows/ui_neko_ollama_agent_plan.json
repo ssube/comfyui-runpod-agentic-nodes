@@ -6,7 +6,7 @@
   "nodes": [
     {
       "id": 1,
-      "type": "RunpodNetworkStorage",
+      "type": "NetworkStorage",
       "pos": [
         120,
         170
@@ -29,7 +29,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodNetworkStorage"
+        "Node name for S&R": "NetworkStorage"
       },
       "widgets_values": [
         "vol-neko-profile",
@@ -39,7 +39,7 @@
     },
     {
       "id": 2,
-      "type": "RunpodNetworkStorage",
+      "type": "NetworkStorage",
       "pos": [
         120,
         410
@@ -62,7 +62,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodNetworkStorage"
+        "Node name for S&R": "NetworkStorage"
       },
       "widgets_values": [
         "vol-ollama-models",
@@ -72,7 +72,7 @@
     },
     {
       "id": 3,
-      "type": "RunpodBrowser",
+      "type": "Browser",
       "pos": [
         560,
         170
@@ -111,7 +111,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodBrowser"
+        "Node name for S&R": "Browser"
       },
       "widgets_values": [
         "Neko",
@@ -121,7 +121,7 @@
     },
     {
       "id": 4,
-      "type": "RunpodLLMServer",
+      "type": "LLMServer",
       "pos": [
         560,
         390
@@ -169,7 +169,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodLLMServer"
+        "Node name for S&R": "LLMServer"
       },
       "widgets_values": [
         "Ollama",
@@ -182,7 +182,7 @@
     },
     {
       "id": 7,
-      "type": "RunpodKeepAlive",
+      "type": "KeepAlive",
       "pos": [
         1010,
         150
@@ -215,7 +215,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodKeepAlive"
+        "Node name for S&R": "KeepAlive"
       },
       "widgets_values": [
         "time",
@@ -229,7 +229,7 @@
     },
     {
       "id": 5,
-      "type": "RunpodAgent",
+      "type": "Agent",
       "pos": [
         1010,
         400
@@ -306,7 +306,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodAgent"
+        "Node name for S&R": "Agent"
       },
       "widgets_values": [
         "Pi",
@@ -318,7 +318,7 @@
     },
     {
       "id": 6,
-      "type": "RunpodSSHAccess",
+      "type": "SSHAccess",
       "pos": [
         1010,
         930
@@ -341,7 +341,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodSSHAccess"
+        "Node name for S&R": "SSHAccess"
       },
       "widgets_values": [
         "runpod_proxy",
@@ -396,7 +396,7 @@
     },
     {
       "id": 8,
-      "type": "RunpodPod",
+      "type": "Deploy",
       "pos": [
         1480,
         430
@@ -455,7 +455,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodPod"
+        "Node name for S&R": "Deploy"
       },
       "widgets_values": [
         "NVIDIA RTX A4000",
@@ -469,7 +469,7 @@
     },
     {
       "id": 9,
-      "type": "RunpodRun",
+      "type": "RunOnRunpod",
       "pos": [
         1900,
         460
@@ -516,7 +516,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodRun"
+        "Node name for S&R": "RunOnRunpod"
       },
       "widgets_values": [
         "plan",

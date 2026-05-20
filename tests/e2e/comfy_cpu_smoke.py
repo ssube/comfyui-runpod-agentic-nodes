@@ -13,31 +13,31 @@ import urllib.request
 from pathlib import Path
 
 EXPECTED_NODES = {
-    "RunpodAgent",
-    "RunpodBrowser",
-    "RunpodLLMServer",
-    "RunpodLLMApi",
-    "RunpodMCPServer",
-    "RunpodSkill",
-    "RunpodSkillFramework",
-    "RunpodRemoteSQLDatabase",
-    "RunpodLocalSQLDatabase",
-    "RunpodVectorDatabase",
-    "RunpodNetworkStorage",
-    "RunpodS3Storage",
-    "RunpodSSHCommand",
-    "RunpodPackage",
-    "RunpodLanguageRuntime",
-    "RunpodBuildContainer",
-    "RunpodKeepAlive",
-    "RunpodPod",
-    "RunpodRun",
-    "RunpodStartupScript",
-    "RunpodComposeYAML",
-    "RunpodDockerComposeApply",
-    "RunpodPodmanComposeApply",
-    "RunpodContainerdApply",
-    "RunpodLogs",
+    "Agent",
+    "Browser",
+    "LLMServer",
+    "LLMApi",
+    "MCPServer",
+    "Skill",
+    "SkillFramework",
+    "RemoteSQLDatabase",
+    "LocalSQLDatabase",
+    "VectorDatabase",
+    "NetworkStorage",
+    "S3Storage",
+    "SSHCommand",
+    "Package",
+    "LanguageRuntime",
+    "BuildContainer",
+    "KeepAlive",
+    "Deploy",
+    "RunOnRunpod",
+    "StartupScript",
+    "ComposeYAML",
+    "DeployWithDocker",
+    "DeployWithPodman",
+    "DeployWithContainerd",
+    "Logs",
 }
 
 
@@ -103,7 +103,7 @@ def server_test(python: str, comfy_dir: Path, base_dir: Path, user_dir: Path, po
         missing = sorted(EXPECTED_NODES.difference(data))
         if missing:
             raise AssertionError(f"ComfyUI object_info missing nodes: {missing}")
-        assert data["RunpodRun"]["output_node"] is True
+        assert data["RunOnRunpod"]["output_node"] is True
     finally:
         proc.terminate()
         try:

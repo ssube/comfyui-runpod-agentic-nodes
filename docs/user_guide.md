@@ -1,6 +1,6 @@
-# ComfyUI Runpod Agentic Workflow Nodes User Guide
+# ComfyUI Agentic Workflow Nodes User Guide
 
-ComfyUI Runpod Agentic workflow nodes, or CRAG nodes, let you design, launch, connect, monitor, and shut down agentic systems on Runpod from a ComfyUI graph.
+ComfyUI Agentic workflow nodes, or CRAG nodes, let you design, launch, connect, monitor, and shut down agentic systems on Runpod from a ComfyUI graph.
 
 The CRAG node mission is to make infrastructure for agents visible and repeatable. A workflow should show the agent, its model, browser, databases, storage, skills, MCP servers, setup commands, lifetime policy, and run prompt as typed nodes. Most nodes only describe intent. The only node that creates, mutates, or cleans up real Runpod resources is `Run on Runpod`.
 
@@ -29,7 +29,7 @@ LLM / Browser / DB / MCP / Skills
               -> Agent
               -> Deploy
               -> Run on Runpod
-              -> PreviewAny or Runpod Logs
+              -> PreviewAny or Logs
 ```
 
 Use `Run on Runpod` in `plan` mode first. A plan should explain what pods would be created or reused, what dependencies must become ready, what commands would run, what runtime files and environment contracts would be written, and what cleanup policy would apply.
@@ -74,7 +74,7 @@ There are two prompts:
 
 | Prompt | Node | Purpose |
 | --- | --- | --- |
-| `system_prompt` | `Runpod Agent` | Long-lived behavior and operating instructions for the agent. |
+| `system_prompt` | `Agent` | Long-lived behavior and operating instructions for the agent. |
 | `prompt` | `Run on Runpod` | The specific task for this run. |
 
 In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these string inputs. That keeps prompts readable in screenshots and makes the workflow easier to review. Do not create both `prompt` and `run_prompt`; the run prompt is simply `prompt`.
@@ -82,10 +82,10 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
 ## Practical Workflow Recipe
 
 1. Add any prompt primitives.
-   Connect one multiline string to `Runpod Agent.system_prompt` and another to `Run on Runpod.prompt` when you want visible prompt nodes.
+   Connect one multiline string to `Agent.system_prompt` and another to `Run on Runpod.prompt` when you want visible prompt nodes.
 
 2. Add LLM access.
-   Use `Runpod LLM API` for hosted APIs or `Runpod LLM Server` for self-hosted Ollama/vLLM. Both output the generic `RUNPOD_LLM` type and connect to `Runpod Agent.llm`.
+   Use `LLM API` for hosted APIs or `LLM Server` for self-hosted Ollama/vLLM. Both output the generic `RUNPOD_LLM` type and connect to `Agent.llm`.
 
 3. Add optional tools and state.
    Add `Browser`, `Remote SQL Database`, `Local SQL Database`, `Vector Database`, `MCP Server`, `Skill`, or `Skill Framework` nodes, then connect them to the agent.
@@ -106,7 +106,7 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
    Start with `mode=plan`. Inspect the JSON. Move to `apply`, `apply_and_wait`, `stop`, `terminate`, or `destroy` only after the plan is correct.
 
 9. Inspect outputs and logs.
-   Connect `Run on Runpod.result`, `response`, and `errors` to preview nodes. Use `Runpod Logs` with a run ID to collect saved command stdout/stderr.
+   Connect `Run on Runpod.result`, `response`, and `errors` to preview nodes. Use `Logs` with a run ID to collect saved command stdout/stderr.
 
 10. Clean up.
    Use `terminate` or `destroy` when the deployment is no longer needed. For managed leftovers, use `scripts/cleanup-runpod-pods --action terminate`.
@@ -146,9 +146,9 @@ Output:
 | `response` | `STRING` | Captured stdout from remote startup commands and the agent launch command. |
 | `errors` | `STRING` | Captured stderr from remote startup commands and the agent launch command. |
 
-### Runpod Startup Script
+### Startup Script
 
-`Runpod Startup Script` exports the agent pod startup sequence as a single pasteable bash command. It does not call Runpod.
+`Startup Script` exports the agent pod startup sequence as a single pasteable bash command. It does not call Runpod.
 
 Inputs:
 
@@ -207,7 +207,7 @@ Local apply follows the same lifecycle vocabulary as `Run on Runpod`. With `reus
 
 ### Deploy
 
-`Deploy` wraps the primary agent and deployment policy. The underlying workflow class remains `RunpodPod` for compatibility with existing saved workflows.
+`Deploy` wraps the primary agent and deployment policy. The underlying workflow class remains `Deploy` for compatibility with existing saved workflows.
 
 Inputs:
 
@@ -235,9 +235,9 @@ Output:
 
 Use top-level `network_storage` for files the agent needs in `/workspace`. Use service-specific storage inputs on browser, LLM, SQL, or vector nodes when that service owns the persistent data.
 
-### Runpod Keep Alive
+### Keep Alive
 
-`Runpod Keep Alive` describes when a created deployment should be stopped or terminated.
+`Keep Alive` describes when a created deployment should be stopped or terminated.
 
 Inputs:
 
@@ -260,9 +260,9 @@ Output:
 
 For first real runs, prefer a short `time` policy with `action=terminate` until the workflow is stable. Use `stop` only when you intentionally want stopped pods to remain available.
 
-### Runpod SSH Access
+### SSH Access
 
-`Runpod SSH Access` defines how the runner reaches pods to execute commands and write runtime files.
+`SSH Access` defines how the runner reaches pods to execute commands and write runtime files.
 
 Inputs:
 
@@ -283,9 +283,9 @@ Output:
 
 If a pod exposes an SSH port but rejects connections, the container may not be running an SSH server. Enable `install_internal_sshd` when using images that start as `sleep infinity` or otherwise lack sshd.
 
-### Runpod Logs
+### Logs
 
-`Runpod Logs` collects stdout and stderr captured from SSH command execution.
+`Logs` collects stdout and stderr captured from SSH command execution.
 
 Inputs:
 
@@ -305,9 +305,9 @@ Outputs:
 
 ## Agent And App Nodes
 
-### Runpod Agent
+### Agent
 
-`Runpod Agent` is the composition point for the runnable system.
+`Agent` is the composition point for the runnable system.
 
 Inputs:
 
@@ -346,9 +346,9 @@ Use `startup_mode=wait_for_commands` when setup commands, skills, MCP files, or 
 
 This makes CRAG usable with arbitrary SSH-capable containers. Codex, Claude, Hermes, and OpenCode agents queue the recommended CLI installer before launch and verify the binary with `--help`; Pi expects its harness to already be present or provided by the image. Advanced users can override launch with `CRAG_AGENT_LAUNCH_COMMAND` or replace harness scripts with startup commands before launch.
 
-### Runpod Browser
+### Browser
 
-`Runpod Browser` adds browser automation.
+`Browser` adds browser automation.
 
 Inputs:
 
@@ -367,9 +367,9 @@ Output:
 
 `Neko` only supports `own_pod`. `Playwright` can run as `same_pod` when the agent image supports it, or as an `own_pod` remote browser service.
 
-### Runpod LLM API
+### LLM API
 
-`Runpod LLM API` provides hosted model access through environment and secret contracts.
+`LLM API` provides hosted model access through environment and secret contracts.
 
 Inputs:
 
@@ -386,11 +386,11 @@ Output:
 | --- | --- |
 | `llm` | `RUNPOD_LLM` |
 
-Connect this to `Runpod Agent.llm`. It does not create a pod.
+Connect this to `Agent.llm`. It does not create a pod.
 
-### Runpod LLM Server
+### LLM Server
 
-`Runpod LLM Server` creates a self-hosted LLM service pod.
+`LLM Server` creates a self-hosted LLM service pod.
 
 Inputs:
 
@@ -414,9 +414,9 @@ Use Ollama for Ollama-compatible workflows and vLLM for OpenAI-compatible servin
 
 ## Data Nodes
 
-### Runpod Remote SQL Database
+### Remote SQL Database
 
-`Runpod Remote SQL Database` provides server-style SQL state through Postgres or MySQL.
+`Remote SQL Database` provides server-style SQL state through Postgres or MySQL.
 
 Inputs:
 
@@ -438,9 +438,9 @@ Output:
 
 Use `own_pod` when CRAG should create a managed Postgres/MySQL pod. Use `env_only` when the database already exists and the ComfyUI server has a connection string such as `APP_DATABASE_URL`; the runner injects that value into the agent pod as `DATABASE_URL`.
 
-### Runpod Local SQL Database
+### Local SQL Database
 
-`Runpod Local SQL Database` provides file-backed SQLite state in the agent workspace.
+`Local SQL Database` provides file-backed SQLite state in the agent workspace.
 
 Inputs:
 
@@ -458,9 +458,9 @@ Output:
 
 SQLite is `file_only`, so no database pod is created. The planner queues a `before_start` setup command that installs `sqlite3` when needed, creates the containing directory, touches the DB file, and verifies the file with `PRAGMA user_version;`. Keep the path under the agent workspace if it must persist with workspace storage.
 
-### Runpod Vector Database
+### Vector Database
 
-`Runpod Vector Database` provides a retrieval store.
+`Vector Database` provides a retrieval store.
 
 Inputs:
 
@@ -481,9 +481,9 @@ Qdrant uses an HTTP service contract on port 6333. Chroma uses an HTTP service c
 
 ## Skills And MCP Nodes
 
-### Runpod MCP Server
+### MCP Server
 
-`Runpod MCP Server` defines one or more Model Context Protocol servers for the agent.
+`MCP Server` defines one or more Model Context Protocol servers for the agent.
 
 Inputs:
 
@@ -504,11 +504,11 @@ Output:
 | --- | --- |
 | `mcp_servers` | `RUNPOD_MCP_SERVERS` |
 
-The node is chainable. Connect the previous MCP output into the next node's `previous` input, then connect the final output to `Runpod Agent.mcp_servers`.
+The node is chainable. Connect the previous MCP output into the next node's `previous` input, then connect the final output to `Agent.mcp_servers`.
 
-### Runpod Skill
+### Skill
 
-`Runpod Skill` downloads a skill from a GitHub repository into the agent working state.
+`Skill` downloads a skill from a GitHub repository into the agent working state.
 
 Inputs:
 
@@ -529,9 +529,9 @@ Output:
 
 The planner adds startup commands to clone the repo and copy the requested path into the agent workspace before launch.
 
-### Runpod Skill Framework
+### Skill Framework
 
-`Runpod Skill Framework` installs a known skill framework or a custom framework repo.
+`Skill Framework` installs a known skill framework or a custom framework repo.
 
 Inputs:
 
@@ -554,9 +554,9 @@ Use this when you want a curated framework such as Superpowers without hand-ente
 
 ## Storage And Command Nodes
 
-### Runpod Network Storage
+### Network Storage
 
-`Runpod Network Storage` attaches an existing Runpod network volume.
+`Network Storage` attaches an existing Runpod network volume.
 
 Inputs:
 
@@ -577,16 +577,16 @@ Where you connect the node determines where the volume is mounted:
 | Connected to | Effect |
 | --- | --- |
 | `Deploy.network_storage` | Agent pod workspace/storage. |
-| `Runpod Browser.network_storage` | Browser service pod storage. |
-| `Runpod LLM Server.network_storage` | LLM service pod storage. |
-| `Runpod Remote SQL Database.network_storage` | SQL service pod storage. |
-| `Runpod Vector Database.network_storage` | Vector service pod storage. |
+| `Browser.network_storage` | Browser service pod storage. |
+| `LLM Server.network_storage` | LLM service pod storage. |
+| `Remote SQL Database.network_storage` | SQL service pod storage. |
+| `Vector Database.network_storage` | Vector service pod storage. |
 
 Use `retention_policy=preserve` for important data. Destructive retention policies are surfaced as plan warnings so users can notice volume deletion intent before running lifecycle modes.
 
-### Runpod S3 Storage
+### S3 Storage
 
-`Runpod S3 Storage` injects S3-compatible storage configuration.
+`S3 Storage` injects S3-compatible storage configuration.
 
 Inputs:
 
@@ -606,9 +606,9 @@ Output:
 
 Connect this to `Deploy.s3_storage`. The node injects S3 environment variables and secret references; it does not create a bucket.
 
-### Runpod SSH Command
+### SSH Command
 
-`Runpod SSH Command` adds setup or teardown commands.
+`SSH Command` adds setup or teardown commands.
 
 Inputs:
 
@@ -629,9 +629,9 @@ Output:
 
 The node is chainable. Connect the final command chain to `Deploy.commands`. Use `before_start` for dependency installation and workspace setup. Use `after_ready` for checks that need services to be listening.
 
-### Runpod Package
+### Package
 
-`Runpod Package` installs operating-system or language packages in the agent pod.
+`Package` installs operating-system or language packages in the agent pod.
 
 Inputs:
 
@@ -646,9 +646,9 @@ Inputs:
 
 `apt` always runs `apt-get update` before installing. `npm` and `pip` also queue the matching language runtime setup so a minimal Ubuntu 24.04 container can install packages without a pre-baked image.
 
-### Runpod Language Runtime
+### Language Runtime
 
-`Runpod Language Runtime` installs a language toolchain before the agent starts.
+`Language Runtime` installs a language toolchain before the agent starts.
 
 Inputs:
 
@@ -692,8 +692,8 @@ Use this to validate templates and graph structure without creating pods:
 ```text
 PrimitiveStringMultiline(system prompt)
 PrimitiveStringMultiline(task prompt)
-Runpod LLM API(provider=Claude or Codex)
-Runpod Agent(llm=LLM API, system_prompt=system prompt)
+LLM API(provider=Claude or Codex)
+Agent(llm=LLM API, system_prompt=system prompt)
 Deploy(app=Agent, reuse_policy=reuse_matching)
 Run on Runpod(mode=plan, prompt=task prompt)
 PreviewAny(source=Run on Runpod.result)
@@ -702,9 +702,9 @@ PreviewAny(source=Run on Runpod.result)
 ### Agent With Hosted LLM, Browser, And Skills
 
 ```text
-Runpod LLM API -> Agent.llm
-Runpod Browser(Playwright, same_pod) -> Agent.browser
-Runpod Skill Framework(Superpowers) -> Runpod Skill(previous=framework) -> Agent.skills
+LLM API -> Agent.llm
+Browser(Playwright, same_pod) -> Agent.browser
+Skill Framework(Superpowers) -> Skill(previous=framework) -> Agent.skills
 Agent -> Deploy -> Run on Runpod
 ```
 
@@ -714,7 +714,7 @@ This avoids a self-hosted model pod and keeps the graph focused on agent workspa
 
 ```text
 Network Storage(model-cache) -> LLM Server.network_storage
-Runpod LLM Server(engine=Ollama or vLLM, placement=own_pod) -> Agent.llm
+LLM Server(engine=Ollama or vLLM, placement=own_pod) -> Agent.llm
 Agent -> Deploy -> Run on Runpod
 ```
 
@@ -725,10 +725,10 @@ The LLM server starts before the agent. Use `hf_token_secret_name` for private H
 ```text
 Network Storage(postgres-data) -> Remote SQL Database.network_storage
 Network Storage(qdrant-data) -> Vector Database.network_storage
-Runpod Remote SQL Database(Postgres) -> Agent.sql_database
-Runpod Vector Database(Qdrant) -> Agent.vector_database
-Runpod Browser(Playwright, same_pod) -> Agent.browser
-Runpod LLM API(Claude) -> Agent.llm
+Remote SQL Database(Postgres) -> Agent.sql_database
+Vector Database(Qdrant) -> Agent.vector_database
+Browser(Playwright, same_pod) -> Agent.browser
+LLM API(Claude) -> Agent.llm
 Agent -> Deploy -> Run on Runpod
 ```
 
@@ -856,7 +856,7 @@ Set `RUNPOD_API_KEY` in the ComfyUI server environment or `.env.d/runpod.env` fo
 
 SSH port is open but connections are refused:
 
-The container may not be running an SSH daemon. Add `Runpod SSH Access` with `install_internal_sshd=true`, or use an image/template that starts sshd itself.
+The container may not be running an SSH daemon. Add `SSH Access` with `install_internal_sshd=true`, or use an image/template that starts sshd itself.
 
 Agent launch fails with exit code 127:
 
@@ -872,7 +872,7 @@ Use `placement=own_pod` for Neko. Use Playwright when you need `same_pod` browse
 
 LLM Server cannot use `same_pod`:
 
-The current MVP supports `own_pod` only for Ollama and vLLM. Use `Runpod LLM API` for env-only hosted access.
+The current MVP supports `own_pod` only for Ollama and vLLM. Use `LLM API` for env-only hosted access.
 
 Stopped pods are left behind:
 
@@ -880,7 +880,7 @@ Use `terminate_created` in `Run on Runpod.on_error`, set keep-alive action to `t
 
 Logs are missing:
 
-`Runpod Logs` reads command logs captured by the local state store. It will not show provider/container logs unless those logs were captured by commands or runner state.
+`Logs` reads command logs captured by the local state store. It will not show provider/container logs unless those logs were captured by commands or runner state.
 
 ## Design Checklist
 
@@ -893,4 +893,4 @@ Before applying a real workflow, verify:
 - Any persistent service has the correct `Network Storage` input connected.
 - `SSH Access` matches how the pod can actually be reached.
 - `on_error` and `Keep Alive` will not leave unwanted stopped pods.
-- The result is connected to `PreviewAny` or logs can be collected with `Runpod Logs`.
+- The result is connected to `PreviewAny` or logs can be collected with `Logs`.

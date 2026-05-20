@@ -1,6 +1,6 @@
 {
   "1": {
-    "class_type": "RunpodSkillFramework",
+    "class_type": "SkillFramework",
     "inputs": {
       "framework": "Superpowers",
       "custom_github_repo_url": "",
@@ -10,7 +10,7 @@
     }
   },
   "2": {
-    "class_type": "RunpodSSHCommand",
+    "class_type": "SSHCommand",
     "inputs": {
       "command": "set -e\napt-get update\nDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends jq\nmkdir -p /workspace/e2e\njq --version > /workspace/e2e/jq-version.txt\nprintf 'startup package installed\\n' > /workspace/e2e/package-installed.txt",
       "phase": "before_start",
@@ -20,7 +20,7 @@
     }
   },
   "3": {
-    "class_type": "RunpodSSHCommand",
+    "class_type": "SSHCommand",
     "inputs": {
       "previous": [
         "2",
@@ -34,7 +34,7 @@
     }
   },
   "4": {
-    "class_type": "RunpodLLMApi",
+    "class_type": "LLMApi",
     "inputs": {
       "provider": "Ollama Cloud",
       "model": "smoke",
@@ -43,7 +43,7 @@
     }
   },
   "5": {
-    "class_type": "RunpodRemoteSQLDatabase",
+    "class_type": "RemoteSQLDatabase",
     "inputs": {
       "engine": "Postgres",
       "connection_mode": "own_pod",
@@ -54,7 +54,7 @@
     }
   },
   "6": {
-    "class_type": "RunpodAgent",
+    "class_type": "Agent",
     "inputs": {
       "harness": "Pi",
       "model": "smoke",
@@ -76,7 +76,7 @@
     }
   },
   "7": {
-    "class_type": "RunpodPod",
+    "class_type": "Deploy",
     "inputs": {
       "app": [
         "6",
@@ -96,7 +96,7 @@
     }
   },
   "8": {
-    "class_type": "RunpodContainerdApply",
+    "class_type": "DeployWithContainerd",
     "inputs": {
       "deployment": [
         "7",

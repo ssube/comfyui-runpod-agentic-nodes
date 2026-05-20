@@ -1,6 +1,6 @@
 {
   "1": {
-    "class_type": "RunpodSSHCommand",
+    "class_type": "SSHCommand",
     "inputs": {
       "command": "echo api-plan-smoke",
       "failure_policy": "fail",
@@ -10,7 +10,7 @@
     }
   },
   "2": {
-    "class_type": "RunpodSSHAccess",
+    "class_type": "SSHAccess",
     "inputs": {
       "install_internal_sshd": false,
       "internal_port": 22,
@@ -21,7 +21,7 @@
     }
   },
   "3": {
-    "class_type": "RunpodKeepAlive",
+    "class_type": "KeepAlive",
     "inputs": {
       "action": "stop",
       "cost_limit_usd": 0.0,
@@ -33,7 +33,7 @@
     }
   },
   "4": {
-    "class_type": "RunpodAgent",
+    "class_type": "Agent",
     "inputs": {
       "harness": "Pi",
       "model": "manual-api-smoke",
@@ -43,7 +43,7 @@
     }
   },
   "5": {
-    "class_type": "RunpodPod",
+    "class_type": "Deploy",
     "inputs": {
       "app": [
         "4",
@@ -71,7 +71,7 @@
     }
   },
   "6": {
-    "class_type": "RunpodRun",
+    "class_type": "RunOnRunpod",
     "inputs": {
       "deployment": [
         "5",

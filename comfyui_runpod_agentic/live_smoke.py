@@ -5,21 +5,21 @@ import json
 import time
 from pathlib import Path
 
-from .nodes import RunpodAgentNode, RunpodKeepAliveNode, RunpodPodNode, RunpodSSHAccessNode, RunpodSSHCommandNode
+from .nodes import AgentNode, DeployNode, KeepAliveNode, SSHAccessNode, SSHCommandNode
 from .runner import RunpodRunner
 
 
 def build_smoke_deployment(gpu_type_id: str, gpu_count: int, keepalive_minutes: int, cloud_type: str):
-    command = RunpodSSHCommandNode().build(
+    command = SSHCommandNode().build(
         "echo crag-live-smoke && python --version && pwd",
         "before_start",
         0,
         "fail",
     )[0]
-    keep_alive = RunpodKeepAliveNode().build("time", "stop", keepalive_minutes, "minutes", 0, 0.0, 0)[0]
-    ssh_access = RunpodSSHAccessNode().build("runpod_proxy", "root", "~/.ssh/id_ed25519", "", 22, False)[0]
-    agent = RunpodAgentNode().build("Pi", "manual-smoke", "manual", "/workspace", node_id="live-smoke-agent")[0]
-    return RunpodPodNode().build(
+    keep_alive = KeepAliveNode().build("time", "stop", keepalive_minutes, "minutes", 0, 0.0, 0)[0]
+    ssh_access = SSHAccessNode().build("runpod_proxy", "root", "~/.ssh/id_ed25519", "", 22, False)[0]
+    agent = AgentNode().build("Pi", "manual-smoke", "manual", "/workspace", node_id="live-smoke-agent")[0]
+    return DeployNode().build(
         agent,
         gpu_type_id=gpu_type_id,
         gpu_count=gpu_count,

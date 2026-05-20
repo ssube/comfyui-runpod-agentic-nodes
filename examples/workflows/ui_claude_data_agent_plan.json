@@ -6,7 +6,7 @@
   "nodes": [
     {
       "id": 1,
-      "type": "RunpodLLMApi",
+      "type": "LLMApi",
       "pos": [
         120,
         160
@@ -48,7 +48,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodLLMApi"
+        "Node name for S&R": "LLMApi"
       },
       "widgets_values": [
         "Claude",
@@ -59,7 +59,7 @@
     },
     {
       "id": 2,
-      "type": "RunpodBrowser",
+      "type": "Browser",
       "pos": [
         120,
         420
@@ -98,7 +98,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodBrowser"
+        "Node name for S&R": "Browser"
       },
       "widgets_values": [
         "Playwright",
@@ -108,7 +108,7 @@
     },
     {
       "id": 3,
-      "type": "RunpodNetworkStorage",
+      "type": "NetworkStorage",
       "pos": [
         120,
         720
@@ -131,7 +131,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodNetworkStorage"
+        "Node name for S&R": "NetworkStorage"
       },
       "widgets_values": [
         "vol-postgres-data",
@@ -141,7 +141,7 @@
     },
     {
       "id": 4,
-      "type": "RunpodNetworkStorage",
+      "type": "NetworkStorage",
       "pos": [
         120,
         930
@@ -164,7 +164,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodNetworkStorage"
+        "Node name for S&R": "NetworkStorage"
       },
       "widgets_values": [
         "vol-qdrant-data",
@@ -174,7 +174,7 @@
     },
     {
       "id": 7,
-      "type": "RunpodSkill",
+      "type": "Skill",
       "pos": [
         540,
         320
@@ -213,7 +213,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodSkill"
+        "Node name for S&R": "Skill"
       },
       "widgets_values": [
         "research-notes",
@@ -225,7 +225,7 @@
     },
     {
       "id": 5,
-      "type": "RunpodRemoteSQLDatabase",
+      "type": "RemoteSQLDatabase",
       "pos": [
         540,
         650
@@ -255,7 +255,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodRemoteSQLDatabase"
+        "Node name for S&R": "RemoteSQLDatabase"
       },
       "widgets_values": [
         "Postgres",
@@ -268,7 +268,7 @@
     },
     {
       "id": 6,
-      "type": "RunpodVectorDatabase",
+      "type": "VectorDatabase",
       "pos": [
         540,
         930
@@ -298,7 +298,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodVectorDatabase"
+        "Node name for S&R": "VectorDatabase"
       },
       "widgets_values": [
         "Qdrant",
@@ -308,7 +308,7 @@
     },
     {
       "id": 9,
-      "type": "RunpodKeepAlive",
+      "type": "KeepAlive",
       "pos": [
         1040,
         160
@@ -341,7 +341,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodKeepAlive"
+        "Node name for S&R": "KeepAlive"
       },
       "widgets_values": [
         "turns",
@@ -355,7 +355,7 @@
     },
     {
       "id": 8,
-      "type": "RunpodAgent",
+      "type": "Agent",
       "pos": [
         1020,
         460
@@ -432,7 +432,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodAgent"
+        "Node name for S&R": "Agent"
       },
       "widgets_values": [
         "OpenCode",
@@ -486,7 +486,7 @@
     },
     {
       "id": 10,
-      "type": "RunpodPod",
+      "type": "Deploy",
       "pos": [
         1480,
         520
@@ -546,7 +546,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodPod"
+        "Node name for S&R": "Deploy"
       },
       "widgets_values": [
         "NVIDIA RTX A4000",
@@ -560,7 +560,7 @@
     },
     {
       "id": 11,
-      "type": "RunpodRun",
+      "type": "RunOnRunpod",
       "pos": [
         1900,
         550
@@ -607,7 +607,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodRun"
+        "Node name for S&R": "RunOnRunpod"
       },
       "widgets_values": [
         "plan",
@@ -698,7 +698,7 @@
     },
     {
       "id": 15,
-      "type": "RunpodStartupScript",
+      "type": "StartupScript",
       "pos": [
         1900,
         1010
@@ -735,7 +735,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodStartupScript"
+        "Node name for S&R": "StartupScript"
       },
       "widgets_values": [
         "Plan a research workspace with Claude API, Postgres, Qdrant, Playwright, and one downloaded skill."

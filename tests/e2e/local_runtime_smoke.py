@@ -8,11 +8,11 @@ import subprocess
 import sys
 
 from comfyui_runpod_agentic.nodes import (
-    RunpodAgentNode,
-    RunpodContainerdApplyNode,
-    RunpodLLMServerNode,
-    RunpodPodNode,
-    RunpodSSHCommandNode,
+    AgentNode,
+    DeployNode,
+    DeployWithContainerdNode,
+    LLMServerNode,
+    SSHCommandNode,
 )
 
 
@@ -31,7 +31,7 @@ def main() -> int:
         os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = "1"
 
     deployment = build_deployment()
-    node = RunpodContainerdApplyNode()
+    node = DeployWithContainerdNode()
 
     try:
         up_result_text, response, errors, compose_yaml, saved_path = node.apply(
@@ -85,10 +85,10 @@ def main() -> int:
 
 
 def build_deployment():
-    llm = RunpodLLMServerNode().build("Ollama", "smoke", "own_pod", "none")[0]
-    agent = RunpodAgentNode().build("Pi", "smoke", "manual", "/workspace", llm=llm)[0]
-    command = RunpodSSHCommandNode().build("mkdir -p /workspace/e2e && printf 'local runtime smoke response\\n' > /workspace/e2e/agent-skill-report.txt", "before_start", 10, "fail")[0]
-    return RunpodPodNode().build(agent, gpu_count=0, expose_public_ip=False, reuse_policy="always_create", commands=command)[0]
+    llm = LLMServerNode().build("Ollama", "smoke", "own_pod", "none")[0]
+    agent = AgentNode().build("Pi", "smoke", "manual", "/workspace", llm=llm)[0]
+    command = SSHCommandNode().build("mkdir -p /workspace/e2e && printf 'local runtime smoke response\\n' > /workspace/e2e/agent-skill-report.txt", "before_start", 10, "fail")[0]
+    return DeployNode().build(agent, gpu_count=0, expose_public_ip=False, reuse_policy="always_create", commands=command)[0]
 
 
 def inspect_project(project_name: str) -> list[dict[str, str]]:

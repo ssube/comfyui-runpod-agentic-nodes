@@ -76,7 +76,7 @@ def meta(node_id: str | None, display_name: str | None = None) -> SpecMeta:
     return SpecMeta(node_id=node_id, display_name=display_name)
 
 
-class RunpodBrowserNode:
+class BrowserNode:
     CATEGORY = "Runpod/Apps"
     RETURN_TYPES = (RUNPOD_APP_BROWSER,)
     RETURN_NAMES = ("browser",)
@@ -127,7 +127,7 @@ class RunpodBrowserNode:
         )
 
 
-class RunpodLLMServerNode:
+class LLMServerNode:
     CATEGORY = "Runpod/Apps"
     RETURN_TYPES = (RUNPOD_LLM,)
     RETURN_NAMES = ("llm",)
@@ -188,7 +188,7 @@ class RunpodLLMServerNode:
         )
 
 
-class RunpodLLMApiNode:
+class LLMApiNode:
     CATEGORY = "Runpod/LLM"
     RETURN_TYPES = (RUNPOD_LLM,)
     RETURN_NAMES = ("llm",)
@@ -235,7 +235,7 @@ class RunpodLLMApiNode:
         return (LLMApiSpec("llm_api", provider_id, model, api_format, base_url, RuntimeContract(EnvPatch(values, secrets)), secret, meta(node_id, provider)),)
 
 
-class RunpodRemoteSQLDatabaseNode:
+class RemoteSQLDatabaseNode:
     CATEGORY = "Runpod/Database"
     RETURN_TYPES = (RUNPOD_APP_SQL_DATABASE,)
     RETURN_NAMES = ("sql_database",)
@@ -278,7 +278,7 @@ class RunpodRemoteSQLDatabaseNode:
         return (SQLDatabaseSpec("sql_database", db_engine, "own_pod", database_name, username, secret, contract, f"rp-db-{db_engine}", network_storage, meta(node_id, engine)),)
 
 
-class RunpodLocalSQLDatabaseNode:
+class LocalSQLDatabaseNode:
     CATEGORY = "Runpod/Database"
     RETURN_TYPES = (RUNPOD_APP_SQL_DATABASE,)
     RETURN_NAMES = ("sql_database",)
@@ -307,7 +307,7 @@ class RunpodLocalSQLDatabaseNode:
         return (SQLDatabaseSpec("sql_database", "sqlite", "file_only", database_name, None, None, contract, None, None, meta(node_id, "SQLite")),)
 
 
-class RunpodVectorDatabaseNode:
+class VectorDatabaseNode:
     CATEGORY = "Runpod/Database"
     RETURN_TYPES = (RUNPOD_APP_VECTOR_DATABASE,)
     RETURN_NAMES = ("vector_database",)
@@ -328,7 +328,7 @@ class RunpodVectorDatabaseNode:
         return (VectorDatabaseSpec("vector_database", vector_engine, "own_pod", collection_name, persistence_path, contract, f"rp-vector-{vector_engine}", network_storage, meta(node_id, engine)),)
 
 
-class RunpodMCPServerNode:
+class MCPServerNode:
     CATEGORY = "Runpod/Agent"
     RETURN_TYPES = (RUNPOD_MCP_SERVERS,)
     RETURN_NAMES = ("mcp_servers",)
@@ -403,7 +403,7 @@ def clean_mcp_server(server: MCPServer) -> dict[str, Any]:
     return data
 
 
-class RunpodSkillNode:
+class SkillNode:
     CATEGORY = "Runpod/Agent"
     RETURN_TYPES = (RUNPOD_AGENT_SKILLS,)
     RETURN_NAMES = ("skills",)
@@ -438,7 +438,7 @@ class RunpodSkillNode:
         return (SkillSpec(skills, RuntimeContract(EnvPatch({"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)}), commands=commands), meta(node_id, "Skill")),)
 
 
-class RunpodSkillFrameworkNode:
+class SkillFrameworkNode:
     CATEGORY = "Runpod/Agent"
     RETURN_TYPES = (RUNPOD_AGENT_SKILLS,)
     RETURN_NAMES = ("skills",)
@@ -486,7 +486,7 @@ def skill_payload(skill: SkillSource) -> dict[str, str]:
     return payload
 
 
-class RunpodAgentNode:
+class AgentNode:
     CATEGORY = "Runpod/Apps"
     RETURN_TYPES = (RUNPOD_APP_AGENT,)
     RETURN_NAMES = ("agent",)
@@ -532,7 +532,7 @@ class RunpodAgentNode:
         return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, contract, capabilities, None, meta(node_id, harness)),)
 
 
-class RunpodNetworkStorageNode:
+class NetworkStorageNode:
     CATEGORY = "Runpod/Storage"
     RETURN_TYPES = (RUNPOD_STORAGE_NETWORK,)
     RETURN_NAMES = ("network_storage",)
@@ -553,7 +553,7 @@ class RunpodNetworkStorageNode:
         return (NetworkStorageSpec(network_volume_id, mount_path, retention_policy, meta(node_id, "Network Storage")),)
 
 
-class RunpodS3StorageNode:
+class S3StorageNode:
     CATEGORY = "Runpod/Storage"
     RETURN_TYPES = (RUNPOD_STORAGE_S3,)
     RETURN_NAMES = ("s3_storage",)
@@ -570,7 +570,7 @@ class RunpodS3StorageNode:
         return (S3StorageSpec(endpoint, bucket, region or None, access, secret, "S3", contract, meta(node_id, "S3 Storage")),)
 
 
-class RunpodSSHCommandNode:
+class SSHCommandNode:
     CATEGORY = "Runpod/Command"
     RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
     RETURN_NAMES = ("commands",)
@@ -586,7 +586,7 @@ class RunpodSSHCommandNode:
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "SSH Command")),)
 
 
-class RunpodPackageNode:
+class PackageNode:
     CATEGORY = "Runpod/Command"
     RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
     RETURN_NAMES = ("commands",)
@@ -612,7 +612,7 @@ class RunpodPackageNode:
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Package")),)
 
 
-class RunpodLanguageRuntimeNode:
+class LanguageRuntimeNode:
     CATEGORY = "Runpod/Command"
     RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
     RETURN_NAMES = ("commands",)
@@ -638,7 +638,7 @@ class RunpodLanguageRuntimeNode:
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Language Runtime")),)
 
 
-class RunpodBuildContainerNode:
+class BuildContainerNode:
     CATEGORY = "Runpod/Command"
     RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
     RETURN_NAMES = ("commands",)
@@ -667,7 +667,7 @@ class RunpodBuildContainerNode:
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Build Container")),)
 
 
-class RunpodKeepAliveNode:
+class KeepAliveNode:
     CATEGORY = "Runpod/Core"
     RETURN_TYPES = (RUNPOD_KEEPALIVE_POLICY,)
     RETURN_NAMES = ("keep_alive",)
@@ -682,7 +682,7 @@ class RunpodKeepAliveNode:
         return (KeepAlivePolicy(mode, action, int(time_value) * multiplier if mode == "time" else None, int(turn_limit) or None, float(cost_limit_usd) or None, int(idle_grace_seconds) or None, enforcement, meta(node_id, "Keep Alive")),)
 
 
-class RunpodSSHAccessNode:
+class SSHAccessNode:
     CATEGORY = "Runpod/Core"
     RETURN_TYPES = (RUNPOD_SSH_ACCESS_POLICY,)
     RETURN_NAMES = ("ssh_access",)
@@ -717,7 +717,7 @@ class RunpodSSHAccessNode:
         )
 
 
-class RunpodPodNode:
+class DeployNode:
     CATEGORY = "Runpod/Core"
     RETURN_TYPES = (RUNPOD_DEPLOYMENT_SPEC,)
     RETURN_NAMES = ("deployment",)
@@ -738,7 +738,7 @@ class RunpodPodNode:
         return (deployment,)
 
 
-class RunpodRunNode:
+class RunOnRunpodNode:
     CATEGORY = "Runpod/Core"
     RETURN_TYPES = (RUNPOD_RUN_RESULT, "STRING", "STRING")
     RETURN_NAMES = ("result", "response", "errors")
@@ -762,7 +762,7 @@ class RunpodRunNode:
         return (json.dumps(plan.to_dict(), indent=2, sort_keys=True), "", "")
 
 
-class RunpodStartupScriptNode:
+class StartupScriptNode:
     CATEGORY = "Runpod/Core"
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("startup_script",)
@@ -779,7 +779,7 @@ class RunpodStartupScriptNode:
         return (startup_script_for_plan(plan),)
 
 
-class RunpodComposeYAMLNode:
+class ComposeYAMLNode:
     CATEGORY = "Runpod/Local"
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("compose_yaml", "saved_path")
@@ -892,19 +892,19 @@ class LocalComposeApplyMixin:
         return (json.dumps(result_payload, indent=2, sort_keys=True), response, errors, compose_yaml, saved_path)
 
 
-class RunpodDockerComposeApplyNode(LocalComposeApplyMixin):
+class DeployWithDockerNode(LocalComposeApplyMixin):
     ENGINE = "docker"
 
 
-class RunpodPodmanComposeApplyNode(LocalComposeApplyMixin):
+class DeployWithPodmanNode(LocalComposeApplyMixin):
     ENGINE = "podman"
 
 
-class RunpodContainerdApplyNode(LocalComposeApplyMixin):
+class DeployWithContainerdNode(LocalComposeApplyMixin):
     ENGINE = "containerd"
 
 
-class RunpodLogsNode:
+class LogsNode:
     CATEGORY = "Runpod/Core"
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("logs", "saved_path")
@@ -960,30 +960,30 @@ def collect_run_logs(store, run_id: str, *, stream: str, max_chars: int) -> str:
 
 
 NODE_CLASSES = [
-    RunpodAgentNode,
-    RunpodBrowserNode,
-    RunpodLLMServerNode,
-    RunpodLLMApiNode,
-    RunpodLocalSQLDatabaseNode,
-    RunpodRemoteSQLDatabaseNode,
-    RunpodVectorDatabaseNode,
-    RunpodMCPServerNode,
-    RunpodSkillFrameworkNode,
-    RunpodSkillNode,
-    RunpodNetworkStorageNode,
-    RunpodS3StorageNode,
-    RunpodSSHCommandNode,
-    RunpodPackageNode,
-    RunpodLanguageRuntimeNode,
-    RunpodBuildContainerNode,
-    RunpodKeepAliveNode,
-    RunpodSSHAccessNode,
-    RunpodPodNode,
-    RunpodRunNode,
-    RunpodStartupScriptNode,
-    RunpodComposeYAMLNode,
-    RunpodDockerComposeApplyNode,
-    RunpodPodmanComposeApplyNode,
-    RunpodContainerdApplyNode,
-    RunpodLogsNode,
+    AgentNode,
+    BrowserNode,
+    LLMServerNode,
+    LLMApiNode,
+    LocalSQLDatabaseNode,
+    RemoteSQLDatabaseNode,
+    VectorDatabaseNode,
+    MCPServerNode,
+    SkillFrameworkNode,
+    SkillNode,
+    NetworkStorageNode,
+    S3StorageNode,
+    SSHCommandNode,
+    PackageNode,
+    LanguageRuntimeNode,
+    BuildContainerNode,
+    KeepAliveNode,
+    SSHAccessNode,
+    DeployNode,
+    RunOnRunpodNode,
+    StartupScriptNode,
+    ComposeYAMLNode,
+    DeployWithDockerNode,
+    DeployWithPodmanNode,
+    DeployWithContainerdNode,
+    LogsNode,
 ]

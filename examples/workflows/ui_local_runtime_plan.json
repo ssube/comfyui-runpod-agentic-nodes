@@ -6,7 +6,7 @@
   "nodes": [
     {
       "id": 1,
-      "type": "RunpodLLMServer",
+      "type": "LLMServer",
       "pos": [120, 170],
       "size": [320, 210],
       "flags": {},
@@ -14,7 +14,7 @@
       "mode": 0,
       "inputs": [],
       "outputs": [{"name": "llm", "type": "RUNPOD_LLM", "links": [1]}],
-      "properties": {"Node name for S&R": "RunpodLLMServer"},
+      "properties": {"Node name for S&R": "LLMServer"},
       "widgets_values": ["Ollama", "smoke", "own_pod", "none", "", ""]
     },
     {
@@ -47,7 +47,7 @@
     },
     {
       "id": 2,
-      "type": "RunpodAgent",
+      "type": "Agent",
       "pos": [620, 270],
       "size": [360, 401.3125],
       "flags": {},
@@ -64,12 +64,12 @@
         {"label": "Agent Harness", "name": "harness", "type": "COMBO", "widget": {"name": "harness"}, "link": null}
       ],
       "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [3]}],
-      "properties": {"Node name for S&R": "RunpodAgent"},
+      "properties": {"Node name for S&R": "Agent"},
       "widgets_values": ["Pi", "smoke", "manual", "/workspace", "You are a local runtime smoke-test agent. Verify service wiring before any live Runpod apply."]
     },
     {
       "id": 3,
-      "type": "RunpodPod",
+      "type": "Deploy",
       "pos": [1100, 280],
       "size": [310, 421.3125],
       "flags": {},
@@ -84,12 +84,12 @@
         {"name": "ssh_access", "shape": 7, "type": "RUNPOD_SSH_ACCESS_POLICY", "link": null}
       ],
       "outputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "links": [6, 8]}],
-      "properties": {"Node name for S&R": "RunpodPod"},
+      "properties": {"Node name for S&R": "Deploy"},
       "widgets_values": ["", 0, "auto", 20, 0, false, "reuse_matching"]
     },
     {
       "id": 4,
-      "type": "RunpodComposeYAML",
+      "type": "ComposeYAML",
       "pos": [1540, 170],
       "size": [390, 230],
       "flags": {},
@@ -103,7 +103,7 @@
         {"name": "compose_yaml", "type": "STRING", "links": [7]},
         {"name": "saved_path", "type": "STRING", "links": null}
       ],
-      "properties": {"Node name for S&R": "RunpodComposeYAML"},
+      "properties": {"Node name for S&R": "ComposeYAML"},
       "widgets_values": [
         "Generate a local Compose rehearsal for an agent connected to an Ollama-style LLM service.",
         "crag-local-example",
@@ -113,7 +113,7 @@
     },
     {
       "id": 5,
-      "type": "RunpodContainerdApply",
+      "type": "DeployWithContainerd",
       "pos": [1540, 520],
       "size": [390, 278],
       "flags": {},
@@ -130,7 +130,7 @@
         {"name": "compose_yaml", "type": "STRING", "links": null},
         {"name": "saved_path", "type": "STRING", "links": null}
       ],
-      "properties": {"Node name for S&R": "RunpodContainerdApply"},
+      "properties": {"Node name for S&R": "DeployWithContainerd"},
       "widgets_values": [
         "Generate a local Compose rehearsal for an agent connected to an Ollama-style LLM service.",
         "crag-local-example",

@@ -1,6 +1,6 @@
 {
   "1": {
-    "class_type": "RunpodSkillFramework",
+    "class_type": "SkillFramework",
     "inputs": {
       "framework": "Superpowers",
       "custom_github_repo_url": "",
@@ -10,7 +10,7 @@
     }
   },
   "2": {
-    "class_type": "RunpodSSHCommand",
+    "class_type": "SSHCommand",
     "inputs": {
       "command": "set -e\napt-get update\nDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl git jq gnupg\ncurl -fsSL https://deb.nodesource.com/setup_22.x | bash -\nDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs\nnpm install -g @earendil-works/pi-coding-agent\nexport PATH=\"$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH\"\nmkdir -p /workspace/e2e\ncurl --version | head -n 1 > /workspace/e2e/curl-version.txt\njq --version > /workspace/e2e/jq-version.txt\nnode --version > /workspace/e2e/node-version.txt\nnpm --version > /workspace/e2e/npm-version.txt\npi --version > /workspace/e2e/pi-version.txt",
       "phase": "before_start",
@@ -20,7 +20,7 @@
     }
   },
   "3": {
-    "class_type": "RunpodSSHCommand",
+    "class_type": "SSHCommand",
     "inputs": {
       "previous": [
         "2",
@@ -34,7 +34,7 @@
     }
   },
   "4": {
-    "class_type": "RunpodLLMApi",
+    "class_type": "LLMApi",
     "inputs": {
       "provider": "Ollama Cloud",
       "model": "deepseek-v4-flash",
@@ -43,7 +43,7 @@
     }
   },
   "5": {
-    "class_type": "RunpodAgent",
+    "class_type": "Agent",
     "inputs": {
       "harness": "Pi",
       "model": "deepseek-v4-flash",
@@ -61,7 +61,7 @@
     }
   },
   "6": {
-    "class_type": "RunpodPod",
+    "class_type": "Deploy",
     "inputs": {
       "app": [
         "5",
@@ -81,7 +81,7 @@
     }
   },
   "7": {
-    "class_type": "RunpodContainerdApply",
+    "class_type": "DeployWithContainerd",
     "inputs": {
       "deployment": [
         "6",

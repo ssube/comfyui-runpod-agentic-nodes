@@ -1,6 +1,6 @@
 {
   "1": {
-    "class_type": "RunpodBrowser",
+    "class_type": "Browser",
     "inputs": {
       "browser": "Neko",
       "browser_engine": "chromium",
@@ -8,7 +8,7 @@
     }
   },
   "2": {
-    "class_type": "RunpodLLMServer",
+    "class_type": "LLMServer",
     "inputs": {
       "api_auth_mode": "none",
       "api_key_secret_name": "",
@@ -19,7 +19,7 @@
     }
   },
   "3": {
-    "class_type": "RunpodAgent",
+    "class_type": "Agent",
     "inputs": {
       "browser": [
         "1",
@@ -37,7 +37,7 @@
     }
   },
   "4": {
-    "class_type": "RunpodSSHCommand",
+    "class_type": "SSHCommand",
     "inputs": {
       "command": "echo crag-api-real-smoke && python --version && pwd && test -d /workspace",
       "failure_policy": "fail",
@@ -47,7 +47,7 @@
     }
   },
   "5": {
-    "class_type": "RunpodKeepAlive",
+    "class_type": "KeepAlive",
     "inputs": {
       "action": "stop",
       "cost_limit_usd": 0.0,
@@ -59,7 +59,7 @@
     }
   },
   "6": {
-    "class_type": "RunpodSSHAccess",
+    "class_type": "SSHAccess",
     "inputs": {
       "install_internal_sshd": true,
       "internal_port": 22,
@@ -70,7 +70,7 @@
     }
   },
   "7": {
-    "class_type": "RunpodPod",
+    "class_type": "Deploy",
     "inputs": {
       "app": [
         "3",
@@ -98,7 +98,7 @@
     }
   },
   "8": {
-    "class_type": "RunpodRun",
+    "class_type": "RunOnRunpod",
     "inputs": {
       "deployment": [
         "7",

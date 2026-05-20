@@ -3,44 +3,45 @@ from pathlib import Path
 
 from comfyui_runpod_agentic import NODE_DISPLAY_NAME_MAPPINGS
 from comfyui_runpod_agentic.nodes import (
-    RunpodAgentNode,
-    RunpodBrowserNode,
-    RunpodBuildContainerNode,
-    RunpodContainerdApplyNode,
-    RunpodLanguageRuntimeNode,
-    RunpodLLMApiNode,
-    RunpodLLMServerNode,
-    RunpodLocalSQLDatabaseNode,
-    RunpodMCPServerNode,
-    RunpodNetworkStorageNode,
-    RunpodPackageNode,
-    RunpodPodNode,
-    RunpodRemoteSQLDatabaseNode,
-    RunpodSkillFrameworkNode,
-    RunpodSkillNode,
+    AgentNode,
+    BrowserNode,
+    BuildContainerNode,
+    DeployNode,
+    DeployWithContainerdNode,
+    LanguageRuntimeNode,
+    LLMApiNode,
+    LLMServerNode,
+    LocalSQLDatabaseNode,
+    MCPServerNode,
+    NetworkStorageNode,
+    PackageNode,
+    RemoteSQLDatabaseNode,
+    SkillFrameworkNode,
+    SkillNode,
 )
 from comfyui_runpod_agentic.setup_commands import harness_install_command
 from comfyui_runpod_agentic.validation import ValidationError
 
 
 def test_user_facing_core_node_names():
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPod"] == "Deploy"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPackage"] == "Package"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodLanguageRuntime"] == "Language Runtime"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodBuildContainer"] == "Build Container"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRun"] == "Run on Runpod"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodStartupScript"] == "Startup Script"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodComposeYAML"] == "Compose YAML"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodDockerComposeApply"] == "Deploy with Docker"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPodmanComposeApply"] == "Deploy with Podman"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodContainerdApply"] == "Deploy with Containerd"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRemoteSQLDatabase"] == "Remote SQL Database"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodLocalSQLDatabase"] == "Local SQL Database"
+    assert NODE_DISPLAY_NAME_MAPPINGS["Deploy"] == "Deploy"
+    assert NODE_DISPLAY_NAME_MAPPINGS["Package"] == "Package"
+    assert NODE_DISPLAY_NAME_MAPPINGS["LanguageRuntime"] == "Language Runtime"
+    assert NODE_DISPLAY_NAME_MAPPINGS["BuildContainer"] == "Build Container"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunOnRunpod"] == "Run on Runpod"
+    assert NODE_DISPLAY_NAME_MAPPINGS["StartupScript"] == "Startup Script"
+    assert NODE_DISPLAY_NAME_MAPPINGS["ComposeYAML"] == "Compose YAML"
+    assert NODE_DISPLAY_NAME_MAPPINGS["DeployWithDocker"] == "Deploy with Docker"
+    assert NODE_DISPLAY_NAME_MAPPINGS["DeployWithPodman"] == "Deploy with Podman"
+    assert NODE_DISPLAY_NAME_MAPPINGS["DeployWithContainerd"] == "Deploy with Containerd"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RemoteSQLDatabase"] == "Remote SQL Database"
+    assert NODE_DISPLAY_NAME_MAPPINGS["LocalSQLDatabase"] == "Local SQL Database"
+    assert "RunpodPod" not in NODE_DISPLAY_NAME_MAPPINGS
     assert "RunpodSQLDatabase" not in NODE_DISPLAY_NAME_MAPPINGS
 
 
 def test_local_runtime_nodes_expose_deployment_actions_only():
-    action_choices = RunpodContainerdApplyNode.INPUT_TYPES()["required"]["action"][0]
+    action_choices = DeployWithContainerdNode.INPUT_TYPES()["required"]["action"][0]
 
     assert action_choices == ["save_only", "plan", "apply", "apply_and_wait", "stop", "terminate"]
     assert "config" not in action_choices
@@ -51,18 +52,18 @@ def test_ollama_deepseek_example_uses_setup_nodes_for_packages():
     workflow = json.loads(Path("examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json").read_text())
     class_types = [node["class_type"] for node in workflow.values()]
 
-    assert "RunpodLanguageRuntime" in class_types
-    assert class_types.count("RunpodPackage") == 2
-    assert class_types.count("RunpodSSHCommand") == 1
+    assert "LanguageRuntime" in class_types
+    assert class_types.count("Package") == 2
+    assert class_types.count("SSHCommand") == 1
     assert workflow["3"]["inputs"]["package_manager"] == "apt"
     assert workflow["4"]["inputs"]["package_manager"] == "npm"
     assert workflow["7"]["inputs"]["action"] == "apply_and_wait"
 
 
 def test_agent_accepts_generic_llm_sources():
-    llm_api = RunpodLLMApiNode().build("Claude", "claude-sonnet", "anthropic_key")[0]
+    llm_api = LLMApiNode().build("Claude", "claude-sonnet", "anthropic_key")[0]
 
-    agent = RunpodAgentNode().build("OpenCode", "model", "manual", llm=llm_api)[0]
+    agent = AgentNode().build("OpenCode", "model", "manual", llm=llm_api)[0]
 
     assert agent.llm_api == llm_api
     assert agent.llm_server is None
@@ -77,7 +78,7 @@ def test_agent_installs_supported_harnesses_before_start():
     }
 
     for harness, package in expected_packages.items():
-        agent = RunpodAgentNode().build(harness, "model", "manual")[0]
+        agent = AgentNode().build(harness, "model", "manual")[0]
 
         command = agent.runtime_contract.commands[0]
         assert command.phase == "before_start"
@@ -94,7 +95,7 @@ def test_harness_install_commands_run_help_for_each_supported_cli():
 
 
 def test_sqlite_contract_is_file_only():
-    spec = RunpodLocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
+    spec = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
 
     assert spec.materialization == "file_only"
     assert spec.runtime_contract.env.values["DATABASE_PATH"] == "/workspace/db/app.sqlite"
@@ -104,8 +105,8 @@ def test_sqlite_contract_is_file_only():
 
 
 def test_package_node_chains_install_commands_and_apt_updates():
-    apt = RunpodPackageNode().build("apt", "jq curl", -10, "fail")[0]
-    pip = RunpodPackageNode().build("pip", "pytest", -5, "continue", previous=apt)[0]
+    apt = PackageNode().build("apt", "jq curl", -10, "fail")[0]
+    pip = PackageNode().build("pip", "pytest", -5, "continue", previous=apt)[0]
 
     assert [command.order for command in pip.commands] == [-10, -5]
     assert "apt-get update" in apt.commands[0].command
@@ -114,15 +115,15 @@ def test_package_node_chains_install_commands_and_apt_updates():
 
 
 def test_language_runtime_node_installs_node_from_nodesource_and_python_from_apt():
-    node = RunpodLanguageRuntimeNode().build("nodejs", 22)[0]
-    python = RunpodLanguageRuntimeNode().build("python", 22, previous=node)[0]
+    node = LanguageRuntimeNode().build("nodejs", 22)[0]
+    python = LanguageRuntimeNode().build("python", 22, previous=node)[0]
 
     assert "https://deb.nodesource.com/node_22.x" in node.commands[0].command
     assert "python3-pip python3-venv pipx" in python.commands[1].command
 
 
 def test_build_container_node_commits_and_pushes_with_dockerhub_env():
-    snapshot = RunpodBuildContainerNode().build("docker.io/example/crag:latest", "nerdctl", True)[0]
+    snapshot = BuildContainerNode().build("docker.io/example/crag:latest", "nerdctl", True)[0]
 
     command = snapshot.commands[0]
     assert command.phase == "after_ready"
@@ -134,18 +135,18 @@ def test_build_container_node_commits_and_pushes_with_dockerhub_env():
 
 
 def test_browser_same_pod_adds_agent_capability():
-    browser = RunpodBrowserNode().build("Playwright", "same_pod", "chromium")[0]
-    agent = RunpodAgentNode().build("OpenCode", "qwen", "manual", system_prompt="Use the browser only when needed.", browser=browser)[0]
+    browser = BrowserNode().build("Playwright", "same_pod", "chromium")[0]
+    agent = AgentNode().build("OpenCode", "qwen", "manual", system_prompt="Use the browser only when needed.", browser=browser)[0]
 
     assert agent.required_image_capabilities == ["playwright"]
     assert agent.system_prompt == "Use the browser only when needed."
 
 
 def test_service_nodes_accept_network_storage():
-    storage = RunpodNetworkStorageNode().build("vol-123", "/data")[0]
-    browser = RunpodBrowserNode().build("Neko", "own_pod", "chromium", network_storage=storage)[0]
-    llm = RunpodLLMServerNode().build("Ollama", "llama3.2", "own_pod", "none", network_storage=storage)[0]
-    sql = RunpodRemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", network_storage=storage)[0]
+    storage = NetworkStorageNode().build("vol-123", "/data")[0]
+    browser = BrowserNode().build("Neko", "own_pod", "chromium", network_storage=storage)[0]
+    llm = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "none", network_storage=storage)[0]
+    sql = RemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", network_storage=storage)[0]
 
     assert browser.network_storage == storage
     assert llm.network_storage == storage
@@ -154,18 +155,18 @@ def test_service_nodes_accept_network_storage():
 
 
 def test_network_storage_retention_policy_warns_for_destructive_intent():
-    storage = RunpodNetworkStorageNode().build("vol-123", "/workspace", "delete_with_deployment")[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual")[0]
+    storage = NetworkStorageNode().build("vol-123", "/workspace", "delete_with_deployment")[0]
+    agent = AgentNode().build("Pi", "model", "manual")[0]
 
-    deployment = RunpodPodNode().build(agent, network_storage=storage)[0]
+    deployment = DeployNode().build(agent, network_storage=storage)[0]
 
     assert deployment.network_storage.retention_policy == "delete_with_deployment"
 
 
 def test_agent_accepts_mcp_servers():
-    filesystem = RunpodMCPServerNode().build("filesystem", "stdio", "npx", "-y @modelcontextprotocol/server-filesystem /workspace", "", "{}", "")[0]
-    github = RunpodMCPServerNode().build("github", "http", "", "", "https://mcp.example.test", '{"MODE":"read"}', "GITHUB_TOKEN", previous=filesystem)[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", mcp_servers=github)[0]
+    filesystem = MCPServerNode().build("filesystem", "stdio", "npx", "-y @modelcontextprotocol/server-filesystem /workspace", "", "{}", "")[0]
+    github = MCPServerNode().build("github", "http", "", "", "https://mcp.example.test", '{"MODE":"read"}', "GITHUB_TOKEN", previous=filesystem)[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", mcp_servers=github)[0]
 
     assert len(agent.mcp_servers.servers) == 2
     assert "MCP_SERVERS_JSON" in agent.runtime_contract.env.values
@@ -173,9 +174,9 @@ def test_agent_accepts_mcp_servers():
 
 
 def test_agent_accepts_chainable_skills():
-    skill = RunpodSkillNode().build("frontend-design", "https://github.com/example/skills.git", "frontend-design", "", "main")[0]
-    framework = RunpodSkillFrameworkNode().build("Superpowers", "", "", previous=skill)[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", skills=framework)[0]
+    skill = SkillNode().build("frontend-design", "https://github.com/example/skills.git", "frontend-design", "", "main")[0]
+    framework = SkillFrameworkNode().build("Superpowers", "", "", previous=skill)[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", skills=framework)[0]
 
     assert len(agent.skills.skills) == 2
     assert agent.skills.skills[1].kind == "framework"
@@ -184,11 +185,11 @@ def test_agent_accepts_chainable_skills():
 
 
 def test_pod_validation_rejects_sqlite_outside_workspace():
-    db = RunpodLocalSQLDatabaseNode().build("SQLite", "app", "/tmp/app.sqlite")[0]
-    agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", sql_database=db)[0]
+    db = LocalSQLDatabaseNode().build("SQLite", "app", "/tmp/app.sqlite")[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", sql_database=db)[0]
 
     try:
-        RunpodPodNode().build(agent)
+        DeployNode().build(agent)
     except ValidationError as exc:
         assert "SQLite path" in str(exc)
     else:
@@ -196,7 +197,7 @@ def test_pod_validation_rejects_sqlite_outside_workspace():
 
 
 def test_remote_sql_env_only_injects_database_url_from_server_env():
-    spec = RunpodRemoteSQLDatabaseNode().build("Postgres", "env_only", "app", "app", database_url_env_var="APP_DATABASE_URL")[0]
+    spec = RemoteSQLDatabaseNode().build("Postgres", "env_only", "app", "app", database_url_env_var="APP_DATABASE_URL")[0]
 
     assert spec.materialization == "env_only"
     assert spec.template_key is None

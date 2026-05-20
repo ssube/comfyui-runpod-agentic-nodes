@@ -6,7 +6,7 @@
   "nodes": [
     {
       "id": 1,
-      "type": "RunpodSkillFramework",
+      "type": "SkillFramework",
       "pos": [
         120,
         170
@@ -39,7 +39,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodSkillFramework"
+        "Node name for S&R": "SkillFramework"
       },
       "widgets_values": [
         "Superpowers",
@@ -51,7 +51,7 @@
     },
     {
       "id": 2,
-      "type": "RunpodMCPServer",
+      "type": "MCPServer",
       "pos": [
         120,
         430
@@ -84,7 +84,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodMCPServer"
+        "Node name for S&R": "MCPServer"
       },
       "widgets_values": [
         "filesystem",
@@ -98,7 +98,7 @@
     },
     {
       "id": 3,
-      "type": "RunpodNetworkStorage",
+      "type": "NetworkStorage",
       "pos": [
         120,
         780
@@ -121,7 +121,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodNetworkStorage"
+        "Node name for S&R": "NetworkStorage"
       },
       "widgets_values": [
         "vol-agent-workspace",
@@ -131,7 +131,7 @@
     },
     {
       "id": 5,
-      "type": "RunpodKeepAlive",
+      "type": "KeepAlive",
       "pos": [
         650,
         130
@@ -182,7 +182,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodKeepAlive"
+        "Node name for S&R": "KeepAlive"
       },
       "widgets_values": [
         "time",
@@ -196,7 +196,7 @@
     },
     {
       "id": 4,
-      "type": "RunpodAgent",
+      "type": "Agent",
       "pos": [
         650,
         380
@@ -273,7 +273,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodAgent"
+        "Node name for S&R": "Agent"
       },
       "widgets_values": [
         "Pi",
@@ -327,7 +327,7 @@
     },
     {
       "id": 6,
-      "type": "RunpodPod",
+      "type": "Deploy",
       "pos": [
         1130,
         360
@@ -386,7 +386,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodPod"
+        "Node name for S&R": "Deploy"
       },
       "widgets_values": [
         "NVIDIA RTX A4000",
@@ -400,7 +400,7 @@
     },
     {
       "id": 7,
-      "type": "RunpodRun",
+      "type": "RunOnRunpod",
       "pos": [
         1550,
         380
@@ -447,7 +447,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RunpodRun"
+        "Node name for S&R": "RunOnRunpod"
       },
       "widgets_values": [
         "plan",

@@ -1,5 +1,5 @@
 from comfyui_runpod_agentic.config import get_runpod_api_key, get_ssh_env_config
-from comfyui_runpod_agentic.nodes import RunpodLogsNode, collect_run_logs
+from comfyui_runpod_agentic.nodes import LogsNode, collect_run_logs
 from comfyui_runpod_agentic.runpod_client import RunpodClient
 from comfyui_runpod_agentic.state_store import StateStore
 
@@ -51,7 +51,7 @@ def test_collect_run_logs_reads_command_log_files(tmp_path):
 def test_logs_node_returns_empty_for_missing_run(monkeypatch, tmp_path):
     monkeypatch.setenv("COMFYUI_USER_DIR", str(tmp_path))
 
-    logs, saved_path = RunpodLogsNode().collect("missing", "stdout", 20000, False)
+    logs, saved_path = LogsNode().collect("missing", "stdout", 20000, False)
 
     assert logs == ""
     assert saved_path == ""

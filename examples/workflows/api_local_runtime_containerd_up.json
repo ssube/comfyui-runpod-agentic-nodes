@@ -1,6 +1,6 @@
 {
   "1": {
-    "class_type": "RunpodSSHCommand",
+    "class_type": "SSHCommand",
     "inputs": {
       "command": "mkdir -p /workspace/e2e && printf 'startup-one\\n' > /workspace/e2e/command-1.txt && printf '%s\\n' \"$OLLAMA_HOST\" > /workspace/e2e/ollama-host.txt",
       "phase": "before_start",
@@ -10,7 +10,7 @@
     }
   },
   "2": {
-    "class_type": "RunpodSSHCommand",
+    "class_type": "SSHCommand",
     "inputs": {
       "previous": [
         "1",
@@ -24,7 +24,7 @@
     }
   },
   "3": {
-    "class_type": "RunpodLLMServer",
+    "class_type": "LLMServer",
     "inputs": {
       "engine": "Ollama",
       "model": "smoke",
@@ -35,7 +35,7 @@
     }
   },
   "4": {
-    "class_type": "RunpodAgent",
+    "class_type": "Agent",
     "inputs": {
       "harness": "Pi",
       "model": "smoke",
@@ -49,7 +49,7 @@
     }
   },
   "5": {
-    "class_type": "RunpodPod",
+    "class_type": "Deploy",
     "inputs": {
       "app": [
         "4",
@@ -69,7 +69,7 @@
     }
   },
   "6": {
-    "class_type": "RunpodContainerdApply",
+    "class_type": "DeployWithContainerd",
     "inputs": {
       "deployment": [
         "5",
