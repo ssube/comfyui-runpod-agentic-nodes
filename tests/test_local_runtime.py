@@ -254,20 +254,20 @@ def test_containerd_uses_nerdctl_compose(monkeypatch):
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.shutil.which", lambda command: "/usr/bin/nerdctl" if command == "nerdctl" else None)
     monkeypatch.delenv("CRAG_LOCAL_RUNTIME_SUDO", raising=False)
 
-    command = command_for_engine("containerd", "compose.yaml", "crag-test", "config")
+    command = command_for_engine("containerd", "compose.yaml", "crag-test", "apply")
 
-    assert command == ["nerdctl", "compose", "-f", "compose.yaml", "-p", "crag-test", "config"]
+    assert command == ["nerdctl", "compose", "-f", "compose.yaml", "-p", "crag-test", "up", "-d"]
 
 
 def test_local_runtime_can_prefix_any_engine_with_sudo(monkeypatch):
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.shutil.which", lambda command: "/usr/bin/nerdctl" if command == "nerdctl" else None)
     monkeypatch.setenv("CRAG_LOCAL_RUNTIME_SUDO", "1")
 
-    docker_command = command_for_engine("docker", "compose.yaml", "crag-test", "config")
-    containerd_command = command_for_engine("containerd", "compose.yaml", "crag-test", "config")
+    docker_command = command_for_engine("docker", "compose.yaml", "crag-test", "apply")
+    containerd_command = command_for_engine("containerd", "compose.yaml", "crag-test", "terminate")
 
-    assert docker_command == ["sudo", "docker", "compose", "-f", "compose.yaml", "-p", "crag-test", "config"]
-    assert containerd_command == ["sudo", "nerdctl", "compose", "-f", "compose.yaml", "-p", "crag-test", "config"]
+    assert docker_command == ["sudo", "docker", "compose", "-f", "compose.yaml", "-p", "crag-test", "up", "-d"]
+    assert containerd_command == ["sudo", "nerdctl", "compose", "-f", "compose.yaml", "-p", "crag-test", "down", "--remove-orphans"]
 
 
 def test_apply_node_can_request_sudo(monkeypatch, tmp_path):
@@ -276,15 +276,17 @@ def test_apply_node_can_request_sudo(monkeypatch, tmp_path):
     seen = {}
 
     def fake_run(command, **kwargs):
+        if command[:3] == ["sudo", "docker", "ps"] or command[:3] == ["docker", "ps", "--format"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
         seen["command"] = command
         return SimpleNamespace(returncode=0, stdout="valid\n", stderr="")
 
     monkeypatch.delenv("CRAG_LOCAL_RUNTIME_SUDO", raising=False)
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
 
-    RunpodDockerComposeApplyNode().apply(deployment, project_name="crag-node", output_path=str(apply_path), action="config", use_sudo=True)
+    RunpodDockerComposeApplyNode().apply(deployment, project_name="crag-node", output_path=str(apply_path), action="apply", use_sudo=True, response_timeout_seconds=0)
 
-    assert seen["command"] == ["sudo", "docker", "compose", "-f", str(apply_path), "-p", "crag-node", "config"]
+    assert seen["command"] == ["sudo", "docker", "compose", "-f", str(apply_path), "-p", "crag-node", "up", "-d"]
     assert "CRAG_LOCAL_RUNTIME_SUDO" not in os.environ
 
 
@@ -354,7 +356,7 @@ def test_missing_containerd_runtime_returns_error_result(monkeypatch, tmp_path):
     compose_path = tmp_path / "compose.yaml"
     compose_path.write_text("services: {}\n")
 
-    result = apply_compose_file("containerd", compose_path, project_name="crag-test", action="config")
+    result = apply_compose_file("containerd", compose_path, project_name="crag-test", action="apply")
 
     assert result.returncode == 127
     assert "nerdctl" in result.stderr
@@ -375,10 +377,13 @@ def test_compose_export_and_apply_nodes_save_files(monkeypatch, tmp_path):
         "comfyui_runpod_agentic.local_runtime.subprocess.run",
         lambda command, **kwargs: SimpleNamespace(returncode=0, stdout="valid\n", stderr=""),
     )
-    result_text, response, errors, apply_yaml, apply_saved_path = RunpodDockerComposeApplyNode().apply(deployment, project_name="crag-node", output_path=str(apply_path), action="config")
+    result_text, response, errors, apply_yaml, apply_saved_path = RunpodDockerComposeApplyNode().apply(deployment, project_name="crag-node", output_path=str(apply_path), action="plan")
 
     assert apply_saved_path == str(apply_path)
     assert response == ""
     assert errors == ""
     assert apply_yaml == apply_path.read_text()
-    assert json.loads(result_text)["command"] == ["docker", "compose", "-f", str(apply_path), "-p", "crag-node", "config"]
+    payload = json.loads(result_text)
+    assert payload["command"] == []
+    assert payload["action"] == "plan"
+    assert "service_count" in payload["stdout"]

@@ -823,7 +823,7 @@ class LocalComposeApplyMixin:
                 "prompt": ("STRING", {"multiline": True, "default": ""}),
                 "project_name": ("STRING", {"default": "crag-local"}),
                 "output_path": ("STRING", {"default": "artifacts/local-runtime/compose.yaml"}),
-                "action": (["save_only", "config", "pull", "apply", "apply_and_wait", "stop", "terminate"],),
+                "action": (["save_only", "plan", "apply", "apply_and_wait", "stop", "terminate"],),
                 "use_sudo": ("BOOLEAN", {"default": False}),
                 "timeout_seconds": ("INT", {"default": 1800, "min": 1}),
                 "response_role": ("STRING", {"default": "agent"}),
@@ -839,7 +839,7 @@ class LocalComposeApplyMixin:
         prompt: str = "",
         project_name: str = "crag-local",
         output_path: str = "artifacts/local-runtime/compose.yaml",
-        action: str = "config",
+        action: str = "plan",
         use_sudo: bool = False,
         timeout_seconds: int = 1800,
         response_role: str = "agent",
@@ -871,7 +871,7 @@ class LocalComposeApplyMixin:
             response = ""
             response_errors = ""
             keep_alive_result = None
-            if action in {"apply", "apply_and_wait", "up"} and result.returncode == 0:
+            if action in {"apply", "apply_and_wait"} and result.returncode == 0:
                 keep_alive_result = enforce_local_keep_alive(self.ENGINE, saved_path, project, plan, response_collected=False)
                 if response_path.strip() and int(response_timeout_seconds) > 0:
                     read_result = read_local_runtime_file(self.ENGINE, project, response_role.strip() or "agent", response_path.strip(), timeout_seconds=int(response_timeout_seconds))

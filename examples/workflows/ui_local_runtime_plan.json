@@ -135,7 +135,7 @@
         "Generate a local Compose rehearsal for an agent connected to an Ollama-style LLM service.",
         "crag-local-example",
         "artifacts/local-runtime/example-compose.yaml",
-        "config",
+        "plan",
         true,
         300,
         "agent",

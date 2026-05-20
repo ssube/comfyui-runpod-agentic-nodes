@@ -125,7 +125,7 @@ For a complete walkthrough of the CRAG node mission, graph model, node inputs, c
 
 Core:
 
-- `Runpod Pod`: creates a deployment spec around the primary agent.
+- `Deploy`: creates a deployment spec around the primary agent.
 - `Run on Runpod`: plan/apply/stop/terminate/destroy output node with the per-run agent prompt.
 - `Keep Alive`: time, turns, cost, or manual policy with server-side, pod-side, or layered enforcement.
 - `Runpod Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
@@ -144,9 +144,12 @@ Apps and services:
 - `Vector Database`: Chroma or Qdrant.
 - `Network Storage` and `S3 Storage`.
 - `SSH Command`: declarative command chain executed by `Run on Runpod`.
+- `Package`: installs apt, npm, or pip packages. Apt packages always run `apt-get update` first.
+- `Language Runtime`: installs Node.js with npm from NodeSource, or Python with pip and venv from apt.
+- `Build Container`: commits a configured container to a tagged image and can push it to Docker Hub for reuse.
 - `Startup Script`: ready-to-paste bash startup script for a deployment.
 - `Compose YAML`: exports a local Docker Compose compatible projection.
-- `Docker Compose Apply`, `Podman Compose Apply`, `Containerd Apply`: save the Compose projection and optionally apply, reuse, stop, or terminate it with Docker, Podman, or `nerdctl compose`.
+- `Deploy with Docker`, `Deploy with Podman`, `Deploy with Containerd`: save or plan the Compose projection, then optionally apply, reuse, stop, or terminate it with Docker, Podman, or `nerdctl compose`.
 
 ## Example Workflows
 
@@ -163,7 +166,7 @@ Agent(harness=OpenCode, model=claude-sonnet, system_prompt="Follow repository co
 SSH Command(phase=before_start, command="pip install -e /workspace/tools")
 Network Storage(volume_id=..., mount=/workspace, retention_policy=preserve)
 Keep Alive(mode=time, value=30 minutes, action=stop)
-Runpod Pod(app=Agent, network_storage=Network Storage, commands=SSH Command, keep_alive=Keep Alive)
+Deploy(app=Agent, network_storage=Network Storage, commands=SSH Command, keep_alive=Keep Alive)
 Run on Runpod(mode=plan or apply_and_wait, prompt="Implement the requested change.")
 ```
 
@@ -188,7 +191,7 @@ MONITOR_KEEP_ALIVE
 ```text
 LLM Server(engine=vLLM, model=Qwen/Qwen3-0.6B, placement=own_pod)
 Agent(harness=Codex, llm=LLM Server)
-Runpod Pod(app=Agent)
+Deploy(app=Agent)
 Run on Runpod(mode=apply)
 ```
 
@@ -200,7 +203,7 @@ The planner creates the vLLM pod first, then injects OpenAI-compatible endpoint 
 Local SQL Database(engine=SQLite, database_path=/workspace/db/app.sqlite)
 S3 Storage(endpoint=..., bucket=..., access_key_secret=s3_access, secret_key_secret=s3_secret)
 Agent(harness=Pi, sql_database=SQLite)
-Runpod Pod(app=Agent, s3_storage=S3)
+Deploy(app=Agent, s3_storage=S3)
 Run on Runpod(mode=apply)
 ```
 
@@ -292,7 +295,7 @@ Preview sanitized inputs without calling Runpod:
 scripts/create-runpod-templates --dry-run
 ```
 
-The runner injects a small runtime layer under `.runpod_agentic` over SSH before starting the agent, so templates do not need to bake in the CRAG launcher. The entrypoint is `.runpod_agentic/launcher.sh`; it loads `.runpod_agentic/launcher.d/*.sh`, runs optional preflight hooks, uses `CRAG_AGENT_LAUNCH_COMMAND` when set, falls back to `runpod-agent-launch` if the image provides it, and then dispatches to harness stubs under `.runpod_agentic/launcher.d/harnesses/` for tools such as Codex, Claude, and OpenCode.
+The runner injects a small runtime layer under `.runpod_agentic` over SSH before starting the agent, so templates do not need to bake in the CRAG launcher. The entrypoint is `.runpod_agentic/launcher.sh`; it loads `.runpod_agentic/launcher.d/*.sh`, runs optional preflight hooks, uses `CRAG_AGENT_LAUNCH_COMMAND` when set, falls back to `runpod-agent-launch` if the image provides it, and then dispatches to harness stubs under `.runpod_agentic/launcher.d/harnesses/` for tools such as Codex, Claude, Hermes, OpenCode, and Pi. Codex, Claude, Hermes, and OpenCode agents queue their recommended CLI install command before launch and verify it with `--help`.
 
 ## Security Notes
 

@@ -79,9 +79,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RunpodRun": "Run on Runpod",
     "RunpodStartupScript": "Startup Script",
     "RunpodComposeYAML": "Compose YAML",
-    "RunpodDockerComposeApply": "Docker Compose Apply",
-    "RunpodPodmanComposeApply": "Podman Compose Apply",
-    "RunpodContainerdApply": "Containerd Apply",
+    "RunpodDockerComposeApply": "Deploy with Docker",
+    "RunpodPodmanComposeApply": "Deploy with Podman",
+    "RunpodContainerdApply": "Deploy with Containerd",
     "RunpodLogs": "Runpod Logs",
 }
 

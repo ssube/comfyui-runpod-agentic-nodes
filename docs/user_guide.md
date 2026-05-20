@@ -27,7 +27,7 @@ The most important graph shape is:
 ```text
 LLM / Browser / DB / MCP / Skills
               -> Agent
-              -> Runpod Pod
+              -> Deploy
               -> Run on Runpod
               -> PreviewAny or Runpod Logs
 ```
@@ -94,12 +94,12 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
    Connect `Network Storage` directly to the pod or to service nodes that run in their own pods. Service-specific storage is separate from the agent pod's workspace storage.
 
 5. Add startup commands if needed.
-   Chain `SSH Command` nodes through their `previous` input and connect the final output to `Runpod Pod.commands`.
+   Chain command nodes through their `previous` input and connect the final output to `Deploy.commands`.
 
 6. Add lifecycle and access policy.
    Connect `Keep Alive` and, when command execution or direct access is needed, `SSH Access` to the pod.
 
-7. Add `Runpod Pod`.
+7. Add `Deploy`.
    Connect the agent to `app`, choose GPU hints, disk size, exposure, and reuse policy.
 
 8. Add `Run on Runpod`.
@@ -121,7 +121,7 @@ Inputs:
 
 | Input | Type | Use |
 | --- | --- | --- |
-| `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled pod deployment from `Runpod Pod`. |
+| `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled pod deployment from `Deploy`. |
 | `mode` | `plan`, `apply`, `apply_and_wait`, `stop`, `terminate`, `destroy` | Selects whether to preview, create/run, wait, or clean up resources. |
 | `prompt` | multiline string | The task prompt for this run. |
 | `on_error` | `stop_created`, `terminate_created`, `leave_running` | Cleanup behavior if apply fails after resources were created. |
@@ -154,7 +154,7 @@ Inputs:
 
 | Input | Type | Use |
 | --- | --- | --- |
-| `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled pod deployment from `Runpod Pod`. |
+| `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled pod deployment from `Deploy`. |
 | `prompt` | multiline string | Task prompt to write into the generated runtime files. |
 
 Output:
@@ -172,19 +172,19 @@ Local runtime nodes project the same deployment graph into a Compose YAML file s
 | Node | Purpose |
 | --- | --- |
 | `Compose YAML` | Builds and optionally saves the Compose YAML without applying it. |
-| `Docker Compose Apply` | Saves the YAML, then runs `docker compose`. |
-| `Podman Compose Apply` | Saves the YAML, then runs `podman compose`. |
-| `Containerd Apply` | Saves the YAML, then runs `nerdctl compose` for containerd-backed local testing. |
+| `Deploy with Docker` | Saves the YAML, then runs `docker compose`. |
+| `Deploy with Podman` | Saves the YAML, then runs `podman compose`. |
+| `Deploy with Containerd` | Saves the YAML, then runs `nerdctl compose` for containerd-backed local testing. |
 
 Inputs shared by the apply nodes:
 
 | Input | Type | Use |
 | --- | --- | --- |
-| `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled deployment from `Runpod Pod`. |
+| `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled deployment from `Deploy`. |
 | `prompt` | multiline string | Task prompt injected as `AGENT_PROMPT`. |
 | `project_name` | string | Compose project name and container-name prefix. |
 | `output_path` | string | File path where the generated YAML is saved. |
-| `action` | `save_only`, `config`, `pull`, `apply`, `apply_and_wait`, `stop`, `terminate` | Runtime action. Use `save_only` or `config` first when inspecting a new graph, then use `apply` to create or reuse local containers. |
+| `action` | `save_only`, `plan`, `apply`, `apply_and_wait`, `stop`, `terminate` | Runtime action. Use `save_only` to write YAML without shelling out, or `plan` to return a service summary. Use `apply` to create or reuse local containers. |
 | `use_sudo` | boolean | Prefix the local runtime command with `sudo`. Applies equally to Docker, Podman, and containerd. |
 | `timeout_seconds` | integer | Timeout for the local runtime command. |
 | `response_role` | string | Container role to read after `up`, usually `agent`. |
@@ -201,13 +201,13 @@ Outputs:
 | `compose_yaml` | `STRING` | Generated Compose YAML, useful with `PreviewAny`. |
 | `saved_path` | `STRING` | Path to the saved YAML file. |
 
-`Containerd Apply` uses `nerdctl compose` rather than raw `ctr`; direct `ctr` does not provide the Compose-level dependency, env, port, and volume model these workflows need. If `nerdctl` is not installed, the node reports that as an apply error and still leaves the YAML on disk.
+`Deploy with Containerd` uses `nerdctl compose` rather than raw `ctr`; direct `ctr` does not provide the Compose-level dependency, env, port, and volume model these workflows need. If `nerdctl` is not installed, the node reports that as an apply error and still leaves the YAML on disk.
 
 Local apply follows the same lifecycle vocabulary as `Run on Runpod`. With `reuse_matching`, a later `apply` for the same deployment reuses the existing agent container while it is still alive, rewrites the runtime config and prompt files, and launches the harness again. Keep-alive policies are enforced locally: time policies schedule `stop` or `terminate`, and a new apply refreshes that timer.
 
-### Runpod Pod
+### Deploy
 
-`Runpod Pod` wraps the primary agent and deployment policy.
+`Deploy` wraps the primary agent and deployment policy. The underlying workflow class remains `RunpodPod` for compatibility with existing saved workflows.
 
 Inputs:
 
@@ -342,9 +342,9 @@ Use `startup_mode=wait_for_commands` when setup commands, skills, MCP files, or 
 | `.runpod_agentic/launcher.sh` | Stable entrypoint used by the runner. |
 | `.runpod_agentic/launcher.d/*.sh` | Environment and preflight hook scripts loaded before dispatch. |
 | `.runpod_agentic/launcher.d/pre.d/*.sh` | Optional user-provided pre-launch hooks. |
-| `.runpod_agentic/launcher.d/harnesses/*.sh` | Per-harness stubs for Codex, Claude, OpenCode, and generic fallback behavior. |
+| `.runpod_agentic/launcher.d/harnesses/*.sh` | Per-harness stubs for Codex, Claude, Hermes, OpenCode, Pi, and generic fallback behavior. |
 
-This makes CRAG usable with arbitrary SSH-capable containers. The container needs the requested agent CLI installed, or a `CRAG_AGENT_LAUNCH_COMMAND` override, but it does not need to include CRAG-specific files in the image. Advanced users can add or replace harness scripts with startup commands before launch.
+This makes CRAG usable with arbitrary SSH-capable containers. Codex, Claude, Hermes, and OpenCode agents queue the recommended CLI installer before launch and verify the binary with `--help`; Pi expects its harness to already be present or provided by the image. Advanced users can override launch with `CRAG_AGENT_LAUNCH_COMMAND` or replace harness scripts with startup commands before launch.
 
 ### Runpod Browser
 
@@ -576,7 +576,7 @@ Where you connect the node determines where the volume is mounted:
 
 | Connected to | Effect |
 | --- | --- |
-| `Runpod Pod.network_storage` | Agent pod workspace/storage. |
+| `Deploy.network_storage` | Agent pod workspace/storage. |
 | `Runpod Browser.network_storage` | Browser service pod storage. |
 | `Runpod LLM Server.network_storage` | LLM service pod storage. |
 | `Runpod Remote SQL Database.network_storage` | SQL service pod storage. |
@@ -604,7 +604,7 @@ Output:
 | --- | --- |
 | `s3_storage` | `RUNPOD_STORAGE_S3` |
 
-Connect this to `Runpod Pod.s3_storage`. The node injects S3 environment variables and secret references; it does not create a bucket.
+Connect this to `Deploy.s3_storage`. The node injects S3 environment variables and secret references; it does not create a bucket.
 
 ### Runpod SSH Command
 
@@ -627,7 +627,61 @@ Output:
 | --- | --- |
 | `commands` | `RUNPOD_COMMAND_SSH` |
 
-The node is chainable. Connect the final command chain to `Runpod Pod.commands`. Use `before_start` for dependency installation and workspace setup. Use `after_ready` for checks that need services to be listening.
+The node is chainable. Connect the final command chain to `Deploy.commands`. Use `before_start` for dependency installation and workspace setup. Use `after_ready` for checks that need services to be listening.
+
+### Runpod Package
+
+`Runpod Package` installs operating-system or language packages in the agent pod.
+
+Inputs:
+
+| Input | Choices / Type | Use |
+| --- | --- | --- |
+| `package_manager` | `apt`, `npm`, `pip` | Package tool to use. |
+| `packages` | string | Space-separated packages. Quotes are supported. |
+| `order` | integer | Sort key within the command chain. |
+| `failure_policy` | `fail`, `continue`, `retry` | Error behavior. |
+| `retry_count` | integer | Retry count when `failure_policy=retry`. |
+| `previous` | `RUNPOD_COMMAND_SSH` | Optional previous command chain. |
+
+`apt` always runs `apt-get update` before installing. `npm` and `pip` also queue the matching language runtime setup so a minimal Ubuntu 24.04 container can install packages without a pre-baked image.
+
+### Runpod Language Runtime
+
+`Runpod Language Runtime` installs a language toolchain before the agent starts.
+
+Inputs:
+
+| Input | Choices / Type | Use |
+| --- | --- | --- |
+| `runtime` | `nodejs`, `python` | Runtime to install. |
+| `node_major_version` | integer | NodeSource major version for Node.js. |
+| `order` | integer | Sort key within the command chain. |
+| `failure_policy` | `fail`, `continue`, `retry` | Error behavior. |
+| `retry_count` | integer | Retry count when `failure_policy=retry`. |
+| `previous` | `RUNPOD_COMMAND_SSH` | Optional previous command chain. |
+
+Node.js is installed from NodeSource with npm. Python is installed from apt with `python3`, `python3-pip`, `python3-venv`, and `pipx`.
+
+### Build Container
+
+`Build Container` commits the configured container to a tagged image and can push it to Docker Hub.
+
+Inputs:
+
+| Input | Choices / Type | Use |
+| --- | --- | --- |
+| `image_tag` | string | Full image tag, for example `docker.io/user/crag-agent:latest`. |
+| `runtime` | `nerdctl`, `docker`, `podman` | Container CLI available inside the environment. |
+| `push_to_docker_hub` | boolean | Whether to push after committing. |
+| `dockerhub_username_env` | string | Env var that contains the Docker Hub username. |
+| `dockerhub_token_env` | string | Env var that contains the Docker Hub token/password. |
+| `order` | integer | Sort key within the command chain. |
+| `failure_policy` | `fail`, `continue`, `retry` | Error behavior. |
+| `retry_count` | integer | Retry count when `failure_policy=retry`. |
+| `previous` | `RUNPOD_COMMAND_SSH` | Optional previous command chain. |
+
+Use this after package/runtime setup when you want to turn a one-time configured container into a reusable image. The node only emits a command chain; the target environment still needs access to the selected container CLI and Docker Hub credentials when pushing.
 
 ## Common Workflow Patterns
 
@@ -640,7 +694,7 @@ PrimitiveStringMultiline(system prompt)
 PrimitiveStringMultiline(task prompt)
 Runpod LLM API(provider=Claude or Codex)
 Runpod Agent(llm=LLM API, system_prompt=system prompt)
-Runpod Pod(app=Agent, reuse_policy=reuse_matching)
+Deploy(app=Agent, reuse_policy=reuse_matching)
 Run on Runpod(mode=plan, prompt=task prompt)
 PreviewAny(source=Run on Runpod.result)
 ```
@@ -651,7 +705,7 @@ PreviewAny(source=Run on Runpod.result)
 Runpod LLM API -> Agent.llm
 Runpod Browser(Playwright, same_pod) -> Agent.browser
 Runpod Skill Framework(Superpowers) -> Runpod Skill(previous=framework) -> Agent.skills
-Agent -> Runpod Pod -> Run on Runpod
+Agent -> Deploy -> Run on Runpod
 ```
 
 This avoids a self-hosted model pod and keeps the graph focused on agent workspace setup.
@@ -661,7 +715,7 @@ This avoids a self-hosted model pod and keeps the graph focused on agent workspa
 ```text
 Network Storage(model-cache) -> LLM Server.network_storage
 Runpod LLM Server(engine=Ollama or vLLM, placement=own_pod) -> Agent.llm
-Agent -> Runpod Pod -> Run on Runpod
+Agent -> Deploy -> Run on Runpod
 ```
 
 The LLM server starts before the agent. Use `hf_token_secret_name` for private Hugging Face models with vLLM.
@@ -675,7 +729,7 @@ Runpod Remote SQL Database(Postgres) -> Agent.sql_database
 Runpod Vector Database(Qdrant) -> Agent.vector_database
 Runpod Browser(Playwright, same_pod) -> Agent.browser
 Runpod LLM API(Claude) -> Agent.llm
-Agent -> Runpod Pod -> Run on Runpod
+Agent -> Deploy -> Run on Runpod
 ```
 
 This pattern is useful when the agent needs both structured state and retrieval state.
@@ -683,9 +737,10 @@ This pattern is useful when the agent needs both structured state and retrieval 
 ### Command-Driven Setup
 
 ```text
-SSH Command(order=10, phase=before_start, command="python -m pip install -r requirements.txt")
-SSH Command(previous=first, order=20, phase=before_start, command="python scripts/bootstrap.py")
-final commands -> Runpod Pod.commands
+Language Runtime(runtime=nodejs)
+Package(previous=runtime, package_manager=npm, packages="opencode-ai")
+SSH Command(previous=packages, order=20, phase=before_start, command="python scripts/bootstrap.py")
+final commands -> Deploy.commands
 ```
 
 Keep commands idempotent when using `reuse_matching` or `resume_stopped`, because they may run against an existing workspace.
@@ -693,10 +748,10 @@ Keep commands idempotent when using `reuse_matching` or `resume_stopped`, becaus
 ### Local Container Rehearsal
 
 ```text
-Agent -> Runpod Pod -> Compose YAML -> PreviewAny
-Agent -> Runpod Pod -> Docker Compose Apply(action=config or apply)
-Agent -> Runpod Pod -> Podman Compose Apply(action=config or apply)
-Agent -> Runpod Pod -> Containerd Apply(action=config or apply)
+Agent -> Deploy -> Compose YAML -> PreviewAny
+Agent -> Deploy -> Deploy with Docker(action=save_only or apply)
+Agent -> Deploy -> Deploy with Podman(action=save_only or apply)
+Agent -> Deploy -> Deploy with Containerd(action=save_only or apply)
 ```
 
 Use local rehearsal to verify service wiring, environment variables, ports, and startup commands. Treat it as a topology test, not a perfect Runpod emulator: GPU scheduling, Runpod secrets, public proxy ports, and Runpod lifecycle policies still need live Runpod validation.

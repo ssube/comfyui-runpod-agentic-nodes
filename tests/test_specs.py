@@ -3,6 +3,7 @@ from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
     RunpodBrowserNode,
     RunpodBuildContainerNode,
+    RunpodContainerdApplyNode,
     RunpodLanguageRuntimeNode,
     RunpodLLMApiNode,
     RunpodLLMServerNode,
@@ -27,12 +28,20 @@ def test_user_facing_core_node_names():
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRun"] == "Run on Runpod"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodStartupScript"] == "Startup Script"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodComposeYAML"] == "Compose YAML"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodDockerComposeApply"] == "Docker Compose Apply"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPodmanComposeApply"] == "Podman Compose Apply"
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodContainerdApply"] == "Containerd Apply"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodDockerComposeApply"] == "Deploy with Docker"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPodmanComposeApply"] == "Deploy with Podman"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodContainerdApply"] == "Deploy with Containerd"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRemoteSQLDatabase"] == "Remote SQL Database"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodLocalSQLDatabase"] == "Local SQL Database"
     assert "RunpodSQLDatabase" not in NODE_DISPLAY_NAME_MAPPINGS
+
+
+def test_local_runtime_nodes_expose_deployment_actions_only():
+    action_choices = RunpodContainerdApplyNode.INPUT_TYPES()["required"]["action"][0]
+
+    assert action_choices == ["save_only", "plan", "apply", "apply_and_wait", "stop", "terminate"]
+    assert "config" not in action_choices
+    assert "pull" not in action_choices
 
 
 def test_agent_accepts_generic_llm_sources():

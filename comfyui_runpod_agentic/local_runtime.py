@@ -35,7 +35,7 @@ DEFAULT_IMAGES = {
     "vector:chroma": "chromadb/chroma:latest",
 }
 
-LOCAL_RUNTIME_ACTIONS = ("save_only", "config", "pull", "apply", "apply_and_wait", "stop", "terminate", "destroy", "up", "down")
+LOCAL_RUNTIME_ACTIONS = ("save_only", "plan", "apply", "apply_and_wait", "stop", "terminate")
 
 
 @dataclass(frozen=True)
@@ -376,6 +376,21 @@ def local_runtime_summary(plan: DeploymentPlan, compose_yaml: str) -> str:
     )
 
 
+def local_runtime_summary_from_file(compose_path: str | Path) -> str:
+    path = Path(compose_path)
+    compose = yaml.safe_load(path.read_text()) or {}
+    services = sorted((compose.get("services") or {}).keys())
+    return json.dumps(
+        {
+            "compose_path": str(path),
+            "services": services,
+            "service_count": len(services),
+        },
+        indent=2,
+        sort_keys=True,
+    )
+
+
 def write_compose_file(path: str | Path, content: str) -> str:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -388,7 +403,7 @@ def apply_compose_file(
     compose_path: str | Path,
     *,
     project_name: str = "crag-local",
-    action: str = "config",
+    action: str = "plan",
     timeout_seconds: int = 1800,
 ) -> LocalApplyResult:
     if action not in LOCAL_RUNTIME_ACTIONS:
@@ -396,6 +411,8 @@ def apply_compose_file(
     path = str(compose_path)
     if action == "save_only":
         return LocalApplyResult(engine, action, path, [], 0, "Compose file saved; no local runtime command was run.", "")
+    if action == "plan":
+        return LocalApplyResult(engine, action, path, [], 0, local_runtime_summary_from_file(path), "")
     try:
         command = command_for_engine(engine, path, project_name, action)
         completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
@@ -651,11 +668,11 @@ def use_sudo_for_local_runtime() -> bool:
 
 def compose_command_for(base: list[str], compose_path: str, project_name: str, action: str) -> list[str]:
     command = [*base, "-f", compose_path, "-p", project_name]
-    if action in {"apply", "apply_and_wait", "up"}:
+    if action in {"apply", "apply_and_wait"}:
         return [*command, "up", "-d"]
     if action == "stop":
         return [*command, "stop"]
-    if action in {"terminate", "destroy", "down"}:
+    if action == "terminate":
         return [*command, "down", "--remove-orphans"]
     return [*command, action]
 
