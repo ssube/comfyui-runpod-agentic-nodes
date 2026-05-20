@@ -191,6 +191,9 @@ class NetworkStorageSpec:
     network_volume_id: str
     mount_path: str = "/workspace"
     retention_policy: VolumeRetentionPolicy = "preserve"
+    size_gb: int | None = None
+    data_center_id: str | None = None
+    name: str | None = None
     meta: SpecMeta = field(default_factory=SpecMeta)
 
 

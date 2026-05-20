@@ -31,8 +31,8 @@ def validate_deployment(deployment: DeploymentSpec, *, mode: str = "plan", requi
         if deployment.network_storage is None:
             warnings.append("SQLite without network storage may be ephemeral.")
     for storage in network_storages(deployment):
-        if not storage.network_volume_id:
-            raise ValidationError("Network storage requires network_volume_id.")
+        if not storage.network_volume_id and not (storage.size_gb and storage.data_center_id):
+            raise ValidationError("Network storage requires network_volume_id, or create_size_gb with data_center_id.")
         if storage.retention_policy != "preserve":
             warnings.append(f"Network storage {storage.network_volume_id} uses retention_policy={storage.retention_policy}; verify this before destructive runs.")
     if deployment.s3_storage:

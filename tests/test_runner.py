@@ -10,6 +10,7 @@ from comfyui_runpod_agentic.nodes import (
     LLMApiNode,
     LLMServerNode,
     MCPServerNode,
+    NetworkStorageNode,
     RunOnRunpodNode,
     SkillFrameworkNode,
     SkillNode,
@@ -37,6 +38,7 @@ class FakeRunpodClient:
         self.stopped = []
         self.terminated = []
         self.resumed = []
+        self.network_volumes = []
         self.pods = {}
         self.fail_create = fail_create
 
@@ -70,6 +72,13 @@ class FakeRunpodClient:
 
     def terminate_pod(self, pod_id):
         self.terminated.append(pod_id)
+        return None
+
+    def create_network_volume(self, input):
+        self.network_volumes.append(input)
+        return {"id": f"vol-{len(self.network_volumes)}"}
+
+    def delete_network_volume(self, volume_id):
         return None
 
 
@@ -205,6 +214,21 @@ def test_runner_materializes_generated_llm_token(tmp_path, monkeypatch):
     assert llm_env["OPENAI_API_KEY"].startswith("crag-")
     assert llm_env["OPENAI_API_KEY"] == agent_env["OPENAI_API_KEY"]
     assert result["plan"]["runtime_contract"]["env"]["values"]["OPENAI_API_KEY"] == llm_env["OPENAI_API_KEY"]
+
+
+def test_runner_creates_network_volume_from_size(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    storage = NetworkStorageNode().build("", "/workspace", "delete_with_deployment", 25, "US-KS-2", "crag-test")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, network_storage=storage)[0]
+    runpod = FakeRunpodClient()
+    runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    runner.run(deployment, mode="apply")
+
+    assert runpod.network_volumes == [{"name": "crag-test", "size": 25, "dataCenterId": "US-KS-2"}]
+    assert runpod.created[0]["networkVolumeId"] == "vol-1"
+    assert "_networkVolumeSizeGb" not in runpod.created[0]
 
 
 def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):

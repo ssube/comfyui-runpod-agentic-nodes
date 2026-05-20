@@ -228,6 +228,26 @@ def test_apply_local_runtime_creates_when_reuse_is_disabled(monkeypatch, tmp_pat
     assert calls[0][:5] == ["docker", "compose", "-f", str(compose_path), "-p"]
 
 
+def test_apply_local_runtime_removes_delete_with_deployment_volumes(monkeypatch, tmp_path):
+    deployment = build_local_runtime_deployment(retention_policy="delete_with_deployment")
+    plan = Planner().build(deployment, prompt="cleanup")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text(compose_yaml_for_plan(plan))
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="terminate")
+
+    assert reused is False
+    assert result.returncode == 0
+    assert ["docker", "volume", "rm", "crag-node_vol-workspace"] in calls
+
+
 def test_enforce_local_keep_alive_turn_limit_stops_after_response(monkeypatch, tmp_path):
     deployment = build_reusable_local_runtime_deployment()
     plan = Planner().build(deployment, prompt="one turn")

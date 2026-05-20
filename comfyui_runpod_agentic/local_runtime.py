@@ -347,7 +347,7 @@ def image_for_resource(resource: ResourcePlan) -> str:
 
 
 def volume_mount_for_resource(resource: ResourcePlan) -> tuple[str, str, str] | None:
-    volume_id = resource.pod_input.get("networkVolumeId")
+    volume_id = resource.pod_input.get("networkVolumeId") or resource.pod_input.get("_networkVolumeName")
     mount_path = resource.pod_input.get("volumeMountPath")
     if not volume_id or not mount_path:
         return None
@@ -437,7 +437,46 @@ def apply_local_runtime_plan(
         container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=agent.desired_hash) if all_local_runtime_resources_running(engine, project_name, plan) else None
         if container_id:
             return exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds), True
-    return apply_compose_file(engine, compose_path, project_name=project_name, action=action, timeout_seconds=timeout_seconds), False
+    result = apply_compose_file(engine, compose_path, project_name=project_name, action=action, timeout_seconds=timeout_seconds)
+    if action == "terminate" and result.returncode == 0:
+        cleanup = remove_local_retention_volumes(engine, project_name, plan, timeout_seconds=timeout_seconds)
+        if cleanup:
+            result = LocalApplyResult(
+                result.engine,
+                result.action,
+                result.compose_path,
+                [*result.command, "&&", *cleanup.command] if result.command else cleanup.command,
+                cleanup.returncode,
+                "\n".join(part for part in (result.stdout, cleanup.stdout) if part),
+                "\n".join(part for part in (result.stderr, cleanup.stderr) if part),
+            )
+    return result, False
+
+
+def remove_local_retention_volumes(engine: str, project_name: str, plan: DeploymentPlan, *, timeout_seconds: int = 1800) -> LocalApplyResult | None:
+    volume_names = local_retention_volume_names(project_name, plan)
+    if not volume_names:
+        return None
+    try:
+        command = local_runtime_command(engine, ["volume", "rm", *volume_names])
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
+    except (FileNotFoundError, RuntimeError) as exc:
+        return LocalApplyResult(engine, "volume_cleanup", "", [], 127, "", str(exc))
+    except subprocess.TimeoutExpired as exc:
+        return LocalApplyResult(engine, "volume_cleanup", "", exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
+    return LocalApplyResult(engine, "volume_cleanup", "", command, completed.returncode, completed.stdout, completed.stderr)
+
+
+def local_retention_volume_names(project_name: str, plan: DeploymentPlan) -> list[str]:
+    names = []
+    for resource in plan.resources:
+        if resource.storage_retention_policy in {None, "preserve"}:
+            continue
+        volume_id = resource.pod_input.get("networkVolumeId")
+        mount_path = resource.pod_input.get("volumeMountPath")
+        if volume_id and mount_path:
+            names.append(f"{project_name}_{compose_service_name_from_text(str(volume_id))}")
+    return sorted(set(names))
 
 
 def all_local_runtime_resources_running(engine: str, project_name: str, plan: DeploymentPlan) -> bool:

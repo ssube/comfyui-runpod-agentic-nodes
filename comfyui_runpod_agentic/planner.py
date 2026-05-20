@@ -208,7 +208,12 @@ class Planner:
         if hints.volume_gb:
             pod_input["volumeInGb"] = hints.volume_gb
         if network_storage:
-            pod_input["networkVolumeId"] = network_storage.network_volume_id
+            if network_storage.network_volume_id:
+                pod_input["networkVolumeId"] = network_storage.network_volume_id
+            else:
+                pod_input["_networkVolumeName"] = network_storage.name or name
+                pod_input["_networkVolumeSizeGb"] = network_storage.size_gb
+                pod_input["_networkVolumeDataCenterId"] = network_storage.data_center_id
             pod_input["volumeMountPath"] = network_storage.mount_path
         if deployment.keep_alive and deployment.keep_alive.mode == "time" and deployment.keep_alive.time_seconds and deployment.keep_alive.enforcement in {"server_side", "both"}:
             field_name = "stopAfter" if deployment.keep_alive.action == "stop" else "terminateAfter"

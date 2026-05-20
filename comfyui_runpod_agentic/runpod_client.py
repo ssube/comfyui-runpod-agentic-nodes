@@ -44,6 +44,8 @@ class RunpodClientProtocol(Protocol):
     def resume_pod(self, pod_id: str) -> dict[str, Any]: ...
     def terminate_pod(self, pod_id: str) -> None: ...
     def save_template(self, input: dict[str, Any]) -> dict[str, Any]: ...
+    def create_network_volume(self, input: dict[str, Any]) -> dict[str, Any]: ...
+    def delete_network_volume(self, volume_id: str) -> None: ...
     def validate_graphql_schema(self) -> dict[str, Any]: ...
 
 
@@ -117,6 +119,12 @@ class RunpodClient:
         if template_id:
             return self._rest_json("POST", f"/templates/{urllib.parse.quote(str(template_id))}/update", payload)
         return self._rest_json("POST", "/templates", payload)
+
+    def create_network_volume(self, input: dict[str, Any]) -> dict[str, Any]:
+        return self._rest_json("POST", "/networkvolumes", clean_none(input))
+
+    def delete_network_volume(self, volume_id: str) -> None:
+        self._rest_json("DELETE", f"/networkvolumes/{urllib.parse.quote(str(volume_id))}", None)
 
     def validate_graphql_schema(self) -> dict[str, Any]:
         query = """

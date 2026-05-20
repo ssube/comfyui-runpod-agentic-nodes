@@ -551,12 +551,15 @@ class NetworkStorageNode:
                 "network_volume_id": ("STRING", {"default": ""}),
                 "mount_path": ("STRING", {"default": "/workspace"}),
                 "retention_policy": (["preserve", "delete_when_unused", "delete_with_deployment"],),
+                "create_size_gb": ("INT", {"default": 0, "min": 0, "max": 4000}),
+                "data_center_id": ("STRING", {"default": ""}),
+                "volume_name": ("STRING", {"default": "crag-workspace"}),
             },
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, network_volume_id: str, mount_path: str = "/workspace", retention_policy: str = "preserve", node_id: str | None = None):
-        return (NetworkStorageSpec(network_volume_id, mount_path, retention_policy, meta(node_id, "Network Storage")),)
+    def build(self, network_volume_id: str, mount_path: str = "/workspace", retention_policy: str = "preserve", create_size_gb: int = 0, data_center_id: str = "", volume_name: str = "crag-workspace", node_id: str | None = None):
+        return (NetworkStorageSpec(network_volume_id.strip(), mount_path, retention_policy, int(create_size_gb) or None, data_center_id.strip() or None, volume_name.strip() or None, meta(node_id, "Network Storage")),)
 
 
 class S3StorageNode:

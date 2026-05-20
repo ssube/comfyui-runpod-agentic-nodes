@@ -77,6 +77,7 @@ class RunpodRunner:
 
     def _apply(self, plan: DeploymentPlan, *, wait: bool) -> dict[str, Any]:
         plan = materialize_generated_tokens(plan)
+        plan = self._materialize_network_volumes(plan)
         created: dict[str, dict[str, Any]] = {}
         resource_ids: dict[str, str] = {}
         for resource in plan.resources:
@@ -106,6 +107,27 @@ class RunpodRunner:
         if keep_alive_result:
             result["keep_alive"] = keep_alive_result
         return result
+
+    def _materialize_network_volumes(self, plan: DeploymentPlan) -> DeploymentPlan:
+        resources = []
+        created: dict[tuple[str, int, str], str] = {}
+        for resource in plan.resources:
+            pod_input = dict(resource.pod_input)
+            if not pod_input.get("networkVolumeId") and pod_input.get("_networkVolumeSizeGb") and pod_input.get("_networkVolumeDataCenterId"):
+                key = (str(pod_input.get("_networkVolumeName") or resource.name), int(pod_input["_networkVolumeSizeGb"]), str(pod_input["_networkVolumeDataCenterId"]))
+                volume_id = created.get(key)
+                if not volume_id:
+                    volume = self.runpod_client.create_network_volume({"name": key[0], "size": key[1], "dataCenterId": key[2]})
+                    volume_id = str(volume.get("id") or volume.get("networkVolumeId") or "")
+                    if not volume_id:
+                        raise RuntimeError("Runpod network volume creation did not return an id.")
+                    created[key] = volume_id
+                    self.state_store.add_event(plan.run_id, "network_volume_created", key[0], payload={"volume_id": volume_id, "size_gb": key[1], "data_center_id": key[2]})
+                pod_input["networkVolumeId"] = volume_id
+            for private_key in ("_networkVolumeName", "_networkVolumeSizeGb", "_networkVolumeDataCenterId"):
+                pod_input.pop(private_key, None)
+            resources.append(replace(resource, pod_input=pod_input))
+        return replace(plan, resources=resources)
 
     def _reuse_or_create_pod(self, plan: DeploymentPlan, resource, pending_resource_id: str) -> dict[str, Any]:
         if is_unresolved_template_key(resource.template_id):
