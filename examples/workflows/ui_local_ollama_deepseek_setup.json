@@ -1,0 +1,244 @@
+{
+  "id": "3a02c890-4c4d-48d8-9d68-e7a1a5661f8d",
+  "revision": 0,
+  "last_node_id": 13,
+  "last_link_id": 12,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "SkillFramework",
+      "pos": [120, 170],
+      "size": [340, 250],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "skills", "type": "RUNPOD_AGENT_SKILLS", "links": [1]}],
+      "properties": {"Node name for S&R": "SkillFramework"},
+      "widgets_values": ["Superpowers", "", "", "/workspace/.codex/skills", ""]
+    },
+    {
+      "id": 2,
+      "type": "LanguageRuntime",
+      "pos": [120, 500],
+      "size": [300, 170],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "commands", "type": "RUNPOD_COMMAND_SSH", "links": [2]}],
+      "properties": {"Node name for S&R": "LanguageRuntime"},
+      "widgets_values": ["nodejs", 22, "fail", 0]
+    },
+    {
+      "id": 3,
+      "type": "Package",
+      "pos": [470, 455],
+      "size": [330, 190],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [{"name": "previous", "shape": 7, "type": "RUNPOD_COMMAND_SSH", "link": 2}],
+      "outputs": [{"name": "commands", "type": "RUNPOD_COMMAND_SSH", "links": [3]}],
+      "properties": {"Node name for S&R": "Package"},
+      "widgets_values": ["apt", "ca-certificates curl git jq gnupg", "fail", 0]
+    },
+    {
+      "id": 4,
+      "type": "Package",
+      "pos": [850, 455],
+      "size": [330, 190],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [{"name": "previous", "shape": 7, "type": "RUNPOD_COMMAND_SSH", "link": 3}],
+      "outputs": [{"name": "commands", "type": "RUNPOD_COMMAND_SSH", "links": [4]}],
+      "properties": {"Node name for S&R": "Package"},
+      "widgets_values": ["npm", "npm-check-updates", "fail", 0]
+    },
+    {
+      "id": 5,
+      "type": "SSHCommand",
+      "pos": [1230, 405],
+      "size": [390, 300],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [{"name": "previous", "shape": 7, "type": "RUNPOD_COMMAND_SSH", "link": 4}],
+      "outputs": [{"name": "commands", "type": "RUNPOD_COMMAND_SSH", "links": [5]}],
+      "properties": {"Node name for S&R": "SSHCommand"},
+      "widgets_values": [
+        "set -e\nexport PATH=\"$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH\"\nmkdir -p /workspace/e2e\ncurl --version | head -n 1 > /workspace/e2e/curl-version.txt\njq --version > /workspace/e2e/jq-version.txt\nnode --version > /workspace/e2e/node-version.txt\nnpm --version > /workspace/e2e/npm-version.txt\nncu --version > /workspace/e2e/npm-check-updates-version.txt\npi --version > /workspace/e2e/pi-version.txt\ntest -s /workspace/.runpod_agentic/harness/pi/models.json\ntest -s /workspace/.runpod_agentic/harness/pi/providers.json\njq . /workspace/.runpod_agentic/harness/pi/models.json > /workspace/e2e/pi-models-normalized.json\njq . /workspace/.runpod_agentic/harness/pi/providers.json > /workspace/e2e/pi-providers-normalized.json\nfind /workspace/.codex/skills -maxdepth 3 -type f \\( -name 'SKILL.md' -o -name '*.md' \\) | sort | sed 's#^/workspace/.codex/skills/##' > /workspace/e2e/skills.txt",
+        "before_start",
+        "fail",
+        0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "LLMApi",
+      "pos": [520, 170],
+      "size": [300, 178],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "llm", "type": "RUNPOD_LLM", "links": [6]}],
+      "properties": {"Node name for S&R": "LLMApi"},
+      "widgets_values": ["Ollama Cloud", "deepseek-v4-flash", "OLLAMA_API_KEY", ""]
+    },
+    {
+      "id": 7,
+      "type": "PrimitiveStringMultiline",
+      "pos": [900, 160],
+      "size": [390, 140],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [7]}],
+      "title": "System Prompt",
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["You are a CRAG local-runtime verification agent. Answer concisely and mention whether skill files were visible."]
+    },
+    {
+      "id": 8,
+      "type": "Agent",
+      "pos": [1400, 150],
+      "size": [360, 400],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "browser", "shape": 7, "type": "RUNPOD_APP_BROWSER", "link": null},
+        {"name": "llm", "shape": 7, "type": "RUNPOD_LLM", "link": 6},
+        {"name": "sql_database", "shape": 7, "type": "RUNPOD_APP_SQL_DATABASE", "link": null},
+        {"name": "vector_database", "shape": 7, "type": "RUNPOD_APP_VECTOR_DATABASE", "link": null},
+        {"name": "mcp_servers", "shape": 7, "type": "RUNPOD_MCP_SERVERS", "link": null},
+        {"name": "skills", "shape": 7, "type": "RUNPOD_AGENT_SKILLS", "link": 1},
+        {"name": "system_prompt", "type": "STRING", "widget": {"name": "system_prompt"}, "link": 7}
+      ],
+      "outputs": [{"name": "agent", "type": "RUNPOD_APP_AGENT", "links": [8]}],
+      "properties": {"Node name for S&R": "Agent"},
+      "widgets_values": ["Pi", "deepseek-v4-flash", "auto_start", "/workspace", "You are a CRAG local-runtime verification agent. Answer concisely and mention whether skill files were visible."]
+    },
+    {
+      "id": 9,
+      "type": "KeepAlive",
+      "pos": [1650, 600],
+      "size": [280, 260],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "keep_alive", "type": "RUNPOD_KEEPALIVE_POLICY", "links": [9]}],
+      "properties": {"Node name for S&R": "KeepAlive"},
+      "widgets_values": ["time", "stop", 5, "minutes", 0, 0, 0, "both"]
+    },
+    {
+      "id": 10,
+      "type": "Deploy",
+      "pos": [1850, 220],
+      "size": [300, 360],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {"name": "app", "type": "RUNPOD_APP_AGENT", "link": 8},
+        {"name": "network_storage", "shape": 7, "type": "RUNPOD_STORAGE_NETWORK", "link": null},
+        {"name": "s3_storage", "shape": 7, "type": "RUNPOD_STORAGE_S3", "link": null},
+        {"name": "commands", "shape": 7, "type": "RUNPOD_COMMAND_SSH", "link": 5},
+        {"name": "keep_alive", "shape": 7, "type": "RUNPOD_KEEPALIVE_POLICY", "link": 9},
+        {"name": "ssh_access", "shape": 7, "type": "RUNPOD_SSH_ACCESS_POLICY", "link": null}
+      ],
+      "outputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "links": [10]}],
+      "properties": {"Node name for S&R": "Deploy"},
+      "widgets_values": ["", 0, "auto", 20, 0, false, "reuse_matching"]
+    },
+    {
+      "id": 11,
+      "type": "PrimitiveStringMultiline",
+      "pos": [1840, 720],
+      "size": [430, 140],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": [11]}],
+      "title": "Task Prompt",
+      "properties": {"Node name for S&R": "PrimitiveStringMultiline"},
+      "widgets_values": ["List the first few skill files available to you, then say that the DeepSeek v4 flash Ollama Cloud call succeeded."]
+    },
+    {
+      "id": 12,
+      "type": "DeployWithContainerd",
+      "pos": [2320, 260],
+      "size": [390, 300],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "link": 10},
+        {"name": "prompt", "type": "STRING", "widget": {"name": "prompt"}, "link": 11}
+      ],
+      "outputs": [
+        {"name": "result", "type": "STRING", "links": null},
+        {"name": "response", "type": "STRING", "links": [12]},
+        {"name": "errors", "type": "STRING", "links": null},
+        {"name": "compose_yaml", "type": "STRING", "links": null},
+        {"name": "saved_path", "type": "STRING", "links": null}
+      ],
+      "properties": {"Node name for S&R": "DeployWithContainerd"},
+      "widgets_values": [
+        "List the first few skill files available to you, then say that the DeepSeek v4 flash Ollama Cloud call succeeded.",
+        "crag-local-ollama-deepseek-e2e",
+        "artifacts/local-runtime/ollama-deepseek-e2e-compose.yaml",
+        "apply_and_wait",
+        true,
+        900,
+        "agent",
+        "/workspace/.runpod_agentic/response.txt",
+        900
+      ]
+    },
+    {
+      "id": 13,
+      "type": "PreviewAny",
+      "pos": [2810, 300],
+      "size": [240, 166],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [{"name": "source", "type": "*", "link": 12}],
+      "outputs": [{"name": "STRING", "type": "STRING", "links": null}],
+      "properties": {"Node name for S&R": "PreviewAny"},
+      "widgets_values": [null, null, false]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 8, 5, "RUNPOD_AGENT_SKILLS"],
+    [2, 2, 0, 3, 0, "RUNPOD_COMMAND_SSH"],
+    [3, 3, 0, 4, 0, "RUNPOD_COMMAND_SSH"],
+    [4, 4, 0, 5, 0, "RUNPOD_COMMAND_SSH"],
+    [5, 5, 0, 10, 3, "RUNPOD_COMMAND_SSH"],
+    [6, 6, 0, 8, 1, "RUNPOD_LLM"],
+    [7, 7, 0, 8, 6, "STRING"],
+    [8, 8, 0, 10, 0, "RUNPOD_APP_AGENT"],
+    [9, 9, 0, 10, 4, "RUNPOD_KEEPALIVE_POLICY"],
+    [10, 10, 0, 12, 0, "RUNPOD_DEPLOYMENT_SPEC"],
+    [11, 11, 0, 12, 1, "STRING"],
+    [12, 12, 1, 13, 0, "*"]
+  ],
+  "groups": [
+    {"id": 1, "title": "Agent Inputs", "bounding": [80, 90, 1240, 330], "color": "#355f9c", "flags": {}},
+    {"id": 2, "title": "Container Setup", "bounding": [80, 380, 1580, 380], "color": "#6b5c9d", "flags": {}},
+    {"id": 3, "title": "Agent Deployment", "bounding": [1360, 90, 830, 520], "color": "#3f7f5f", "flags": {}},
+    {"id": 4, "title": "Local Runtime Execution", "bounding": [1800, 650, 1160, 270], "color": "#8a6f38", "flags": {}}
+  ],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 0.82, "offset": [-40, 30]},
+    "frontendVersion": "1.43.18"
+  },
+  "version": 0.4
+}

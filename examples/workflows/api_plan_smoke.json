@@ -4,7 +4,6 @@
     "inputs": {
       "command": "echo api-plan-smoke",
       "failure_policy": "fail",
-      "order": 0,
       "phase": "before_start",
       "retry_count": 0
     }

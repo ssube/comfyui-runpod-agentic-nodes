@@ -92,14 +92,16 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
     assert any(Path(path).name == "launcher.sh" for path in ssh.files)
     assert any(path.endswith("launcher.d/harnesses/codex.sh") for path in ssh.files)
     assert any(resource["runpod_pod_id"] == "orphan" for resource in runner.state_store.list_resources())
-    assert runner.state_store.list_commands(result["run_id"]) == []
+    commands = runner.state_store.list_commands(result["run_id"])
+    assert len(commands) == 1
+    assert any(command.endswith("pi --help >/dev/null") for command in ssh.commands)
 
 
 def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     command = "printf response && printf warning >&2"
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    commands = SSHCommandNode().build(command, "before_start", 10, "fail")[0]
+    commands = SSHCommandNode().build(command, "before_start", "fail")[0]
     deployment = DeployNode().build(agent, gpu_count=0, commands=commands)[0]
     ssh = FakeSSHClient(outputs={command: ("response\n", "warning\n")})
     runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
@@ -196,8 +198,8 @@ def test_runner_installs_skills_before_user_commands(tmp_path, monkeypatch):
 
     runner.run(deployment, mode="apply")
 
-    assert "https://github.com/example/skills.git" in runner.ssh_client.commands[1]
-    assert "https://github.com/obra/superpowers.git" in runner.ssh_client.commands[2]
+    assert "https://github.com/example/skills.git" in runner.ssh_client.commands[2]
+    assert "https://github.com/obra/superpowers.git" in runner.ssh_client.commands[3]
 
 
 def test_readiness_probe_paths_use_service_health_endpoints():

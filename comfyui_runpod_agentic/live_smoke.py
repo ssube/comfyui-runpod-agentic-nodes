@@ -13,7 +13,6 @@ def build_smoke_deployment(gpu_type_id: str, gpu_count: int, keepalive_minutes: 
     command = SSHCommandNode().build(
         "echo crag-live-smoke && python --version && pwd",
         "before_start",
-        0,
         "fail",
     )[0]
     keep_alive = KeepAliveNode().build("time", "stop", keepalive_minutes, "minutes", 0, 0.0, 0)[0]

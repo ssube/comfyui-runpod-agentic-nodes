@@ -87,7 +87,7 @@ def main() -> int:
 def build_deployment():
     llm = LLMServerNode().build("Ollama", "smoke", "own_pod", "none")[0]
     agent = AgentNode().build("Pi", "smoke", "manual", "/workspace", llm=llm)[0]
-    command = SSHCommandNode().build("mkdir -p /workspace/e2e && printf 'local runtime smoke response\\n' > /workspace/e2e/agent-skill-report.txt", "before_start", 10, "fail")[0]
+    command = SSHCommandNode().build("mkdir -p /workspace/e2e && printf 'local runtime smoke response\\n' > /workspace/e2e/agent-skill-report.txt", "before_start", "fail")[0]
     return DeployNode().build(agent, gpu_count=0, expose_public_ip=False, reuse_policy="always_create", commands=command)[0]
 
 

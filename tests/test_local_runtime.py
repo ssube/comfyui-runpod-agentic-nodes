@@ -83,7 +83,7 @@ def test_crag_agent_response_waits_for_completion_marker():
 def test_agent_compose_command_runs_startup_commands():
     llm = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
     agent = AgentNode().build("Pi", "model", "manual", "/workspace", llm=llm)[0]
-    commands = SSHCommandNode().build("printf startup-ok > /workspace/startup.txt", "before_start", 5, "fail")[0]
+    commands = SSHCommandNode().build("printf startup-ok > /workspace/startup.txt", "before_start", "fail")[0]
     deployment = DeployNode().build(agent, gpu_count=0, commands=commands)[0]
     plan = Planner().build(deployment, prompt="List installed skills.")
 

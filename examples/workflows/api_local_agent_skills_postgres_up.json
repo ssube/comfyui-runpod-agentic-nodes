@@ -14,7 +14,6 @@
     "inputs": {
       "command": "set -e\napt-get update\nDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends jq\nmkdir -p /workspace/e2e\njq --version > /workspace/e2e/jq-version.txt\nprintf 'startup package installed\\n' > /workspace/e2e/package-installed.txt",
       "phase": "before_start",
-      "order": 10,
       "failure_policy": "fail",
       "retry_count": 0
     }
@@ -28,7 +27,6 @@
       ],
       "command": "set -e\nmkdir -p /workspace/.runpod_agentic/launcher.d/harnesses /workspace/e2e\ncat > /workspace/.runpod_agentic/launcher.d/harnesses/pi.sh <<'PI_HARNESS'\n#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p /workspace/e2e\n{\n  echo 'prompt:'\n  cat \"${AGENT_PROMPT_FILE:-/workspace/.runpod_agentic/prompt.txt}\"\n  echo\n  echo 'skills:'\n  find /workspace/.codex/skills -maxdepth 3 -type f \\( -name 'SKILL.md' -o -name '*.md' \\) | sort | sed 's#^/workspace/.codex/skills/##'\n  echo\n  echo 'database:'\n  printf '%s\\n' \"${DATABASE_URL:-}\"\n  echo\n  echo 'llm:'\n  printf '%s\\n' \"${OLLAMA_HOST:-}\"\n} > /workspace/e2e/agent-skill-report.txt\nPI_HARNESS\nchmod +x /workspace/.runpod_agentic/launcher.d/harnesses/pi.sh",
       "phase": "before_start",
-      "order": 20,
       "failure_policy": "fail",
       "retry_count": 0
     }

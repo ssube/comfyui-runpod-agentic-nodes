@@ -25,6 +25,11 @@ HARNESS_INSTALLS = {
         "install": "pipx install hermes-agent",
         "requires_pipx": True,
     },
+    "pi": {
+        "binary": "pi",
+        "install": "npm install -g @earendil-works/pi-coding-agent",
+        "requires_node": True,
+    },
 }
 
 

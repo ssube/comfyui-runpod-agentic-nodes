@@ -764,6 +764,7 @@ UI-format examples for loading into ComfyUI:
 | --- | --- |
 | `examples/workflows/ui_agent_skills_mcp_plan.json` | Agent with MCP servers and skills. |
 | `examples/workflows/ui_claude_data_agent_plan.json` | Claude API, Playwright, Postgres, Qdrant, and prompts. |
+| `examples/workflows/ui_local_ollama_deepseek_setup.json` | Local Ollama Cloud DeepSeek workflow with language runtime, apt/npm packages, skills, and grouped layout. |
 | `examples/workflows/ui_local_runtime_plan.json` | Local Compose/containerd rehearsal with generated YAML and apply result previews. |
 | `examples/workflows/ui_neko_ollama_agent_plan.json` | Neko browser and self-hosted Ollama. |
 
@@ -773,6 +774,8 @@ API-format examples:
 | --- | --- |
 | `examples/workflows/api_local_agent_skills_postgres_up.json` | Comprehensive local runtime preflight: Postgres, Ollama Cloud env, Superpowers skills, package install, harness prompt output. |
 | `examples/workflows/api_local_agent_skills_postgres_down.json` | Teardown pair for the comprehensive local runtime preflight. |
+| `examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json` | Real Pi + Ollama Cloud DeepSeek local runtime workflow using language and package setup nodes. |
+| `examples/workflows/api_local_ollama_cloud_deepseek_agent_down.json` | Teardown pair for the real Pi + Ollama Cloud DeepSeek workflow. |
 | `examples/workflows/api_local_runtime_containerd_up.json` | Containerd local runtime apply smoke. |
 | `examples/workflows/api_local_runtime_containerd_down.json` | Teardown pair for the containerd local runtime smoke. |
 | `examples/workflows/api_plan_smoke.json` | Small API prompt for plan-mode smoke tests. |

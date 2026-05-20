@@ -18,6 +18,7 @@ from comfyui_runpod_agentic.nodes import (
     RemoteSQLDatabaseNode,
     SkillFrameworkNode,
     SkillNode,
+    SSHCommandNode,
 )
 from comfyui_runpod_agentic.setup_commands import harness_install_command
 from comfyui_runpod_agentic.validation import ValidationError
@@ -57,7 +58,17 @@ def test_ollama_deepseek_example_uses_setup_nodes_for_packages():
     assert class_types.count("SSHCommand") == 1
     assert workflow["3"]["inputs"]["package_manager"] == "apt"
     assert workflow["4"]["inputs"]["package_manager"] == "npm"
+    assert workflow["4"]["inputs"]["packages"] == "npm-check-updates"
+    assert all("order" not in node["inputs"] for node in workflow.values())
     assert workflow["7"]["inputs"]["action"] == "apply_and_wait"
+
+
+def test_ollama_deepseek_ui_example_has_groups_and_positions():
+    workflow = json.loads(Path("examples/workflows/ui_local_ollama_deepseek_setup.json").read_text())
+
+    assert len(workflow["groups"]) == 4
+    assert {group["title"] for group in workflow["groups"]} == {"Agent Inputs", "Container Setup", "Agent Deployment", "Local Runtime Execution"}
+    assert all(isinstance(node.get("pos"), list) and len(node["pos"]) == 2 for node in workflow["nodes"])
 
 
 def test_agent_accepts_generic_llm_sources():
@@ -75,6 +86,7 @@ def test_agent_installs_supported_harnesses_before_start():
         "Claude": "@anthropic-ai/claude-code",
         "OpenCode": "opencode-ai",
         "Hermes": "hermes-agent",
+        "Pi": "@earendil-works/pi-coding-agent",
     }
 
     for harness, package in expected_packages.items():
@@ -92,6 +104,7 @@ def test_harness_install_commands_run_help_for_each_supported_cli():
     assert "claude --help >/dev/null" in harness_install_command("claude")
     assert "opencode --help >/dev/null" in harness_install_command("opencode")
     assert "hermes --help >/dev/null" in harness_install_command("hermes")
+    assert "pi --help >/dev/null" in harness_install_command("pi")
 
 
 def test_sqlite_contract_is_file_only():
@@ -105,13 +118,20 @@ def test_sqlite_contract_is_file_only():
 
 
 def test_package_node_chains_install_commands_and_apt_updates():
-    apt = PackageNode().build("apt", "jq curl", -10, "fail")[0]
-    pip = PackageNode().build("pip", "pytest", -5, "continue", previous=apt)[0]
+    apt = PackageNode().build("apt", "jq curl", "fail")[0]
+    pip = PackageNode().build("pip", "pytest", "continue", previous=apt)[0]
 
-    assert [command.order for command in pip.commands] == [-10, -5]
+    assert [command.order for command in pip.commands] == [0, 100]
     assert "apt-get update" in apt.commands[0].command
     assert "apt-get install" in apt.commands[0].command
     assert "python3 -m pip install pytest" in pip.commands[1].command
+
+
+def test_command_node_inputs_do_not_expose_manual_order():
+    assert "order" not in SSHCommandNode.INPUT_TYPES()["required"]
+    assert "order" not in PackageNode.INPUT_TYPES()["required"]
+    assert "order" not in LanguageRuntimeNode.INPUT_TYPES()["required"]
+    assert "order" not in BuildContainerNode.INPUT_TYPES()["required"]
 
 
 def test_language_runtime_node_installs_node_from_nodesource_and_python_from_apt():
@@ -132,6 +152,13 @@ def test_build_container_node_commits_and_pushes_with_dockerhub_env():
     assert "DOCKERHUB_USERNAME" in command.command
     assert "DOCKERHUB_TOKEN" in command.command
     assert "push \"$image_tag\"" in command.command
+
+
+def test_command_nodes_ignore_legacy_order_argument_and_infer_from_chain():
+    first = SSHCommandNode().build("echo first", "before_start", "fail", order=900)[0]
+    second = SSHCommandNode().build("echo second", "before_start", "fail", previous=first, order=-900)[0]
+
+    assert [command.order for command in second.commands] == [0, 100]
 
 
 def test_browser_same_pod_adds_agent_capability():
@@ -181,7 +208,7 @@ def test_agent_accepts_chainable_skills():
     assert len(agent.skills.skills) == 2
     assert agent.skills.skills[1].kind == "framework"
     assert "RUNPOD_AGENT_SKILLS_JSON" in agent.runtime_contract.env.values
-    assert [command.source for command in agent.runtime_contract.commands] == ["skill:frontend-design", "skill:superpowers"]
+    assert [command.source for command in agent.runtime_contract.commands] == ["harness:pi", "skill:frontend-design", "skill:superpowers"]
 
 
 def test_pod_validation_rejects_sqlite_outside_workspace():

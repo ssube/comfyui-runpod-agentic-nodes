@@ -403,6 +403,12 @@ def clean_mcp_server(server: MCPServer) -> dict[str, Any]:
     return data
 
 
+def inferred_command_order(previous: SSHCommandSpec | None) -> int:
+    if not previous or not previous.commands:
+        return 0
+    return max(command.order for command in previous.commands) + 100
+
+
 class SkillNode:
     CATEGORY = "Runpod/Agent"
     RETURN_TYPES = (RUNPOD_AGENT_SKILLS,)
@@ -511,7 +517,7 @@ class AgentNode:
                 capabilities.extend(spec.required_image_capabilities)
         harness_id = norm(harness)
         install_commands = []
-        if harness_id in {"codex", "claude", "opencode", "hermes"}:
+        if harness_id in {"codex", "claude", "opencode", "hermes", "pi"}:
             install_commands.append(RuntimeCommand(harness_install_command(harness_id), "before_start", -30000, "fail", 0, f"harness:{harness_id}"))
         contract = RuntimeContract(
             EnvPatch({"AGENT_HARNESS": harness_id, "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "AGENT_SYSTEM_PROMPT": system_prompt, "WORKSPACE_DIR": workspace_path}),
@@ -578,11 +584,11 @@ class SSHCommandNode:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"command": ("STRING", {"multiline": True, "default": ""}), "phase": (["before_start", "after_start", "after_ready", "teardown"],), "order": ("INT", {"default": 0}), "failure_policy": (["fail", "continue", "retry"],), "retry_count": ("INT", {"default": 0, "min": 0})}, "optional": {"previous": (RUNPOD_COMMAND_SSH,)}, "hidden": {"node_id": "UNIQUE_ID"}}
+        return {"required": {"command": ("STRING", {"multiline": True, "default": ""}), "phase": (["before_start", "after_start", "after_ready", "teardown"],), "failure_policy": (["fail", "continue", "retry"],), "retry_count": ("INT", {"default": 0, "min": 0})}, "optional": {"previous": (RUNPOD_COMMAND_SSH,)}, "hidden": {"node_id": "UNIQUE_ID"}}
 
-    def build(self, command: str, phase: str, order: int, failure_policy: str, retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None):
+    def build(self, command: str, phase: str, failure_policy: str, retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
         commands = list(previous.commands) if previous else []
-        commands.append(SSHCommand(command, phase, int(order), failure_policy, int(retry_count)))
+        commands.append(SSHCommand(command, phase, inferred_command_order(previous), failure_policy, int(retry_count)))
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "SSH Command")),)
 
 
@@ -598,7 +604,6 @@ class PackageNode:
             "required": {
                 "package_manager": (["apt", "npm", "pip"],),
                 "packages": ("STRING", {"default": ""}),
-                "order": ("INT", {"default": -25000}),
                 "failure_policy": (["fail", "continue", "retry"],),
                 "retry_count": ("INT", {"default": 0, "min": 0}),
             },
@@ -606,9 +611,9 @@ class PackageNode:
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, package_manager: str, packages: str, order: int = -25000, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None):
+    def build(self, package_manager: str, packages: str, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
         commands = list(previous.commands) if previous else []
-        commands.append(SSHCommand(package_install_command(package_manager, packages), "before_start", int(order), failure_policy, int(retry_count)))
+        commands.append(SSHCommand(package_install_command(package_manager, packages), "before_start", inferred_command_order(previous), failure_policy, int(retry_count)))
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Package")),)
 
 
@@ -624,7 +629,6 @@ class LanguageRuntimeNode:
             "required": {
                 "runtime": (["nodejs", "python"],),
                 "node_major_version": ("INT", {"default": 22, "min": 18}),
-                "order": ("INT", {"default": -28000}),
                 "failure_policy": (["fail", "continue", "retry"],),
                 "retry_count": ("INT", {"default": 0, "min": 0}),
             },
@@ -632,9 +636,9 @@ class LanguageRuntimeNode:
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, runtime: str, node_major_version: int = 22, order: int = -28000, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None):
+    def build(self, runtime: str, node_major_version: int = 22, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
         commands = list(previous.commands) if previous else []
-        commands.append(SSHCommand(language_runtime_install_command(runtime, int(node_major_version)), "before_start", int(order), failure_policy, int(retry_count)))
+        commands.append(SSHCommand(language_runtime_install_command(runtime, int(node_major_version)), "before_start", inferred_command_order(previous), failure_policy, int(retry_count)))
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Language Runtime")),)
 
 
@@ -653,7 +657,6 @@ class BuildContainerNode:
                 "push_to_docker_hub": ("BOOLEAN", {"default": False}),
                 "dockerhub_username_env": ("STRING", {"default": "DOCKERHUB_USERNAME"}),
                 "dockerhub_token_env": ("STRING", {"default": "DOCKERHUB_TOKEN"}),
-                "order": ("INT", {"default": 90000}),
                 "failure_policy": (["fail", "continue", "retry"],),
                 "retry_count": ("INT", {"default": 0, "min": 0}),
             },
@@ -661,9 +664,9 @@ class BuildContainerNode:
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, image_tag: str, runtime: str = "nerdctl", push_to_docker_hub: bool = False, dockerhub_username_env: str = "DOCKERHUB_USERNAME", dockerhub_token_env: str = "DOCKERHUB_TOKEN", order: int = 90000, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None):
+    def build(self, image_tag: str, runtime: str = "nerdctl", push_to_docker_hub: bool = False, dockerhub_username_env: str = "DOCKERHUB_USERNAME", dockerhub_token_env: str = "DOCKERHUB_TOKEN", failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
         commands = list(previous.commands) if previous else []
-        commands.append(SSHCommand(container_snapshot_command(image_tag, runtime, bool(push_to_docker_hub), dockerhub_username_env, dockerhub_token_env), "after_ready", int(order), failure_policy, int(retry_count)))
+        commands.append(SSHCommand(container_snapshot_command(image_tag, runtime, bool(push_to_docker_hub), dockerhub_username_env, dockerhub_token_env), "after_ready", inferred_command_order(previous), failure_policy, int(retry_count)))
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Build Container")),)
 
 

@@ -4,7 +4,6 @@
     "inputs": {
       "command": "mkdir -p /workspace/e2e && printf 'startup-one\\n' > /workspace/e2e/command-1.txt && printf '%s\\n' \"$OLLAMA_HOST\" > /workspace/e2e/ollama-host.txt",
       "phase": "before_start",
-      "order": 10,
       "failure_policy": "fail",
       "retry_count": 0
     }
@@ -18,7 +17,6 @@
       ],
       "command": "test -s /workspace/e2e/command-1.txt && printf 'startup-two\\n' > /workspace/e2e/command-2.txt",
       "phase": "before_start",
-      "order": 20,
       "failure_policy": "fail",
       "retry_count": 0
     }

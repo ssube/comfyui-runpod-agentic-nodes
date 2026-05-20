@@ -23,7 +23,7 @@ def build_deployment():
     vector = VectorDatabaseNode().build("Qdrant", "docs")[0]
     browser = BrowserNode().build("Playwright", "same_pod", "chromium")[0]
     agent = AgentNode().build("OpenCode", "claude-sonnet", "wait_for_commands", browser=browser, llm=llm, sql_database=sql, vector_database=vector, node_id="agent1")[0]
-    commands = SSHCommandNode().build("echo setup", "before_start", 10, "fail")[0]
+    commands = SSHCommandNode().build("echo setup", "before_start", "fail")[0]
     keep_alive = KeepAliveNode().build("time", "stop", 30, "minutes", 0, 0.0, 0)[0]
     return DeployNode().build(agent, gpu_type_id="NVIDIA A40", commands=commands, keep_alive=keep_alive)[0]
 
@@ -114,7 +114,7 @@ def test_network_storage_retention_policy_is_visible_in_plan_warnings():
 def test_local_sql_adds_sqlite_setup_before_user_commands():
     sql = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
     agent = AgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
-    commands = SSHCommandNode().build("echo user", "before_start", 10, "fail")[0]
+    commands = SSHCommandNode().build("echo user", "before_start", "fail")[0]
     deployment = DeployNode().build(agent, gpu_count=0, commands=commands)[0]
 
     plan = Planner().build(deployment)

@@ -41,7 +41,6 @@
     "inputs": {
       "command": "echo crag-api-real-smoke && python --version && pwd && test -d /workspace",
       "failure_policy": "fail",
-      "order": 0,
       "phase": "before_start",
       "retry_count": 0
     }
