@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import time
 import urllib.error
 import urllib.request
@@ -75,6 +76,7 @@ class RunpodRunner:
             raise
 
     def _apply(self, plan: DeploymentPlan, *, wait: bool) -> dict[str, Any]:
+        plan = materialize_generated_tokens(plan)
         created: dict[str, dict[str, Any]] = {}
         resource_ids: dict[str, str] = {}
         for resource in plan.resources:
@@ -896,6 +898,33 @@ def resolve_dependency_endpoints(plan: DeploymentPlan, pods: dict[str, dict[str,
             replace_prefix(env, "crag://vector/chroma", endpoint)
             replace_prefix(env, "crag://vector/qdrant", endpoint)
     return with_env(plan.runtime_contract, env)
+
+
+def materialize_generated_tokens(plan: DeploymentPlan) -> DeploymentPlan:
+    if not plan_uses_generated_token(plan):
+        return plan
+    token = "crag-" + secrets.token_urlsafe(32)
+    resources = []
+    for resource in plan.resources:
+        env = replace_generated_token_values(resource.env, token)
+        pod_input = dict(resource.pod_input)
+        pod_input["env"] = replace_generated_token_values(dict(pod_input.get("env") or {}), token)
+        resources.append(replace(resource, env=env, pod_input=pod_input))
+    runtime_env = replace_generated_token_values(plan.runtime_contract.env.values, token)
+    return replace(plan, resources=resources, runtime_contract=with_env(plan.runtime_contract, runtime_env))
+
+
+def plan_uses_generated_token(plan: DeploymentPlan) -> bool:
+    if any("crag-generated-at-apply" in str(value) for value in plan.runtime_contract.env.values.values()):
+        return True
+    for resource in plan.resources:
+        if any("crag-generated-at-apply" in str(value) for value in resource.env.values()):
+            return True
+    return False
+
+
+def replace_generated_token_values(values: dict[str, str], token: str) -> dict[str, str]:
+    return {key: str(value).replace("crag-generated-at-apply", token) for key, value in values.items()}
 
 
 def replace_prefix(env: dict[str, str], placeholder: str, endpoint: str) -> None:

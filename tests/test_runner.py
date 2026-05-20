@@ -8,6 +8,7 @@ from comfyui_runpod_agentic.nodes import (
     DeployNode,
     KeepAliveNode,
     LLMApiNode,
+    LLMServerNode,
     MCPServerNode,
     RunOnRunpodNode,
     SkillFrameworkNode,
@@ -44,8 +45,10 @@ class FakeRunpodClient:
         if self.fail_create:
             raise RuntimeError("create failed")
         pod = {"id": f"pod-{len(self.created)}", "name": input["name"], "desiredStatus": "RUNNING", "costPerHr": 0.1, "runtime": {"uptimeInSeconds": 0, "ports": [{"ip": "127.0.0.1", "privatePort": 22, "publicPort": 2222, "type": "tcp"}]}}
-        if any(port.get("container_port") == 3000 for port in input.get("ports", [])):
-            pod["runtime"]["ports"].append({"ip": "127.0.0.1", "privatePort": 3000, "publicPort": 3000, "type": "http"})
+        for port in input.get("ports", []):
+            private_port = int(port.get("container_port") or 0)
+            if private_port and private_port != 22:
+                pod["runtime"]["ports"].append({"ip": "127.0.0.1", "privatePort": private_port, "publicPort": private_port, "type": port.get("protocol", "http")})
         self.pods[pod["id"]] = pod
         return pod
 
@@ -184,6 +187,24 @@ def test_runner_fails_unresolved_template_key_before_create(tmp_path, monkeypatc
         runner.run(deployment, mode="apply")
 
     assert runpod.created == []
+
+
+def test_runner_materializes_generated_llm_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setattr("comfyui_runpod_agentic.runner.first_ready_probe", lambda endpoint, role, env: "/")
+    llm = LLMServerNode().build("Ollama", "llama3", "own_pod", "generated_token")[0]
+    agent = AgentNode().build("Pi", "model", "manual", llm=llm)[0]
+    deployment = DeployNode().build(agent, gpu_count=0)[0]
+    runpod = FakeRunpodClient()
+    runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply")
+
+    llm_env = runpod.created[0]["env"]
+    agent_env = runpod.created[1]["env"]
+    assert llm_env["OPENAI_API_KEY"].startswith("crag-")
+    assert llm_env["OPENAI_API_KEY"] == agent_env["OPENAI_API_KEY"]
+    assert result["plan"]["runtime_contract"]["env"]["values"]["OPENAI_API_KEY"] == llm_env["OPENAI_API_KEY"]
 
 
 def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):
