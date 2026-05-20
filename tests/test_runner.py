@@ -33,6 +33,7 @@ class FakeRunpodClient:
         self.created = []
         self.stopped = []
         self.terminated = []
+        self.resumed = []
         self.pods = {}
         self.fail_create = fail_create
 
@@ -57,6 +58,9 @@ class FakeRunpodClient:
         return {"id": pod_id, "desiredStatus": "EXITED"}
 
     def resume_pod(self, pod_id):
+        self.resumed.append(pod_id)
+        if pod_id in self.pods:
+            self.pods[pod_id]["desiredStatus"] = "RUNNING"
         return {"id": pod_id, "desiredStatus": "RUNNING"}
 
     def terminate_pod(self, pod_id):
@@ -132,6 +136,38 @@ def test_runner_reports_progress(tmp_path, monkeypatch):
     assert "create agent" in progress.messages
     assert "write runtime" in progress.messages
     assert "completed" in progress.messages
+
+
+def test_runner_reuses_matching_running_pod(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, reuse_policy="reuse_matching")[0]
+    runpod = FakeRunpodClient()
+    runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    first = runner.run(deployment, mode="apply")
+    second = runner.run(deployment, mode="apply")
+
+    assert first["pods"] == second["pods"]
+    assert len(runpod.created) == 1
+    assert any(event["event_type"] == "pod_reused" for event in runner.state_store.list_events(second["run_id"]))
+
+
+def test_runner_resumes_matching_stopped_pod(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, reuse_policy="resume_stopped")[0]
+    runpod = FakeRunpodClient()
+    runner = RunpodRunner(runpod_client=runpod, ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    first = runner.run(deployment, mode="apply")
+    runpod.pods[first["pods"][next(iter(first["pods"]))]]["desiredStatus"] = "EXITED"
+    second = runner.run(deployment, mode="apply")
+
+    assert first["pods"] == second["pods"]
+    assert len(runpod.created) == 1
+    assert runpod.resumed == ["pod-1"]
+    assert any(event["event_type"] == "pod_resumed" for event in runner.state_store.list_events(second["run_id"]))
 
 
 def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):

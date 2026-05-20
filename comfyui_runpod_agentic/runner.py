@@ -79,28 +79,10 @@ class RunpodRunner:
         for resource in plan.resources:
             self._progress_step(f"create {resource.role}")
             pending_resource_id = self.state_store.record_resource(plan.run_id, resource, status="creating")
-            self.state_store.add_event(
-                plan.run_id,
-                "pod_create_request",
-                resource.name,
-                resource_id=pending_resource_id,
-                payload=sanitize_pod_input(resource.pod_input),
-            )
-            try:
-                pod = self.runpod_client.create_or_deploy_pod(resource.pod_input)
-            except Exception as exc:
-                self.state_store.add_event(
-                    plan.run_id,
-                    "pod_create_failed",
-                    f"{resource.name}: {exc}",
-                    resource_id=pending_resource_id,
-                    payload={"role": resource.role, "template_id": resource.template_id, "input": sanitize_pod_input(resource.pod_input)},
-                )
-                raise
+            pod = self._reuse_or_create_pod(plan, resource, pending_resource_id)
             created[resource.name] = pod
             resource_id = self.state_store.record_resource(plan.run_id, resource, pod, status=pod.get("desiredStatus", "created"))
             resource_ids[resource.name] = resource_id
-            self.state_store.add_event(plan.run_id, "pod_created", resource.name, resource_id=resource_id, payload={"pod_id": pod.get("id")})
             if resource.role != "agent":
                 self._progress_step(f"wait {resource.role}")
                 created[resource.name] = self._wait_dependency_ready(resource, pod, plan.run_id, resource_id)
@@ -121,6 +103,49 @@ class RunpodRunner:
         if keep_alive_result:
             result["keep_alive"] = keep_alive_result
         return result
+
+    def _reuse_or_create_pod(self, plan: DeploymentPlan, resource, pending_resource_id: str) -> dict[str, Any]:
+        existing = self._matching_existing_resource(plan, resource)
+        if existing:
+            pod_id = existing.get("runpod_pod_id")
+            pod = self.runpod_client.get_pod(pod_id)
+            status = str(pod.get("desiredStatus") or pod.get("status") or "").upper()
+            if plan.reuse_policy == "reuse_matching" and status not in {"STOPPED", "EXITED", "TERMINATED"}:
+                self.state_store.add_event(plan.run_id, "pod_reused", resource.name, resource_id=pending_resource_id, payload={"pod_id": pod_id})
+                return pod
+            if plan.reuse_policy == "resume_stopped" and status in {"STOPPED", "EXITED"}:
+                resumed = self.runpod_client.resume_pod(pod_id)
+                pod = {**pod, **resumed}
+                self.state_store.add_event(plan.run_id, "pod_resumed", resource.name, resource_id=pending_resource_id, payload={"pod_id": pod_id})
+                return pod
+        self.state_store.add_event(
+            plan.run_id,
+            "pod_create_request",
+            resource.name,
+            resource_id=pending_resource_id,
+            payload=sanitize_pod_input(resource.pod_input),
+        )
+        try:
+            pod = self.runpod_client.create_or_deploy_pod(resource.pod_input)
+        except Exception as exc:
+            self.state_store.add_event(
+                plan.run_id,
+                "pod_create_failed",
+                f"{resource.name}: {exc}",
+                resource_id=pending_resource_id,
+                payload={"role": resource.role, "template_id": resource.template_id, "input": sanitize_pod_input(resource.pod_input)},
+            )
+            raise
+        self.state_store.add_event(plan.run_id, "pod_created", resource.name, resource_id=pending_resource_id, payload={"pod_id": pod.get("id")})
+        return pod
+
+    def _matching_existing_resource(self, plan: DeploymentPlan, resource) -> dict[str, Any] | None:
+        if plan.reuse_policy == "always_create":
+            return None
+        for existing in self.state_store.list_resources():
+            if existing.get("desired_hash") == resource.desired_hash and existing.get("runpod_pod_id"):
+                return existing
+        return None
 
     def _run_agent_ssh_steps(self, plan: DeploymentPlan, host: str, port: int, resource_id: str | None, *, wait: bool = False) -> tuple[str, str]:
         response_parts = []
