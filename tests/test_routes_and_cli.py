@@ -11,7 +11,7 @@ class FakeRouteStore:
         self.turns = 0
 
     def list_resources(self):
-        return [{"id": "local"}]
+        return [{"id": "local", "run_id": "run-1", "runpod_pod_id": "pod-1"}, {"id": "other", "run_id": "run-2", "runpod_pod_id": "pod-3"}]
 
     def list_runs(self):
         return [{"id": "run-1"}]
@@ -33,7 +33,11 @@ class FakeRouteClient:
         self.terminated = []
 
     def list_pods(self):
-        return [{"id": "pod-1", "name": "crag-agent"}, {"id": "pod-2", "name": "other"}]
+        return [
+            {"id": "pod-1", "name": "crag-agent", "runtime": {"uptimeInSeconds": 3600}},
+            {"id": "pod-3", "name": "crag-other", "runtime": {"uptimeInSeconds": 30}},
+            {"id": "pod-2", "name": "other"},
+        ]
 
     def stop_pod(self, pod_id):
         self.stopped.append(pod_id)
@@ -56,14 +60,17 @@ def test_route_handlers_cover_resource_lifecycle():
     client = FakeRouteClient()
     handlers = RouteHandlers(FakeRouteStore(), client)
 
-    assert handlers.resources()["remote"] == [{"id": "pod-1", "name": "crag-agent"}]
+    assert handlers.resources()["remote"] == [
+        {"id": "pod-1", "name": "crag-agent", "runtime": {"uptimeInSeconds": 3600}},
+        {"id": "pod-3", "name": "crag-other", "runtime": {"uptimeInSeconds": 30}},
+    ]
     assert handlers.runs() == {"runs": [{"id": "run-1"}]}
     assert handlers.run("run-1") == {"run": {"id": "run-1"}}
     assert handlers.stop_pod({"pod_id": "pod-1"})["pod"]["desiredStatus"] == "EXITED"
     assert handlers.resume_pod({"pod_id": "pod-1"})["pod"]["desiredStatus"] == "RUNNING"
     assert handlers.terminate_pod({"pod_id": "pod-1"}) == {"terminated": "pod-1"}
-    assert handlers.cleanup({"action": "stop"}) == {"action": "stop", "affected": ["pod-1"]}
-    assert handlers.cleanup({"action": "terminate"}) == {"action": "terminate", "affected": ["pod-1"]}
+    assert handlers.cleanup({"action": "stop", "run_id": "run-1"}) == {"action": "stop", "affected": ["pod-1"], "run_id": "run-1", "stale_seconds": 0}
+    assert handlers.cleanup({"action": "terminate", "stale_seconds": 300}) == {"action": "terminate", "affected": ["pod-1"], "run_id": None, "stale_seconds": 300}
     assert handlers.turn("run-1") == {"run_id": "run-1", "turns": 1}
     assert client.stopped == ["pod-1", "pod-1"]
     assert client.resumed == ["pod-1"]
@@ -90,10 +97,10 @@ def test_cleanup_managed_pods_stops_or_terminates_matching_pods(monkeypatch):
     stopped = cleanup.cleanup_managed_pods("stop", "crag-")
     terminated = cleanup.cleanup_managed_pods("terminate", "crag-")
 
-    assert stopped == [{"id": "pod-1", "name": "crag-agent", "action": "stop"}]
-    assert terminated == [{"id": "pod-1", "name": "crag-agent", "action": "terminate"}]
-    assert client.stopped == ["pod-1"]
-    assert client.terminated == ["pod-1"]
+    assert stopped == [{"id": "pod-1", "name": "crag-agent", "action": "stop"}, {"id": "pod-3", "name": "crag-other", "action": "stop"}]
+    assert terminated == [{"id": "pod-1", "name": "crag-agent", "action": "terminate"}, {"id": "pod-3", "name": "crag-other", "action": "terminate"}]
+    assert client.stopped == ["pod-1", "pod-3"]
+    assert client.terminated == ["pod-1", "pod-3"]
 
 
 def test_cleanup_main_prints_json(monkeypatch, capsys):

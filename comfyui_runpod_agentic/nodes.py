@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,12 @@ def norm(value: str) -> str:
 
 def meta(node_id: str | None, display_name: str | None = None) -> SpecMeta:
     return SpecMeta(node_id=node_id, display_name=display_name)
+
+
+def generated_volume_id(node_id: str | None, volume_name: str | None) -> str:
+    suffix = "".join(ch for ch in str(node_id or uuid.uuid4().hex[:8]).lower() if ch.isalnum())[:8] or uuid.uuid4().hex[:8]
+    base = norm(volume_name or "crag-workspace").replace("_", "-")
+    return f"{base}-{suffix}"
 
 
 class BrowserNode:
@@ -559,7 +566,11 @@ class NetworkStorageNode:
         }
 
     def build(self, network_volume_id: str, mount_path: str = "/workspace", retention_policy: str = "preserve", create_size_gb: int = 0, data_center_id: str = "", volume_name: str = "crag-workspace", node_id: str | None = None):
-        return (NetworkStorageSpec(network_volume_id.strip(), mount_path, retention_policy, int(create_size_gb) or None, data_center_id.strip() or None, volume_name.strip() or None, meta(node_id, "Network Storage")),)
+        volume_id = network_volume_id.strip()
+        size_gb = int(create_size_gb) or None
+        if not volume_id and not size_gb:
+            volume_id = generated_volume_id(node_id, volume_name)
+        return (NetworkStorageSpec(volume_id, mount_path, retention_policy, size_gb, data_center_id.strip() or None, volume_name.strip() or None, meta(node_id, "Network Storage")),)
 
 
 class S3StorageNode:
@@ -905,6 +916,7 @@ class LocalComposeApplyMixin:
         )
 
         project = project_name.strip() or "crag-local"
+        workflow_graph = populate_local_volume_ids(workflow_graph)
         plan = Planner().build(deployment, mode="plan", prompt=prompt, workflow_graph=workflow_graph)
         compose_yaml = compose_yaml_for_plan(plan, project_name=project)
         saved_path = write_compose_file(output_path, compose_yaml)
@@ -949,6 +961,23 @@ class DeployWithPodmanNode(LocalComposeApplyMixin):
 
 class DeployWithContainerdNode(LocalComposeApplyMixin):
     ENGINE = "containerd"
+
+
+def populate_local_volume_ids(workflow_graph: Any) -> Any:
+    if not isinstance(workflow_graph, dict):
+        return workflow_graph
+    for node_id, node in workflow_graph.items():
+        if not isinstance(node, dict):
+            continue
+        class_type = node.get("class_type") or node.get("type")
+        if class_type not in {"NetworkStorage", "RunpodNetworkStorage"}:
+            continue
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict) or inputs.get("network_volume_id"):
+            continue
+        volume_name = str(inputs.get("volume_name") or "crag-workspace")
+        inputs["network_volume_id"] = generated_volume_id(str(node_id), volume_name)
+    return workflow_graph
 
 
 class LogsNode:

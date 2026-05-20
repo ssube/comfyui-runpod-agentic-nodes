@@ -49,16 +49,32 @@ class RouteHandlers:
         action = data.get("action", "stop")
         if action not in {"stop", "terminate"}:
             raise ValueError("cleanup action must be stop or terminate.")
+        run_id = data.get("run_id")
+        stale_seconds = int(data.get("stale_seconds") or 0)
+        pod_ids = self._cleanup_pod_ids(run_id)
         affected = []
         for pod in self.runpod_client.list_pods():
             if not str(pod.get("name", "")).startswith("crag-"):
+                continue
+            if pod_ids is not None and pod.get("id") not in pod_ids:
+                continue
+            if stale_seconds and int((pod.get("runtime") or {}).get("uptimeInSeconds") or 0) < stale_seconds:
                 continue
             if action == "terminate":
                 self.runpod_client.terminate_pod(pod["id"])
             else:
                 self.runpod_client.stop_pod(pod["id"])
             affected.append(pod["id"])
-        return {"action": action, "affected": affected}
+        return {"action": action, "affected": affected, "run_id": run_id, "stale_seconds": stale_seconds}
+
+    def _cleanup_pod_ids(self, run_id: str | None) -> set[str] | None:
+        if not run_id:
+            return None
+        return {
+            resource["runpod_pod_id"]
+            for resource in self.state_store.list_resources()
+            if resource.get("run_id") == run_id and resource.get("runpod_pod_id")
+        }
 
     def turn(self, run_id: str) -> dict[str, Any]:
         value = self.state_store.increment_counter(run_id, "turns")

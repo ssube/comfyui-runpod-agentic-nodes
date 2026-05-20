@@ -24,6 +24,7 @@ from comfyui_runpod_agentic.nodes import (
     LLMServerNode,
     NetworkStorageNode,
     SSHCommandNode,
+    populate_local_volume_ids,
 )
 from comfyui_runpod_agentic.planner import Planner
 
@@ -246,6 +247,20 @@ def test_apply_local_runtime_removes_delete_with_deployment_volumes(monkeypatch,
     assert reused is False
     assert result.returncode == 0
     assert ["docker", "volume", "rm", "crag-node_vol-workspace"] in calls
+
+
+def test_network_storage_generates_local_volume_id_without_size():
+    storage = NetworkStorageNode().build("", "/workspace", "preserve", 0, "", "crag-workspace", node_id="42")[0]
+
+    assert storage.network_volume_id == "crag-workspace-42"
+
+
+def test_populate_local_volume_ids_updates_workflow_graph():
+    graph = {"42": {"class_type": "NetworkStorage", "inputs": {"network_volume_id": "", "volume_name": "crag-workspace"}}}
+
+    updated = populate_local_volume_ids(graph)
+
+    assert updated["42"]["inputs"]["network_volume_id"] == "crag-workspace-42"
 
 
 def test_enforce_local_keep_alive_turn_limit_stops_after_response(monkeypatch, tmp_path):
