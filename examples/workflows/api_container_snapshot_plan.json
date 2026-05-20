@@ -1,0 +1,103 @@
+{
+  "1": {
+    "class_type": "LanguageRuntime",
+    "inputs": {
+      "runtime": "nodejs",
+      "node_major_version": 22,
+      "failure_policy": "fail",
+      "retry_count": 0
+    }
+  },
+  "2": {
+    "class_type": "Package",
+    "inputs": {
+      "previous": [
+        "1",
+        0
+      ],
+      "package_manager": "apt",
+      "packages": "ca-certificates curl git jq gnupg",
+      "failure_policy": "fail",
+      "retry_count": 0
+    }
+  },
+  "3": {
+    "class_type": "BuildContainer",
+    "inputs": {
+      "previous": [
+        "2",
+        0
+      ],
+      "image_tag": "docker.io/example/crag-agent-base:dev",
+      "runtime": "nerdctl",
+      "push_to_docker_hub": false,
+      "dockerhub_username_env": "DOCKERHUB_USERNAME",
+      "dockerhub_token_env": "DOCKERHUB_TOKEN",
+      "failure_policy": "fail",
+      "retry_count": 0
+    }
+  },
+  "4": {
+    "class_type": "LLMServer",
+    "inputs": {
+      "engine": "Ollama",
+      "model": "smoke",
+      "placement": "own_pod",
+      "api_auth_mode": "none",
+      "api_key_secret_name": "",
+      "hf_token_secret_name": ""
+    }
+  },
+  "5": {
+    "class_type": "Agent",
+    "inputs": {
+      "harness": "Pi",
+      "model": "smoke",
+      "startup_mode": "manual",
+      "workspace_path": "/workspace",
+      "system_prompt": "You are a container snapshot planning agent.",
+      "llm": [
+        "4",
+        0
+      ]
+    }
+  },
+  "6": {
+    "class_type": "Deploy",
+    "inputs": {
+      "app": [
+        "5",
+        0
+      ],
+      "commands": [
+        "3",
+        0
+      ],
+      "gpu_type_id": "",
+      "gpu_count": 0,
+      "cloud_type": "auto",
+      "container_disk_gb": 20,
+      "volume_gb": 0,
+      "expose_public_ip": false,
+      "reuse_policy": "always_create"
+    }
+  },
+  "7": {
+    "class_type": "DeployWithContainerd",
+    "inputs": {
+      "deployment": [
+        "6",
+        0
+      ],
+      "prompt": "Generate a local runtime plan that installs packages and snapshots the configured agent container image.",
+      "project_name": "crag-container-snapshot-plan",
+      "output_path": "artifacts/local-runtime/container-snapshot-compose.yaml",
+      "action": "plan",
+      "use_sudo": true,
+      "timeout_seconds": 300,
+      "response_role": "agent",
+      "response_path": "/workspace/.runpod_agentic/response.txt",
+      "response_timeout_seconds": 0
+    }
+  }
+}

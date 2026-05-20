@@ -68,6 +68,17 @@ def test_ollama_deepseek_example_uses_setup_nodes_for_packages():
     assert workflow["7"]["inputs"]["action"] == "apply_and_wait"
 
 
+def test_container_snapshot_example_uses_build_container_plan():
+    workflow = json.loads(Path("examples/workflows/api_container_snapshot_plan.json").read_text())
+    class_types = [node["class_type"] for node in workflow.values()]
+
+    assert "BuildContainer" in class_types
+    assert workflow["3"]["inputs"]["previous"] == ["2", 0]
+    assert workflow["3"]["inputs"]["push_to_docker_hub"] is False
+    assert workflow["7"]["inputs"]["action"] == "plan"
+    assert workflow["7"]["inputs"]["response_timeout_seconds"] == 0
+
+
 def test_ollama_deepseek_ui_example_has_groups_and_positions():
     workflow = json.loads(Path("examples/workflows/ui_local_ollama_deepseek_setup.json").read_text())
 

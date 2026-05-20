@@ -35,6 +35,19 @@ App mode:
 </details>
 
 <details>
+<summary>Container Snapshot Plan</summary>
+
+Graph mode:
+
+![Container snapshot workflow](docs/assets/workflows/ui_container_snapshot_plan.png)
+
+App mode:
+
+![Container snapshot app mode](docs/assets/workflows/ui_container_snapshot_plan_app.png)
+
+</details>
+
+<details>
 <summary>Local Agent Skills and Postgres Setup</summary>
 
 Graph mode:
