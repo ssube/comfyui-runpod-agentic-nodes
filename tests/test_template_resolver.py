@@ -3,7 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from comfyui_runpod_agentic.template_resolver import DEFAULT_TEMPLATE_CONFIG, TemplateResolutionError, TemplateResolver, is_unresolved_template_key
+from comfyui_runpod_agentic.template_resolver import (
+    DEFAULT_TEMPLATE_CONFIG,
+    TemplateResolutionError,
+    TemplateResolver,
+    is_unresolved_template_key,
+)
 
 
 def test_resolves_agent_capability_template():

@@ -16,6 +16,7 @@ from comfyui_runpod_agentic.nodes import (
     SkillNode,
     SSHCommandNode,
 )
+from comfyui_runpod_agentic.planner import Planner
 from comfyui_runpod_agentic.runner import (
     RunpodRunner,
     agent_launcher_script,
@@ -29,7 +30,6 @@ from comfyui_runpod_agentic.runner import (
 from comfyui_runpod_agentic.ssh_client import CommandResult
 from comfyui_runpod_agentic.state_store import StateStore
 from comfyui_runpod_agentic.template_resolver import TemplateResolver
-from comfyui_runpod_agentic.planner import Planner
 
 
 class FakeRunpodClient:
