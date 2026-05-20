@@ -54,7 +54,8 @@ def main() -> int:
             wait_for_server(port, proc, output)
             server = f"http://127.0.0.1:{port}"
             try:
-                entry = submit_workflow(server, repo_dir / "examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json", timeout=1800)
+                workflow_path = repo_dir / "examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json"
+                entry = submit_workflow(server, workflow_path, timeout=1800)
                 response = node_output_text(entry, "7", "response")
                 errors = node_output_text(entry, "7", "errors")
                 services = wait_for_services(PROJECT_NAME, {"agent"}, timeout=1200)
@@ -74,12 +75,25 @@ def main() -> int:
                     raise AssertionError(f"Pi did not complete successfully:\nresponse:\n{runtime_response}\nerrors:\n{errors}")
                 if "SKILL.md" not in runtime_response and "skill" not in runtime_response.lower():
                     raise AssertionError(f"LLM response did not mention skills:\n{runtime_response}")
+                second_workflow = json.loads(workflow_path.read_text())
+                second_prompt = "Reply with the exact token CRAG_SECOND_PROMPT_OK, then list one skill file available on disk."
+                second_workflow["7"]["inputs"]["prompt"] = second_prompt
+                second_entry = submit_workflow_payload(server, second_workflow, timeout=1800)
+                second_services = wait_for_services(PROJECT_NAME, {"agent"}, timeout=120)
+                second_agent = next(service for service in second_services if service["role"] == "agent")
+                second_response = node_output_text(second_entry, "7", "response") or file_text(second_agent["id"], "/workspace/.runpod_agentic/response.txt")
+                if second_agent["id"] != agent["id"]:
+                    raise AssertionError(f"Expected second apply to reuse agent container {agent['id']}, got {second_agent['id']}.")
+                if "CRAG_SECOND_PROMPT_OK" not in second_response:
+                    raise AssertionError(f"Second prompt response did not prove relaunch:\n{second_response}")
                 print(
                     json.dumps(
                         {
                             "services": services,
+                            "second_services": second_services,
                             "pi_version": pi_version.strip(),
                             "response_excerpt": response[:1600] or runtime_response[:1600],
+                            "second_response_excerpt": second_response[:800],
                             "errors_excerpt": errors[:1600],
                             "skill_lines": skills.splitlines()[:10],
                         },
@@ -107,13 +121,17 @@ def main() -> int:
 
 
 def submit_workflow(server: str, workflow: Path, *, timeout: int) -> dict:
-    response = post_json(f"{server}/prompt", {"prompt": json.loads(workflow.read_text()), "client_id": uuid.uuid4().hex})
+    return submit_workflow_payload(server, json.loads(workflow.read_text()), timeout=timeout, source=str(workflow))
+
+
+def submit_workflow_payload(server: str, workflow: dict, *, timeout: int, source: str = "<workflow>") -> dict:
+    response = post_json(f"{server}/prompt", {"prompt": workflow, "client_id": uuid.uuid4().hex})
     prompt_id = response["prompt_id"]
     entry = wait_history(server, prompt_id, timeout)[prompt_id]
     status = entry.get("status", {})
     messages = status.get("messages") or []
     if status.get("completed") is False or any(message and message[0] == "execution_error" for message in messages):
-        raise AssertionError(f"Workflow {workflow} failed:\n{json.dumps(entry, indent=2, sort_keys=True)}")
+        raise AssertionError(f"Workflow {source} failed:\n{json.dumps(entry, indent=2, sort_keys=True)}")
     return entry
 
 

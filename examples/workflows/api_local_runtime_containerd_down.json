@@ -78,7 +78,7 @@
       "prompt": "Tear down the local runtime e2e stack.",
       "project_name": "crag-comfy-local-e2e",
       "output_path": "artifacts/local-runtime/comfy-e2e-compose.yaml",
-      "action": "down",
+      "action": "terminate",
       "use_sudo": true,
       "timeout_seconds": 600
     }

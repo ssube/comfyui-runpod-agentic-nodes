@@ -65,7 +65,7 @@
       "container_disk_gb": 20,
       "volume_gb": 0,
       "expose_public_ip": false,
-      "reuse_policy": "always_create"
+      "reuse_policy": "reuse_matching"
     }
   },
   "6": {
@@ -78,7 +78,7 @@
       "prompt": "Launch the local runtime e2e stack.",
       "project_name": "crag-comfy-local-e2e",
       "output_path": "artifacts/local-runtime/comfy-e2e-compose.yaml",
-      "action": "up",
+      "action": "apply",
       "use_sudo": true,
       "timeout_seconds": 600,
       "response_role": "agent",

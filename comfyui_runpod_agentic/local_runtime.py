@@ -28,7 +28,7 @@ DEFAULT_IMAGES = {
     "vector:chroma": "chromadb/chroma:latest",
 }
 
-LOCAL_RUNTIME_ACTIONS = ("save_only", "config", "pull", "up", "down")
+LOCAL_RUNTIME_ACTIONS = ("save_only", "config", "pull", "apply", "apply_and_wait", "stop", "terminate", "destroy", "up", "down")
 
 
 @dataclass(frozen=True)
@@ -208,10 +208,14 @@ def compose_command(resource: ResourcePlan, plan: DeploymentPlan) -> str | None:
 
 
 def agent_startup_command(plan: DeploymentPlan, resource: ResourcePlan) -> str:
+    return "bash -lc " + shlex.quote(agent_run_script(plan, keep_container_alive=True))
+
+
+def agent_run_script(plan: DeploymentPlan, *, keep_container_alive: bool = False) -> str:
     commands = [
         action.detail
         for action in plan.actions
-        if action.action == "RUN_SSH_COMMAND" and action.role == "agent" and action.resource_name == resource.name and action.detail.get("phase") in {"before_start", "after_start", "after_ready"}
+        if action.action == "RUN_SSH_COMMAND" and action.role == "agent" and action.detail.get("phase") in {"before_start", "after_start", "after_ready"}
     ]
     script = [
         "set -euo pipefail",
@@ -260,12 +264,14 @@ def agent_startup_command(plan: DeploymentPlan, resource: ResourcePlan) -> str:
         )
     launch = launch_command_for_plan(plan)
     if launch:
+        script.append("rm -f \"$crag_dir/response.txt\" \"$crag_dir/errors.txt\" \"$crag_dir/agent.log\"")
         script.append(launch)
     else:
         script.append("echo '[crag-local-runtime] startup mode is manual; launcher not started.'")
     script.append("echo '[crag-local-runtime] startup commands complete'")
-    script.append("sleep infinity")
-    return "bash -lc " + shlex.quote("\n".join(script))
+    if keep_container_alive:
+        script.append("sleep infinity")
+    return "\n".join(script)
 
 
 def local_runtime_file_writes(plan: DeploymentPlan) -> list[str]:
@@ -385,6 +391,95 @@ def apply_compose_file(
     return LocalApplyResult(engine, action, path, command, completed.returncode, completed.stdout, completed.stderr)
 
 
+def apply_local_runtime_plan(
+    engine: str,
+    compose_path: str | Path,
+    project_name: str,
+    plan: DeploymentPlan,
+    *,
+    action: str = "apply",
+    timeout_seconds: int = 1800,
+) -> tuple[LocalApplyResult, bool]:
+    if action in {"apply", "apply_and_wait"} and plan.reuse_policy != "always_create":
+        agent = next(resource for resource in plan.resources if resource.role == "agent")
+        container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=agent.desired_hash)
+        if container_id:
+            return exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds), True
+    return apply_compose_file(engine, compose_path, project_name=project_name, action=action, timeout_seconds=timeout_seconds), False
+
+
+def exec_agent_in_local_container(
+    engine: str,
+    project_name: str,
+    container_id: str,
+    plan: DeploymentPlan,
+    *,
+    timeout_seconds: int = 1800,
+) -> LocalApplyResult:
+    try:
+        command = local_runtime_command(engine, ["exec", container_id, "bash", "-lc", agent_run_script(plan)])
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
+    except (FileNotFoundError, RuntimeError) as exc:
+        return LocalApplyResult(engine, "reuse", "", [], 127, "", str(exc))
+    except subprocess.TimeoutExpired as exc:
+        return LocalApplyResult(engine, "reuse", "", exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
+    return LocalApplyResult(engine, "reuse", project_name, command, completed.returncode, completed.stdout, completed.stderr)
+
+
+def enforce_local_keep_alive(
+    engine: str,
+    compose_path: str | Path,
+    project_name: str,
+    plan: DeploymentPlan,
+    *,
+    response_collected: bool,
+) -> LocalApplyResult | None:
+    policy = plan.keep_alive
+    if not policy or policy.mode == "manual":
+        return None
+    lifecycle_action = "terminate" if policy.action == "terminate" else "stop"
+    if policy.mode == "time" and policy.time_seconds:
+        return schedule_local_lifecycle(engine, compose_path, project_name, lifecycle_action, int(policy.time_seconds))
+    if policy.mode == "turns" and policy.turn_limit and response_collected:
+        if int(policy.turn_limit) <= 1:
+            return apply_compose_file(engine, compose_path, project_name=project_name, action=lifecycle_action)
+        return LocalApplyResult(engine, "keep_alive", str(compose_path), [], 0, f"Local runtime turn limit is {policy.turn_limit}; current run consumed one turn and containers remain running.", "")
+    if policy.mode == "cost":
+        return LocalApplyResult(engine, "keep_alive", str(compose_path), [], 0, "Local runtime cannot measure provider spend; cost keep-alive was recorded but not enforced locally.", "")
+    return None
+
+
+def schedule_local_lifecycle(engine: str, compose_path: str | Path, project_name: str, action: str, delay_seconds: int) -> LocalApplyResult:
+    try:
+        command = command_for_engine(engine, str(compose_path), project_name, action)
+    except RuntimeError as exc:
+        return LocalApplyResult(engine, "keep_alive", str(compose_path), [], 127, "", str(exc))
+    pid_path = local_keep_alive_pid_path(project_name)
+    cancel_local_keep_alive(project_name)
+    shell_command = f"sleep {int(delay_seconds)}; {shlex.join(command)}"
+    process = subprocess.Popen(["sh", "-c", shell_command], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    pid_path.parent.mkdir(parents=True, exist_ok=True)
+    pid_path.write_text(str(process.pid))
+    return LocalApplyResult(engine, "keep_alive", str(compose_path), command, 0, f"Scheduled local runtime {action} in {int(delay_seconds)} seconds.", "")
+
+
+def cancel_local_keep_alive(project_name: str) -> None:
+    pid_path = local_keep_alive_pid_path(project_name)
+    if not pid_path.exists():
+        return
+    try:
+        pid = int(pid_path.read_text().strip())
+        os.kill(pid, 15)
+    except (OSError, ValueError):
+        pass
+    pid_path.unlink(missing_ok=True)
+
+
+def local_keep_alive_pid_path(project_name: str) -> Path:
+    safe_project = re.sub(r"[^a-zA-Z0-9_.-]+", "-", project_name).strip("-") or "crag-local"
+    return Path(os.environ.get("CRAG_LOCAL_RUNTIME_STATE_DIR", "/tmp/crag-local-runtime")) / f"{safe_project}.keepalive.pid"
+
+
 def read_local_runtime_file(
     engine: str,
     project_name: str,
@@ -446,7 +541,7 @@ def local_runtime_response_is_ready(path: str, text: str) -> bool:
     return True
 
 
-def find_local_runtime_container(engine: str, project_name: str, role: str) -> str | None:
+def find_local_runtime_container(engine: str, project_name: str, role: str, desired_hash: str | None = None) -> str | None:
     command = local_runtime_command(engine, ps_args_for_engine(engine))
     completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
     if completed.returncode != 0:
@@ -456,7 +551,8 @@ def find_local_runtime_container(engine: str, project_name: str, role: str) -> s
         container_id = str(item.get("ID") or item.get("Id") or item.get("ContainerID") or "")
         if not container_id or not name.startswith(f"{project_name}-"):
             continue
-        if inspect_container_role(engine, container_id) == role:
+        labels = inspect_container_labels(engine, container_id)
+        if labels.get("comfyui-runpod-agentic.role") == role and (desired_hash is None or labels.get("comfyui-runpod-agentic.desired_hash") == desired_hash):
             return container_id
     return None
 
@@ -480,14 +576,18 @@ def parse_container_list(raw: str) -> list[dict[str, object]]:
 
 
 def inspect_container_role(engine: str, container_id: str) -> str | None:
+    return inspect_container_labels(engine, container_id).get("comfyui-runpod-agentic.role")
+
+
+def inspect_container_labels(engine: str, container_id: str) -> dict[str, str]:
     command = local_runtime_command(engine, ["inspect", container_id])
     completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
     if completed.returncode != 0:
-        return None
+        return {}
     data = json.loads(completed.stdout)
     inspect = data[0] if isinstance(data, list) and data else data
     labels = ((inspect.get("Config") or {}).get("Labels") or inspect.get("Labels") or {}) if isinstance(inspect, dict) else {}
-    return labels.get("comfyui-runpod-agentic.role") if isinstance(labels, dict) else None
+    return {str(key): str(value) for key, value in labels.items()} if isinstance(labels, dict) else {}
 
 
 def command_for_engine(engine: str, compose_path: str, project_name: str, action: str) -> list[str]:
@@ -530,9 +630,11 @@ def use_sudo_for_local_runtime() -> bool:
 
 def compose_command_for(base: list[str], compose_path: str, project_name: str, action: str) -> list[str]:
     command = [*base, "-f", compose_path, "-p", project_name]
-    if action == "up":
+    if action in {"apply", "apply_and_wait", "up"}:
         return [*command, "up", "-d"]
-    if action == "down":
+    if action == "stop":
+        return [*command, "stop"]
+    if action in {"terminate", "destroy", "down"}:
         return [*command, "down", "--remove-orphans"]
     return [*command, action]
 

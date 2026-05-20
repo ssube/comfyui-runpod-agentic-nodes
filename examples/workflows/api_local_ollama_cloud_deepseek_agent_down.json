@@ -90,7 +90,7 @@
       "prompt": "List the first few skill files available to you, then say that the DeepSeek v4 flash Ollama Cloud call succeeded.",
       "project_name": "crag-local-ollama-deepseek-e2e",
       "output_path": "artifacts/local-runtime/ollama-deepseek-e2e-compose.yaml",
-      "action": "down",
+      "action": "terminate",
       "use_sudo": true,
       "timeout_seconds": 900
     }

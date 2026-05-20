@@ -14,6 +14,7 @@ try:
     from .runtime_contracts import merge_contracts, secret_placeholder, with_env
     from .specs import (
         DeploymentSpec,
+        KeepAlivePolicy,
         NetworkStorageSpec,
         RuntimeContract,
         SecretRef,
@@ -24,7 +25,7 @@ try:
     from .validation import validate_deployment
 except ImportError:
     from runtime_contracts import merge_contracts, secret_placeholder, with_env
-    from specs import DeploymentSpec, NetworkStorageSpec, RuntimeContract, SecretRef, SSHAccessPolicy, to_plain
+    from specs import DeploymentSpec, KeepAlivePolicy, NetworkStorageSpec, RuntimeContract, SecretRef, SSHAccessPolicy, to_plain
     from template_resolver import TemplateResolver
     from validation import validate_deployment
 
@@ -65,6 +66,8 @@ class DeploymentPlan:
     resources: list[ResourcePlan]
     runtime_contract: RuntimeContract
     ssh_access: SSHAccessPolicy
+    reuse_policy: str
+    keep_alive: KeepAlivePolicy | None
     actions: list[PlanAction]
     warnings: list[str] = field(default_factory=list)
 
@@ -155,7 +158,7 @@ class Planner:
         )
 
         actions = self._actions(resources, deployment, agent_contract)
-        return DeploymentPlan(run_id, workflow_hash, deployment_hash, mode, prompt, resources, agent_contract, deployment.ssh_access, actions, warnings)
+        return DeploymentPlan(run_id, workflow_hash, deployment_hash, mode, prompt, resources, agent_contract, deployment.ssh_access, deployment.reuse_policy, deployment.keep_alive, actions, warnings)
 
     def _own_pod_dependencies(self, deployment: DeploymentSpec) -> list[tuple[str, Any]]:
         app = deployment.primary_app

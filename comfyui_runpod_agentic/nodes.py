@@ -728,7 +728,7 @@ class LocalComposeApplyMixin:
                 "prompt": ("STRING", {"multiline": True, "default": ""}),
                 "project_name": ("STRING", {"default": "crag-local"}),
                 "output_path": ("STRING", {"default": "artifacts/local-runtime/compose.yaml"}),
-                "action": (["save_only", "config", "pull", "up", "down"],),
+                "action": (["save_only", "config", "pull", "apply", "apply_and_wait", "stop", "terminate"],),
                 "use_sudo": ("BOOLEAN", {"default": False}),
                 "timeout_seconds": ("INT", {"default": 1800, "min": 1}),
                 "response_role": ("STRING", {"default": "agent"}),
@@ -754,7 +754,13 @@ class LocalComposeApplyMixin:
     ):
         import os
 
-        from .local_runtime import apply_compose_file, compose_yaml_for_plan, read_local_runtime_file, write_compose_file
+        from .local_runtime import (
+            apply_local_runtime_plan,
+            compose_yaml_for_plan,
+            enforce_local_keep_alive,
+            read_local_runtime_file,
+            write_compose_file,
+        )
 
         project = project_name.strip() or "crag-local"
         plan = Planner().build(deployment, mode="plan", prompt=prompt, workflow_graph=workflow_graph)
@@ -766,20 +772,26 @@ class LocalComposeApplyMixin:
         else:
             os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
         try:
-            result = apply_compose_file(self.ENGINE, saved_path, project_name=project, action=action, timeout_seconds=int(timeout_seconds))
+            result, reused = apply_local_runtime_plan(self.ENGINE, saved_path, project, plan, action=action, timeout_seconds=int(timeout_seconds))
             response = ""
             response_errors = ""
-            if action == "up" and result.returncode == 0 and response_path.strip() and int(response_timeout_seconds) > 0:
+            keep_alive_result = None
+            if action in {"apply", "apply_and_wait", "up"} and result.returncode == 0 and response_path.strip() and int(response_timeout_seconds) > 0:
                 read_result = read_local_runtime_file(self.ENGINE, project, response_role.strip() or "agent", response_path.strip(), timeout_seconds=int(response_timeout_seconds))
                 response = read_result.stdout
                 response_errors = read_result.stderr
+                keep_alive_result = enforce_local_keep_alive(self.ENGINE, saved_path, project, plan, response_collected=bool(response))
         finally:
             if old_sudo is None:
                 os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
             else:
                 os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
-        errors = "\n".join(part for part in (result.stderr, response_errors) if part)
-        return (result.to_text(), response, errors, compose_yaml, saved_path)
+        result_payload = json.loads(result.to_text())
+        result_payload["reused"] = reused
+        if keep_alive_result:
+            result_payload["keep_alive"] = json.loads(keep_alive_result.to_text())
+        errors = "\n".join(part for part in (result.stderr, response_errors, keep_alive_result.stderr if keep_alive_result else "") if part)
+        return (json.dumps(result_payload, indent=2, sort_keys=True), response, errors, compose_yaml, saved_path)
 
 
 class RunpodDockerComposeApplyNode(LocalComposeApplyMixin):

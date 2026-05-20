@@ -39,7 +39,7 @@ def main() -> int:
             prompt="Local runtime smoke test.",
             project_name=args.project_name,
             output_path=args.output_path,
-            action="up",
+            action="apply",
             use_sudo=args.sudo_runtime,
             timeout_seconds=args.timeout_seconds,
         )
@@ -78,7 +78,7 @@ def main() -> int:
             prompt="Local runtime smoke test.",
             project_name=args.project_name,
             output_path=args.output_path,
-            action="down",
+            action="terminate",
             use_sudo=args.sudo_runtime,
             timeout_seconds=args.timeout_seconds,
         )

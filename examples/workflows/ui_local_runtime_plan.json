@@ -85,7 +85,7 @@
       ],
       "outputs": [{"name": "deployment", "type": "RUNPOD_DEPLOYMENT_SPEC", "links": [6, 8]}],
       "properties": {"Node name for S&R": "RunpodPod"},
-      "widgets_values": ["", 0, "auto", 20, 0, false, "always_create"]
+      "widgets_values": ["", 0, "auto", 20, 0, false, "reuse_matching"]
     },
     {
       "id": 4,

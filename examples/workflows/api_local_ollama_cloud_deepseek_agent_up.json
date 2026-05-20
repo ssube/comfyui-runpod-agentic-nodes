@@ -77,7 +77,7 @@
       "container_disk_gb": 20,
       "volume_gb": 0,
       "expose_public_ip": false,
-      "reuse_policy": "always_create"
+      "reuse_policy": "reuse_matching"
     }
   },
   "7": {
@@ -90,7 +90,7 @@
       "prompt": "List the first few skill files available to you, then say that the DeepSeek v4 flash Ollama Cloud call succeeded.",
       "project_name": "crag-local-ollama-deepseek-e2e",
       "output_path": "artifacts/local-runtime/ollama-deepseek-e2e-compose.yaml",
-      "action": "up",
+      "action": "apply",
       "use_sudo": true,
       "timeout_seconds": 900,
       "response_role": "agent",

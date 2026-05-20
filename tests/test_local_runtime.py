@@ -6,8 +6,10 @@ import yaml
 
 from comfyui_runpod_agentic.local_runtime import (
     apply_compose_file,
+    apply_local_runtime_plan,
     command_for_engine,
     compose_yaml_for_plan,
+    enforce_local_keep_alive,
     local_runtime_response_is_ready,
     resolve_local_secret_placeholder,
 )
@@ -15,6 +17,7 @@ from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
     RunpodComposeYAMLNode,
     RunpodDockerComposeApplyNode,
+    RunpodKeepAliveNode,
     RunpodLLMServerNode,
     RunpodNetworkStorageNode,
     RunpodPodNode,
@@ -28,6 +31,12 @@ def build_local_runtime_deployment(retention_policy="preserve"):
     llm = RunpodLLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
     agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace", llm=llm)[0]
     return RunpodPodNode().build(agent, gpu_count=0, network_storage=storage)[0]
+
+
+def build_reusable_local_runtime_deployment():
+    agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace")[0]
+    keep_alive = RunpodKeepAliveNode().build("turns", "stop", 0, "seconds", 1, 0.0, 0)[0]
+    return RunpodPodNode().build(agent, gpu_count=0, keep_alive=keep_alive, reuse_policy="reuse_matching")[0]
 
 
 def test_compose_yaml_resolves_dependency_env_and_volumes():
@@ -100,11 +109,80 @@ def test_apply_compose_file_runs_docker_compose(monkeypatch, tmp_path):
 
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
 
-    result = apply_compose_file("docker", compose_path, project_name="crag-test", action="up", timeout_seconds=7)
+    result = apply_compose_file("docker", compose_path, project_name="crag-test", action="apply", timeout_seconds=7)
 
     assert result.returncode == 0
     assert calls[0][0] == ["docker", "compose", "-f", str(compose_path), "-p", "crag-test", "up", "-d"]
     assert calls[0][1]["timeout"] == 7
+
+
+def test_apply_local_runtime_reuses_matching_agent_container(monkeypatch, tmp_path):
+    deployment = build_reusable_local_runtime_deployment()
+    plan = Planner().build(deployment, prompt="second prompt")
+    agent = next(resource for resource in plan.resources if resource.role == "agent")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[:3] == ["docker", "ps", "--format"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": agent.desired_hash}}}]), stderr="")
+        if command[:4] == ["docker", "exec", "agent1", "bash"]:
+            return SimpleNamespace(returncode=0, stdout="relaunched\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="apply")
+
+    assert reused is True
+    assert result.action == "reuse"
+    assert result.stdout == "relaunched\n"
+    assert not any(command[:3] == ["docker", "compose", "-f"] for command in calls)
+    assert any(command[:4] == ["docker", "exec", "agent1", "bash"] and "second prompt" in command[-1] for command in calls)
+
+
+def test_apply_local_runtime_creates_when_reuse_is_disabled(monkeypatch, tmp_path):
+    agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0, reuse_policy="always_create")[0]
+    plan = Planner().build(deployment, prompt="first prompt")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    _result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="apply")
+
+    assert reused is False
+    assert calls[0][:5] == ["docker", "compose", "-f", str(compose_path), "-p"]
+
+
+def test_enforce_local_keep_alive_turn_limit_stops_after_response(monkeypatch, tmp_path):
+    deployment = build_reusable_local_runtime_deployment()
+    plan = Planner().build(deployment, prompt="one turn")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="stopped\n", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result = enforce_local_keep_alive("docker", compose_path, "crag-node", plan, response_collected=True)
+
+    assert result is not None
+    assert result.action == "stop"
+    assert calls[0] == ["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "stop"]
 
 
 def test_containerd_uses_nerdctl_compose(monkeypatch):
@@ -166,7 +244,7 @@ def test_apply_node_reads_response_file_after_up(monkeypatch, tmp_path):
         deployment,
         project_name="crag-node",
         output_path=str(apply_path),
-        action="up",
+        action="apply",
         response_path="/workspace/result.txt",
     )
 
@@ -197,7 +275,7 @@ def test_apply_node_falls_back_to_completed_container_logs(monkeypatch, tmp_path
         deployment,
         project_name="crag-node",
         output_path=str(apply_path),
-        action="up",
+        action="apply",
         response_path="/workspace/missing.txt",
         response_timeout_seconds=1,
     )

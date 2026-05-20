@@ -184,7 +184,7 @@ Inputs shared by the apply nodes:
 | `prompt` | multiline string | Task prompt injected as `AGENT_PROMPT`. |
 | `project_name` | string | Compose project name and container-name prefix. |
 | `output_path` | string | File path where the generated YAML is saved. |
-| `action` | `save_only`, `config`, `pull`, `up`, `down` | Runtime action. Use `save_only` or `config` first when inspecting a new graph. |
+| `action` | `save_only`, `config`, `pull`, `apply`, `apply_and_wait`, `stop`, `terminate` | Runtime action. Use `save_only` or `config` first when inspecting a new graph, then use `apply` to create or reuse local containers. |
 | `use_sudo` | boolean | Prefix the local runtime command with `sudo`. Applies equally to Docker, Podman, and containerd. |
 | `timeout_seconds` | integer | Timeout for the local runtime command. |
 | `response_role` | string | Container role to read after `up`, usually `agent`. |
@@ -202,6 +202,8 @@ Outputs:
 | `saved_path` | `STRING` | Path to the saved YAML file. |
 
 `Containerd Apply` uses `nerdctl compose` rather than raw `ctr`; direct `ctr` does not provide the Compose-level dependency, env, port, and volume model these workflows need. If `nerdctl` is not installed, the node reports that as an apply error and still leaves the YAML on disk.
+
+Local apply follows the same lifecycle vocabulary as `Run on Runpod`. With `reuse_matching`, a later `apply` for the same deployment reuses the existing agent container while it is still alive, rewrites the runtime config and prompt files, and launches the harness again. Keep-alive policies are enforced locally: time policies schedule `stop` or `terminate`, and a new apply refreshes that timer.
 
 ### Runpod Pod
 
@@ -691,9 +693,9 @@ Keep commands idempotent when using `reuse_matching` or `resume_stopped`, becaus
 
 ```text
 Agent -> Runpod Pod -> Compose YAML -> PreviewAny
-Agent -> Runpod Pod -> Docker Compose Apply(action=config or up)
-Agent -> Runpod Pod -> Podman Compose Apply(action=config or up)
-Agent -> Runpod Pod -> Containerd Apply(action=config or up)
+Agent -> Runpod Pod -> Docker Compose Apply(action=config or apply)
+Agent -> Runpod Pod -> Podman Compose Apply(action=config or apply)
+Agent -> Runpod Pod -> Containerd Apply(action=config or apply)
 ```
 
 Use local rehearsal to verify service wiring, environment variables, ports, and startup commands. Treat it as a topology test, not a perfect Runpod emulator: GPU scheduling, Runpod secrets, public proxy ports, and Runpod lifecycle policies still need live Runpod validation.
