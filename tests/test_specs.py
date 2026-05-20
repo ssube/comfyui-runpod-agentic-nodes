@@ -82,6 +82,17 @@ def test_ui_examples_are_screenshot_ready_with_named_groups_and_positions():
         assert all(group.get("title") for group in workflow["groups"]), path
         assert all(isinstance(node.get("pos"), list) and len(node["pos"]) == 2 for node in workflow["nodes"]), path
         assert all(isinstance(node.get("size"), list) and len(node["size"]) == 2 for node in workflow["nodes"]), path
+        for index, first in enumerate(workflow["groups"]):
+            for second in workflow["groups"][index + 1 :]:
+                assert group_overlap_area(first["bounding"], second["bounding"]) == 0, path
+
+
+def group_overlap_area(first: list[float], second: list[float]) -> float:
+    first_x, first_y, first_width, first_height = first
+    second_x, second_y, second_width, second_height = second
+    overlap_width = max(0, min(first_x + first_width, second_x + second_width) - max(first_x, second_x))
+    overlap_height = max(0, min(first_y + first_height, second_y + second_height) - max(first_y, second_y))
+    return overlap_width * overlap_height
 
 
 def test_agent_accepts_generic_llm_sources():
