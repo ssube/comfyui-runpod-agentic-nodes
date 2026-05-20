@@ -74,6 +74,19 @@ def test_deploy_is_graph_only_and_runpod_terminal_owns_placement_options():
     assert not {"gpu_type_id", "gpu_count", "cloud_type", "container_disk_gb", "volume_gb", "expose_public_ip"} & set(local_required)
 
 
+def test_runpod_catalog_options_become_dropdowns(monkeypatch):
+    monkeypatch.setattr(
+        "comfyui_runpod_agentic.nodes.runpod_dropdown_options",
+        lambda: type("Options", (), {"gpu_type_ids": ["NVIDIA RTX A4000"], "data_center_ids": ["US-KS-2"]})(),
+    )
+
+    runpod_required = RunOnRunpodNode.INPUT_TYPES()["required"]
+    storage_required = NetworkStorageNode.INPUT_TYPES()["required"]
+
+    assert runpod_required["gpu_type_id"] == (["", "NVIDIA RTX A4000"],)
+    assert storage_required["data_center_id"] == (["", "US-KS-2"],)
+
+
 def test_ollama_deepseek_example_uses_setup_nodes_for_packages():
     workflow = json.loads(Path("examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json").read_text())
     class_types = [node["class_type"] for node in workflow.values()]

@@ -144,6 +144,19 @@ def test_runpod_client_methods_parse_graphql_payloads(monkeypatch):
     assert "ports" not in seen[0][1]["input"]
 
 
+def test_runpod_client_lists_runtime_dropdown_options(monkeypatch):
+    def fake_graphql(self, query, _variables):
+        if "gpuTypes" in query:
+            return {"gpuTypes": [{"id": "NVIDIA RTX A4000", "displayName": "A4000"}]}
+        return {"myself": {"datacenters": [{"id": "US-KS-2", "listed": True}]}}
+
+    monkeypatch.setattr(RunpodClient, "_graphql", fake_graphql)
+    client = RunpodClient(api_key="token")
+
+    assert client.list_gpu_types() == [{"id": "NVIDIA RTX A4000", "displayName": "A4000"}]
+    assert client.list_datacenters() == [{"id": "US-KS-2", "listed": True}]
+
+
 def test_runpod_client_rest_template_create_update_and_errors(monkeypatch):
     requests = []
 

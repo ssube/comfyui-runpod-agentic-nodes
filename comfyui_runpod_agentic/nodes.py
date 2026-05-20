@@ -11,6 +11,7 @@ from typing import Any
 from .config import get_ssh_env_config
 from .planner import Planner
 from .runner import default_state_path
+from .runpod_options import optional_combo_or_string, runpod_dropdown_options
 from .setup_commands import (
     container_snapshot_command,
     harness_install_command,
@@ -575,13 +576,14 @@ class NetworkStorageNode:
 
     @classmethod
     def INPUT_TYPES(cls):
+        options = runpod_dropdown_options()
         return {
             "required": {
                 "network_volume_id": ("STRING", {"default": ""}),
                 "mount_path": ("STRING", {"default": "/workspace"}),
                 "retention_policy": (["preserve", "delete_when_unused", "delete_with_deployment"],),
                 "create_size_gb": ("INT", {"default": 0, "min": 0, "max": 4000}),
-                "data_center_id": ("STRING", {"default": ""}),
+                "data_center_id": optional_combo_or_string(options.data_center_ids),
                 "volume_name": ("STRING", {"default": "crag-workspace"}),
             },
             "hidden": {"node_id": "UNIQUE_ID"},
@@ -827,12 +829,13 @@ class RunOnRunpodNode:
 
     @classmethod
     def INPUT_TYPES(cls):
+        options = runpod_dropdown_options()
         return {
             "required": {
                 "prompt": ("STRING", {"multiline": True, "default": ""}),
                 "deployment": (RUNPOD_DEPLOYMENT_SPEC,),
                 "mode": (["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"],),
-                "gpu_type_id": ("STRING", {"default": ""}),
+                "gpu_type_id": optional_combo_or_string(options.gpu_type_ids),
                 "gpu_count": ("INT", {"default": 1, "min": 0}),
                 "cloud_type": (["auto", "SECURE", "COMMUNITY"],),
                 "container_disk_gb": ("INT", {"default": 40, "min": 5}),

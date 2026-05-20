@@ -46,6 +46,8 @@ class RunpodClientProtocol(Protocol):
     def save_template(self, input: dict[str, Any]) -> dict[str, Any]: ...
     def create_network_volume(self, input: dict[str, Any]) -> dict[str, Any]: ...
     def delete_network_volume(self, volume_id: str) -> None: ...
+    def list_gpu_types(self) -> list[dict[str, Any]]: ...
+    def list_datacenters(self) -> list[dict[str, Any]]: ...
     def validate_graphql_schema(self) -> dict[str, Any]: ...
 
 
@@ -125,6 +127,43 @@ class RunpodClient:
 
     def delete_network_volume(self, volume_id: str) -> None:
         self._rest_json("DELETE", f"/networkvolumes/{urllib.parse.quote(str(volume_id))}", None)
+
+    def list_gpu_types(self) -> list[dict[str, Any]]:
+        query = """
+        query CragGpuTypes {
+          gpuTypes {
+            id
+            displayName
+            memoryInGb
+            secureCloud
+            communityCloud
+            nodeGroupDatacenters {
+              id
+              name
+              location
+              storageSupport
+              listed
+            }
+          }
+        }
+        """
+        return self._graphql(query, {})["gpuTypes"]
+
+    def list_datacenters(self) -> list[dict[str, Any]]:
+        query = """
+        query CragDatacenters {
+          myself {
+            datacenters {
+              id
+              name
+              location
+              storageSupport
+              listed
+            }
+          }
+        }
+        """
+        return self._graphql(query, {})["myself"]["datacenters"]
 
     def validate_graphql_schema(self) -> dict[str, Any]:
         query = """
