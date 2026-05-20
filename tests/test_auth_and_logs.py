@@ -1,6 +1,7 @@
 from comfyui_runpod_agentic.config import get_runpod_api_key, get_ssh_env_config
 from comfyui_runpod_agentic.nodes import LogsNode, collect_run_logs
 from comfyui_runpod_agentic.runpod_client import RunpodClient
+from comfyui_runpod_agentic.ssh_client import CommandResult
 from comfyui_runpod_agentic.state_store import StateStore
 
 
@@ -46,6 +47,34 @@ def test_collect_run_logs_reads_command_log_files(tmp_path):
 
     assert "hello" in text
     assert "warning" in text
+
+
+def test_collect_run_logs_reads_remote_agent_log(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite")
+    pod = {
+        "id": "pod-1",
+        "name": "crag-workflow-agent-node-deadbeef",
+        "desiredStatus": "RUNNING",
+        "env": [{"key": "CRAG_RUN_ID", "value": "run1"}, {"key": "CRAG_ROLE", "value": "agent"}],
+        "runtime": {"ports": [{"ip": "127.0.0.1", "privatePort": 22, "publicPort": 2222, "type": "tcp"}]},
+    }
+    store.record_remote_resource(pod)
+
+    class FakeRunpod:
+        def get_pod(self, pod_id):
+            assert pod_id == "pod-1"
+            return pod
+
+    class FakeSSH:
+        def run(self, host, port, command, *, timeout_seconds=None):
+            if "agent.log" in command:
+                return CommandResult(0, "agent output\n", "")
+            return CommandResult(1, "", "")
+
+    text = collect_run_logs(store, "run1", stream="both", max_chars=20000, runpod_client=FakeRunpod(), ssh_client=FakeSSH())
+
+    assert "remote agent log" in text
+    assert "agent output" in text
 
 
 def test_logs_node_returns_empty_for_missing_run(monkeypatch, tmp_path):

@@ -967,10 +967,12 @@ class LogsNode:
         }
 
     def collect(self, run_id: str, stream: str = "both", max_chars: int = 20000, save_copy: bool = True):
+        from .runpod_client import RunpodClient
+        from .ssh_client import SubprocessSSHClient
         from .state_store import StateStore
 
         store = StateStore(default_state_path())
-        text = collect_run_logs(store, run_id, stream=stream, max_chars=int(max_chars))
+        text = collect_run_logs(store, run_id, stream=stream, max_chars=int(max_chars), runpod_client=RunpodClient(), ssh_client=SubprocessSSHClient())
         saved_path = ""
         if save_copy and run_id:
             out_dir = store.path.parent / "logs" / run_id
@@ -981,7 +983,7 @@ class LogsNode:
         return (text, saved_path)
 
 
-def collect_run_logs(store, run_id: str, *, stream: str, max_chars: int) -> str:
+def collect_run_logs(store, run_id: str, *, stream: str, max_chars: int, runpod_client=None, ssh_client=None) -> str:
     if not run_id:
         return ""
     commands = store.list_commands(run_id)
@@ -997,10 +999,35 @@ def collect_run_logs(store, run_id: str, *, stream: str, max_chars: int) -> str:
                 continue
             chunks.append(f"===== {command['phase']} #{command['order_index']} {label} ({path}) =====")
             chunks.append(path.read_text(errors="replace"))
+    if runpod_client and ssh_client:
+        chunks.extend(collect_remote_agent_logs(store, run_id, runpod_client, ssh_client))
     text = "\n".join(chunks)
     if len(text) > max_chars:
         return text[-max_chars:]
     return text
+
+
+def collect_remote_agent_logs(store, run_id: str, runpod_client, ssh_client) -> list[str]:
+    from .ssh_client import extract_ssh_endpoint
+
+    chunks: list[str] = []
+    for resource in store.list_resources():
+        if resource.get("run_id") != run_id or resource.get("role") != "agent" or not resource.get("runpod_pod_id"):
+            continue
+        try:
+            pod = runpod_client.get_pod(resource["runpod_pod_id"])
+            host, port = extract_ssh_endpoint(pod)
+        except Exception as exc:
+            chunks.append(f"===== remote agent logs unavailable ({resource.get('runpod_pod_id')}) =====")
+            chunks.append(str(exc))
+            continue
+        for path in ("/workspace/.runpod_agentic/agent.log", "/workspace/.runpod_agentic/keepalive.log"):
+            result = ssh_client.run(host, port, f"test -s {shlex.quote(path)} && cat {shlex.quote(path)}", timeout_seconds=20)
+            if result.exit_code != 0 or not result.stdout:
+                continue
+            chunks.append(f"===== remote agent log ({path}) =====")
+            chunks.append(result.stdout)
+    return chunks
 
 
 NODE_CLASSES = [
