@@ -27,6 +27,8 @@ def main() -> int:
 
     if not shutil.which("nerdctl"):
         raise SystemExit("nerdctl is required for the containerd local runtime smoke test.")
+    if not containerd_runtime_ready():
+        raise SystemExit("containerd local runtime is not running; start rootless containerd before running local e2e.")
     if args.sudo_runtime:
         os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = "1"
 
@@ -42,13 +44,14 @@ def main() -> int:
             action="apply",
             use_sudo=args.sudo_runtime,
             timeout_seconds=args.timeout_seconds,
+            response_path="/workspace/.runpod_agentic/response.txt",
         )
         up_result = json.loads(up_result_text)
         if up_result["returncode"] != 0:
             raise AssertionError(f"Containerd apply failed:\n{up_result_text}")
         if errors:
             raise AssertionError(f"Unexpected local runtime apply errors:\n{errors}")
-        if "local runtime smoke response" not in response:
+        if "fake pi harness response" not in response or "[crag-agent] complete status=0" not in response:
             raise AssertionError(f"Did not collect the response file from the agent container:\n{response}")
 
         services = inspect_project(args.project_name)
@@ -85,10 +88,30 @@ def main() -> int:
 
 
 def build_deployment():
+    old_skip = os.environ.get("CRAG_SKIP_HARNESS_INSTALL")
+    os.environ["CRAG_SKIP_HARNESS_INSTALL"] = "1"
+    try:
+        return _build_deployment()
+    finally:
+        if old_skip is None:
+            os.environ.pop("CRAG_SKIP_HARNESS_INSTALL", None)
+        else:
+            os.environ["CRAG_SKIP_HARNESS_INSTALL"] = old_skip
+
+
+def _build_deployment():
     llm = LLMServerNode().build("Ollama", "smoke", "own_pod", "none")[0]
-    agent = AgentNode().build("Pi", "smoke", "manual", "/workspace", llm=llm)[0]
-    command = SSHCommandNode().build("mkdir -p /workspace/e2e && printf 'local runtime smoke response\\n' > /workspace/e2e/agent-skill-report.txt", "before_start", "fail")[0]
+    agent = AgentNode().build("Pi", "smoke", "wait_for_commands", "/workspace", llm=llm)[0]
+    command = SSHCommandNode().build(
+        "cat > /usr/local/bin/pi <<'CRAG_FAKE_PI'\n#!/usr/bin/env bash\nprintf 'fake pi harness response: %s\\n' \"$*\"\nCRAG_FAKE_PI\nchmod +x /usr/local/bin/pi",
+        "before_start",
+        "fail",
+    )[0]
     return DeployNode().build(agent, gpu_count=0, expose_public_ip=False, reuse_policy="always_create", commands=command)[0]
+
+
+def containerd_runtime_ready() -> bool:
+    return subprocess.run(["nerdctl", "info"], capture_output=True, text=True, check=False).returncode == 0
 
 
 def inspect_project(project_name: str) -> list[dict[str, str]]:

@@ -7,15 +7,7 @@ python_bin="${PYTHON:-$(pwd)/venv/bin/python}"
 "$python_bin" -m pytest
 "$python_bin" -m build
 
-if [[ "${CRAG_RUN_LOCAL_E2E:-auto}" == "1" ]] || {
-  [[ "${CRAG_RUN_LOCAL_E2E:-auto}" == "auto" ]] &&
-  command -v nerdctl >/dev/null 2>&1 &&
-  nerdctl info >/dev/null 2>&1
-}; then
-  scripts/e2e-local-runtime
-else
-  echo "Skipping local runtime e2e; set CRAG_RUN_LOCAL_E2E=1 with a running containerd/nerdctl runtime to force it."
-fi
+scripts/e2e-local-runtime
 
 if [[ "${CRAG_RUN_COMFY_E2E:-0}" == "1" ]]; then
   scripts/e2e-comfy-cpu --skip-clone

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import uuid
 from pathlib import Path
@@ -524,7 +525,7 @@ class AgentNode:
                 capabilities.extend(spec.required_image_capabilities)
         harness_id = norm(harness)
         install_commands = []
-        if harness_id in {"codex", "claude", "opencode", "hermes", "pi"}:
+        if harness_id in {"codex", "claude", "opencode", "hermes", "pi"} and os.environ.get("CRAG_SKIP_HARNESS_INSTALL") != "1":
             install_commands.append(RuntimeCommand(harness_install_command(harness_id), "before_start", -30000, "fail", 0, f"harness:{harness_id}"))
         contract = RuntimeContract(
             EnvPatch({"AGENT_HARNESS": harness_id, "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "AGENT_SYSTEM_PROMPT": system_prompt, "WORKSPACE_DIR": workspace_path}),

@@ -147,6 +147,14 @@ def test_harness_install_commands_run_help_for_each_supported_cli():
     assert "pi --help >/dev/null" in harness_install_command("pi")
 
 
+def test_agent_can_skip_harness_install_for_local_e2e(monkeypatch):
+    monkeypatch.setenv("CRAG_SKIP_HARNESS_INSTALL", "1")
+
+    agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
+
+    assert agent.runtime_contract.commands == []
+
+
 def test_sqlite_contract_is_file_only():
     spec = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
 

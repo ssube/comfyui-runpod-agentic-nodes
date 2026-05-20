@@ -58,6 +58,18 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Testing Policy For This Repo
+
+**Default tests must not spend Runpod money or credits. Local e2e should still be real.**
+
+- Do not make default tests create paid Runpod pods, volumes, or other billable remote resources.
+- Keep live Runpod tests explicit and opt-in behind environment variables.
+- Prefer fake Runpod clients for unit/integration coverage of remote API behavior.
+- Local e2e tests should spawn real local containers and run the actual ComfyUI node paths whenever a supported runtime is available.
+- Do not replace local e2e with pure mocks or static plan checks unless the test is specifically named/documented as an offline fallback.
+- If the required local container runtime is missing, the local e2e test should fail clearly instead of silently skipping.
+- If CI cannot run nested containers, gate the local e2e job at the CI workflow level rather than weakening the test itself.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
