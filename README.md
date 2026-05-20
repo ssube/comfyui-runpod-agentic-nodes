@@ -35,6 +35,32 @@ App mode:
 </details>
 
 <details>
+<summary>Local Agent Skills and Postgres Setup</summary>
+
+Graph mode:
+
+![Local agent skills and Postgres workflow](docs/assets/workflows/ui_local_agent_skills_postgres_setup.png)
+
+App mode:
+
+![Local agent skills and Postgres app mode](docs/assets/workflows/ui_local_agent_skills_postgres_setup_app.png)
+
+</details>
+
+<details>
+<summary>Local Ollama Cloud DeepSeek Setup</summary>
+
+Graph mode:
+
+![Local Ollama Cloud DeepSeek workflow](docs/assets/workflows/ui_local_ollama_deepseek_setup.png)
+
+App mode:
+
+![Local Ollama Cloud DeepSeek app mode](docs/assets/workflows/ui_local_ollama_deepseek_setup_app.png)
+
+</details>
+
+<details>
 <summary>Local Runtime Preflight Plan</summary>
 
 Graph mode:

@@ -71,6 +71,19 @@ def test_ollama_deepseek_ui_example_has_groups_and_positions():
     assert all(isinstance(node.get("pos"), list) and len(node["pos"]) == 2 for node in workflow["nodes"])
 
 
+def test_ui_examples_are_screenshot_ready_with_named_groups_and_positions():
+    workflows = sorted(Path("examples/workflows").glob("ui_*.json"))
+
+    assert workflows
+    for path in workflows:
+        workflow = json.loads(path.read_text())
+        assert workflow.get("nodes"), path
+        assert workflow.get("groups"), path
+        assert all(group.get("title") for group in workflow["groups"]), path
+        assert all(isinstance(node.get("pos"), list) and len(node["pos"]) == 2 for node in workflow["nodes"]), path
+        assert all(isinstance(node.get("size"), list) and len(node["size"]) == 2 for node in workflow["nodes"]), path
+
+
 def test_agent_accepts_generic_llm_sources():
     llm_api = LLMApiNode().build("Claude", "claude-sonnet", "anthropic_key")[0]
 
