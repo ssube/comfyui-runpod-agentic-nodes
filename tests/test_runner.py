@@ -5,6 +5,7 @@ import pytest
 from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
     RunpodBrowserNode,
+    RunpodKeepAliveNode,
     RunpodLLMApiNode,
     RunpodMCPServerNode,
     RunpodPodNode,
@@ -17,6 +18,7 @@ from comfyui_runpod_agentic.runner import (
     RunpodRunner,
     agent_launcher_script,
     first_ready_probe,
+    keep_alive_pod_timer_script,
     launcher_runtime_files,
     pi_runtime_files,
     readiness_probe_paths,
@@ -276,6 +278,18 @@ def test_pi_runtime_files_configure_ollama_cloud():
     assert "harness/pi/providers.json" in files
     assert "deepseek-v4-flash" in files["harness/pi/models.json"]
     assert '"apiKey": "OLLAMA_CLOUD_API_KEY"' in files["harness/pi/models.json"]
+
+
+def test_keep_alive_pod_timer_layers_runpodctl_graphql_and_process_fallback():
+    policy = RunpodKeepAliveNode().build("time", "terminate", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
+
+    script = keep_alive_pod_timer_script(policy)
+
+    assert "runpodctl remove pod" in script
+    assert "RUNPOD_POD_ID" in script
+    assert "RUNPOD_API_KEY" in script
+    assert "podTerminate" in script
+    assert "kill -TERM 1" in script
 
 
 def test_runner_writes_pi_runtime_config_files(tmp_path, monkeypatch):

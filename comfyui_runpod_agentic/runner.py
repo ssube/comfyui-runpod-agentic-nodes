@@ -12,7 +12,7 @@ from typing import Any
 from .planner import DeploymentPlan, Planner
 from .runpod_client import RunpodClient, RunpodClientProtocol
 from .runtime_contracts import with_env
-from .specs import DeploymentSpec, RuntimeContract, to_plain
+from .specs import DeploymentSpec, KeepAlivePolicy, RuntimeContract, to_plain
 from .ssh_client import SSHClientProtocol, SSHConfig, SubprocessSSHClient, extract_ssh_endpoint, runpod_proxy_ssh_endpoint
 from .state_store import StateStore
 from .validation import validate_deployment
@@ -273,18 +273,70 @@ def shell_env(value: str) -> str:
 
 def launch_command_for_plan(plan: DeploymentPlan) -> str:
     agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
-    if agent_env.get("AGENT_STARTUP_MODE") == "manual":
-        return ""
     workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
+    timer = keep_alive_pod_timer_command(plan)
+    if agent_env.get("AGENT_STARTUP_MODE") == "manual":
+        if not timer:
+            return ""
+        return " && ".join((f"cd {shell_env(workspace)}", "mkdir -p .runpod_agentic", timer))
     harness = agent_env.get("AGENT_HARNESS", "agent")
     configured_launcher = os.environ.get("CRAG_AGENT_LAUNCH_COMMAND") or agent_env.get("CRAG_AGENT_LAUNCH_COMMAND")
     if configured_launcher:
-        return f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && nohup bash -lc {shell_env(configured_launcher)} > .runpod_agentic/agent.log 2>&1 &"
-    return (
-        f"cd {shell_env(workspace)} && mkdir -p .runpod_agentic && "
-        f"chmod +x .runpod_agentic/launcher.sh .runpod_agentic/launcher.d/*.sh .runpod_agentic/launcher.d/harnesses/*.sh 2>/dev/null || true && "
-        f"nohup .runpod_agentic/launcher.sh {shell_env(harness)} > .runpod_agentic/agent.log 2>&1 &"
+        launch = f"nohup bash -lc {shell_env(configured_launcher)} > .runpod_agentic/agent.log 2>&1 &"
+    else:
+        launch = (
+            f"chmod +x .runpod_agentic/launcher.sh .runpod_agentic/launcher.d/*.sh .runpod_agentic/launcher.d/harnesses/*.sh 2>/dev/null || true && "
+            f"nohup .runpod_agentic/launcher.sh {shell_env(harness)} > .runpod_agentic/agent.log 2>&1 &"
+        )
+    return " && ".join(
+        part
+        for part in (
+            f"cd {shell_env(workspace)}",
+            "mkdir -p .runpod_agentic",
+            timer,
+            launch,
+        )
+        if part
     )
+
+
+def keep_alive_pod_timer_command(plan: DeploymentPlan) -> str:
+    script = keep_alive_pod_timer_script(plan.keep_alive)
+    if not script:
+        return ""
+    return f"mkdir -p .runpod_agentic && nohup bash -lc {shell_env(script)} > .runpod_agentic/keepalive.log 2>&1 &"
+
+
+def keep_alive_pod_timer_script(policy: KeepAlivePolicy | None) -> str:
+    if not policy or policy.mode != "time" or not policy.time_seconds or policy.enforcement not in {"pod_side", "both"}:
+        return ""
+    mutation = "podStop(input: $input) { id desiredStatus }" if policy.action == "stop" else "podTerminate(input: $input)"
+    runpodctl_command = 'runpodctl stop pod "$RUNPOD_POD_ID"' if policy.action == "stop" else 'runpodctl remove pod "$RUNPOD_POD_ID" || runpodctl delete pod "$RUNPOD_POD_ID"'
+    return f"""
+set -euo pipefail
+crag_dir="${{CRAG_RUNTIME_DIR:-${{WORKSPACE_DIR:-/workspace}}/.runpod_agentic}}"
+mkdir -p "$crag_dir"
+if [ -s "$crag_dir/keepalive.pid" ]; then
+  old_pid="$(cat "$crag_dir/keepalive.pid" 2>/dev/null || true)"
+  if [ -n "$old_pid" ]; then kill "$old_pid" 2>/dev/null || true; fi
+fi
+(
+  sleep {int(policy.time_seconds)}
+  echo "[crag-keepalive] time policy expired; action={policy.action}" >&2
+  if [ -n "${{RUNPOD_POD_ID:-}}" ] && command -v runpodctl >/dev/null 2>&1; then
+    {runpodctl_command} && exit 0
+  fi
+  if [ -n "${{RUNPOD_POD_ID:-}}" ] && [ -n "${{RUNPOD_API_KEY:-}}" ] && command -v curl >/dev/null 2>&1; then
+    curl -fsS -X POST https://api.runpod.io/graphql \
+      -H "Authorization: Bearer $RUNPOD_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "$(printf '{{"query":"mutation KeepAlive($input: Pod{"Stop" if policy.action == "stop" else "Terminate"}Input!) {{ {mutation} }}","variables":{{"input":{{"podId":"%s"}}}}}}' "$RUNPOD_POD_ID")" \
+      && exit 0
+  fi
+  kill -TERM 1 2>/dev/null || true
+) &
+echo "$!" > "$crag_dir/keepalive.pid"
+""".strip()
 
 
 def startup_script_for_plan(plan: DeploymentPlan) -> str:

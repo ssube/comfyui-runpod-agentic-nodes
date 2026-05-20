@@ -98,6 +98,21 @@ def test_agent_compose_command_runs_startup_commands():
     assert "sleep infinity" in agent_service["command"]
 
 
+def test_agent_compose_command_layers_pod_side_keep_alive():
+    agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace")[0]
+    keep_alive = RunpodKeepAliveNode().build("time", "terminate", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0, keep_alive=keep_alive)[0]
+    plan = Planner().build(deployment, prompt="wait")
+
+    compose = yaml.safe_load(compose_yaml_for_plan(plan))
+    agent_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
+
+    assert "runpodctl remove pod" in agent_service["command"]
+    assert "RUNPOD_API_KEY" in agent_service["command"]
+    assert "podTerminate" in agent_service["command"]
+    assert "kill -TERM 1" in agent_service["command"]
+
+
 def test_apply_compose_file_runs_docker_compose(monkeypatch, tmp_path):
     compose_path = tmp_path / "compose.yaml"
     compose_path.write_text("services: {}\n")
@@ -216,6 +231,23 @@ def test_enforce_local_keep_alive_turn_limit_stops_after_response(monkeypatch, t
     assert result is not None
     assert result.action == "stop"
     assert calls[0] == ["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "stop"]
+
+
+def test_enforce_local_keep_alive_skips_server_timer_for_pod_side(monkeypatch, tmp_path):
+    agent = RunpodAgentNode().build("Pi", "model", "manual", "/workspace")[0]
+    keep_alive = RunpodKeepAliveNode().build("time", "stop", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
+    deployment = RunpodPodNode().build(agent, gpu_count=0, keep_alive=keep_alive)[0]
+    plan = Planner().build(deployment, prompt="one turn")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    calls = []
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.Popen", lambda *args, **kwargs: calls.append(args) or SimpleNamespace(pid=123))
+
+    result = enforce_local_keep_alive("docker", compose_path, "crag-node", plan, response_collected=False)
+
+    assert result is None
+    assert calls == []
 
 
 def test_containerd_uses_nerdctl_compose(monkeypatch):

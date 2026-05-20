@@ -127,7 +127,7 @@ Core:
 
 - `Runpod Pod`: creates a deployment spec around the primary agent.
 - `Run on Runpod`: plan/apply/stop/terminate/destroy output node with the per-run agent prompt.
-- `Keep Alive`: time, turns, cost, or manual policy.
+- `Keep Alive`: time, turns, cost, or manual policy with server-side, pod-side, or layered enforcement.
 - `Runpod Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
 
 Apps and services:

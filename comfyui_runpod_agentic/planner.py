@@ -210,7 +210,7 @@ class Planner:
         if network_storage:
             pod_input["networkVolumeId"] = network_storage.network_volume_id
             pod_input["volumeMountPath"] = network_storage.mount_path
-        if deployment.keep_alive and deployment.keep_alive.mode == "time" and deployment.keep_alive.time_seconds:
+        if deployment.keep_alive and deployment.keep_alive.mode == "time" and deployment.keep_alive.time_seconds and deployment.keep_alive.enforcement in {"server_side", "both"}:
             field_name = "stopAfter" if deployment.keep_alive.action == "stop" else "terminateAfter"
             pod_input[field_name] = (datetime.now(UTC) + timedelta(seconds=deployment.keep_alive.time_seconds)).isoformat()
         if install_sshd:

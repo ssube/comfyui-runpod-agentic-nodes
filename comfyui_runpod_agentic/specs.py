@@ -9,6 +9,7 @@ CommandPhase = Literal["before_start", "after_start", "after_ready", "teardown"]
 FailurePolicy = Literal["fail", "continue", "retry"]
 KeepAliveMode = Literal["time", "turns", "cost", "manual"]
 LimitAction = Literal["stop", "terminate"]
+KeepAliveEnforcement = Literal["server_side", "pod_side", "both"]
 RunMode = Literal["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"]
 VolumeRetentionPolicy = Literal["preserve", "delete_when_unused", "delete_with_deployment"]
 
@@ -228,6 +229,7 @@ class KeepAlivePolicy:
     turn_limit: int | None = None
     cost_limit_usd: float | None = None
     idle_grace_seconds: int | None = None
+    enforcement: KeepAliveEnforcement = "both"
     meta: SpecMeta = field(default_factory=SpecMeta)
 
 

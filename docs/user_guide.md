@@ -250,6 +250,7 @@ Inputs:
 | `turn_limit` | integer | Turn count limit for `turns` mode. |
 | `cost_limit_usd` | float | Cost threshold for `cost` mode. |
 | `idle_grace_seconds` | integer | Grace period before lifecycle action. |
+| `enforcement` | `both`, `server_side`, `pod_side` | Where to enforce time policies. `server_side` uses Runpod timestamps or the Comfy local-runtime timer. `pod_side` injects an in-pod timer that tries `runpodctl`, then Runpod GraphQL with `RUNPOD_API_KEY` and `RUNPOD_POD_ID`, then local process shutdown. `both` layers the methods. |
 
 Output:
 

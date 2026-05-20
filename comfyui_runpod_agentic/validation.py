@@ -68,6 +68,8 @@ def validate_commands(commands: SSHCommandSpec) -> list[str]:
 
 
 def validate_keep_alive(policy: KeepAlivePolicy) -> None:
+    if policy.enforcement not in {"server_side", "pod_side", "both"}:
+        raise ValidationError("Keep-alive enforcement must be server_side, pod_side, or both.")
     if policy.mode == "time" and not policy.time_seconds:
         raise ValidationError("Time keep-alive requires a positive time value.")
     if policy.mode == "turns" and not policy.turn_limit:

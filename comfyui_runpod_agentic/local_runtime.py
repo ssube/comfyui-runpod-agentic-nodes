@@ -14,7 +14,14 @@ import yaml
 
 from .config import read_env_file
 from .planner import DeploymentPlan, ResourcePlan
-from .runner import launch_command_for_plan, launcher_runtime_files, pi_runtime_files, startup_script_for_plan
+from .runner import (
+    keep_alive_pod_timer_script,
+    launch_command_for_plan,
+    launcher_runtime_files,
+    pi_runtime_files,
+    shell_env,
+    startup_script_for_plan,
+)
 
 DEFAULT_IMAGES = {
     "agent": "ubuntu:24.04",
@@ -270,8 +277,16 @@ def agent_run_script(plan: DeploymentPlan, *, keep_container_alive: bool = False
         script.append("echo '[crag-local-runtime] startup mode is manual; launcher not started.'")
     script.append("echo '[crag-local-runtime] startup commands complete'")
     if keep_container_alive:
+        script.extend(local_runtime_self_shutdown_lines(plan))
         script.append("sleep infinity")
     return "\n".join(script)
+
+
+def local_runtime_self_shutdown_lines(plan: DeploymentPlan) -> list[str]:
+    script = keep_alive_pod_timer_script(plan.keep_alive)
+    if not script:
+        return []
+    return [f"bash -lc {shell_env(script)}"]
 
 
 def local_runtime_file_writes(plan: DeploymentPlan) -> list[str]:
@@ -440,6 +455,8 @@ def enforce_local_keep_alive(
 ) -> LocalApplyResult | None:
     policy = plan.keep_alive
     if not policy or policy.mode == "manual":
+        return None
+    if policy.enforcement not in {"server_side", "both"}:
         return None
     lifecycle_action = "terminate" if policy.action == "terminate" else "stop"
     if policy.mode == "time" and policy.time_seconds:

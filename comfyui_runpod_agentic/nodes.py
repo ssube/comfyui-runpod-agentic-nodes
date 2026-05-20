@@ -580,11 +580,11 @@ class RunpodKeepAliveNode:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"mode": (["time", "turns", "cost", "manual"],), "action": (["stop", "terminate"],), "time_value": ("INT", {"default": 30, "min": 0}), "time_unit": (["seconds", "minutes", "hours"],), "turn_limit": ("INT", {"default": 0, "min": 0}), "cost_limit_usd": ("FLOAT", {"default": 0.0, "min": 0.0}), "idle_grace_seconds": ("INT", {"default": 0, "min": 0})}, "hidden": {"node_id": "UNIQUE_ID"}}
+        return {"required": {"mode": (["time", "turns", "cost", "manual"],), "action": (["stop", "terminate"],), "time_value": ("INT", {"default": 30, "min": 0}), "time_unit": (["seconds", "minutes", "hours"],), "turn_limit": ("INT", {"default": 0, "min": 0}), "cost_limit_usd": ("FLOAT", {"default": 0.0, "min": 0.0}), "idle_grace_seconds": ("INT", {"default": 0, "min": 0}), "enforcement": (["both", "server_side", "pod_side"],)}, "hidden": {"node_id": "UNIQUE_ID"}}
 
-    def build(self, mode: str, action: str, time_value: int, time_unit: str, turn_limit: int, cost_limit_usd: float, idle_grace_seconds: int, node_id: str | None = None):
+    def build(self, mode: str, action: str, time_value: int, time_unit: str, turn_limit: int, cost_limit_usd: float, idle_grace_seconds: int, enforcement: str = "both", node_id: str | None = None):
         multiplier = {"seconds": 1, "minutes": 60, "hours": 3600}[time_unit]
-        return (KeepAlivePolicy(mode, action, int(time_value) * multiplier if mode == "time" else None, int(turn_limit) or None, float(cost_limit_usd) or None, int(idle_grace_seconds) or None, meta(node_id, "Keep Alive")),)
+        return (KeepAlivePolicy(mode, action, int(time_value) * multiplier if mode == "time" else None, int(turn_limit) or None, float(cost_limit_usd) or None, int(idle_grace_seconds) or None, enforcement, meta(node_id, "Keep Alive")),)
 
 
 class RunpodSSHAccessNode:
@@ -776,11 +776,14 @@ class LocalComposeApplyMixin:
             response = ""
             response_errors = ""
             keep_alive_result = None
-            if action in {"apply", "apply_and_wait", "up"} and result.returncode == 0 and response_path.strip() and int(response_timeout_seconds) > 0:
-                read_result = read_local_runtime_file(self.ENGINE, project, response_role.strip() or "agent", response_path.strip(), timeout_seconds=int(response_timeout_seconds))
-                response = read_result.stdout
-                response_errors = read_result.stderr
-                keep_alive_result = enforce_local_keep_alive(self.ENGINE, saved_path, project, plan, response_collected=bool(response))
+            if action in {"apply", "apply_and_wait", "up"} and result.returncode == 0:
+                keep_alive_result = enforce_local_keep_alive(self.ENGINE, saved_path, project, plan, response_collected=False)
+                if response_path.strip() and int(response_timeout_seconds) > 0:
+                    read_result = read_local_runtime_file(self.ENGINE, project, response_role.strip() or "agent", response_path.strip(), timeout_seconds=int(response_timeout_seconds))
+                    response = read_result.stdout
+                    response_errors = read_result.stderr
+                    response_keep_alive_result = enforce_local_keep_alive(self.ENGINE, saved_path, project, plan, response_collected=bool(response))
+                    keep_alive_result = response_keep_alive_result or keep_alive_result
         finally:
             if old_sudo is None:
                 os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)

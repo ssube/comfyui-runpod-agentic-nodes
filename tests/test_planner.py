@@ -48,6 +48,18 @@ def test_plan_is_json_serializable():
     assert plan.runtime_contract.env.values["AGENT_PROMPT"] == "Do the thing."
 
 
+def test_keep_alive_enforcement_controls_runpod_server_fields():
+    agent = RunpodAgentNode().build("Pi", "model", "manual")[0]
+    server_policy = RunpodKeepAliveNode().build("time", "stop", 30, "seconds", 0, 0.0, 0, "server_side")[0]
+    pod_policy = RunpodKeepAliveNode().build("time", "stop", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
+
+    server_plan = Planner().build(RunpodPodNode().build(agent, gpu_count=0, keep_alive=server_policy)[0])
+    pod_plan = Planner().build(RunpodPodNode().build(agent, gpu_count=0, keep_alive=pod_policy)[0])
+
+    assert "stopAfter" in server_plan.resources[-1].pod_input
+    assert "stopAfter" not in pod_plan.resources[-1].pod_input
+
+
 def test_ollama_dependency_binds_to_local_interface_but_agent_gets_placeholder(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_ENV_FILE", str(tmp_path / "missing.env"))
     monkeypatch.delenv("RUNPOD_SSH_PRIVATE_KEY_PATH", raising=False)
