@@ -9,6 +9,7 @@ build/
 dist/
 *.egg-info/
 .coverage
+coverage.xml
 htmlcov/
 artifacts/
 .env
