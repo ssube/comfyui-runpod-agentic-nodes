@@ -41,6 +41,11 @@ def test_user_facing_core_node_names():
     assert "RunpodSQLDatabase" not in NODE_DISPLAY_NAME_MAPPINGS
 
 
+def test_llm_nodes_are_grouped_under_apis_category():
+    assert LLMApiNode.CATEGORY == "Runpod/APIs"
+    assert LLMServerNode.CATEGORY == "Runpod/APIs"
+
+
 def test_local_runtime_nodes_expose_deployment_actions_only():
     action_choices = DeployWithContainerdNode.INPUT_TYPES()["required"]["action"][0]
 

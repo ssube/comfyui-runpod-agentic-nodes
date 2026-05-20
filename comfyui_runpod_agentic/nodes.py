@@ -128,7 +128,7 @@ class BrowserNode:
 
 
 class LLMServerNode:
-    CATEGORY = "Runpod/Apps"
+    CATEGORY = "Runpod/APIs"
     RETURN_TYPES = (RUNPOD_LLM,)
     RETURN_NAMES = ("llm",)
     FUNCTION = "build"
@@ -189,7 +189,7 @@ class LLMServerNode:
 
 
 class LLMApiNode:
-    CATEGORY = "Runpod/LLM"
+    CATEGORY = "Runpod/APIs"
     RETURN_TYPES = (RUNPOD_LLM,)
     RETURN_NAMES = ("llm",)
     FUNCTION = "build"
