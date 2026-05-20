@@ -2,21 +2,28 @@ from comfyui_runpod_agentic import NODE_DISPLAY_NAME_MAPPINGS
 from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
     RunpodBrowserNode,
+    RunpodBuildContainerNode,
+    RunpodLanguageRuntimeNode,
     RunpodLLMApiNode,
     RunpodLLMServerNode,
     RunpodLocalSQLDatabaseNode,
     RunpodMCPServerNode,
     RunpodNetworkStorageNode,
+    RunpodPackageNode,
     RunpodPodNode,
     RunpodRemoteSQLDatabaseNode,
     RunpodSkillFrameworkNode,
     RunpodSkillNode,
 )
+from comfyui_runpod_agentic.setup_commands import harness_install_command
 from comfyui_runpod_agentic.validation import ValidationError
 
 
 def test_user_facing_core_node_names():
-    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPod"] == "Runpod Pod"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPod"] == "Deploy"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodPackage"] == "Package"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodLanguageRuntime"] == "Language Runtime"
+    assert NODE_DISPLAY_NAME_MAPPINGS["RunpodBuildContainer"] == "Build Container"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodRun"] == "Run on Runpod"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodStartupScript"] == "Startup Script"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunpodComposeYAML"] == "Compose YAML"
@@ -37,6 +44,31 @@ def test_agent_accepts_generic_llm_sources():
     assert agent.llm_server is None
 
 
+def test_agent_installs_supported_harnesses_before_start():
+    expected_packages = {
+        "Codex": "@openai/codex",
+        "Claude": "@anthropic-ai/claude-code",
+        "OpenCode": "opencode-ai",
+        "Hermes": "hermes-agent",
+    }
+
+    for harness, package in expected_packages.items():
+        agent = RunpodAgentNode().build(harness, "model", "manual")[0]
+
+        command = agent.runtime_contract.commands[0]
+        assert command.phase == "before_start"
+        assert command.source == f"harness:{harness.lower()}"
+        assert package in command.command
+        assert "--help >/dev/null" in command.command
+
+
+def test_harness_install_commands_run_help_for_each_supported_cli():
+    assert "codex --help >/dev/null" in harness_install_command("codex")
+    assert "claude --help >/dev/null" in harness_install_command("claude")
+    assert "opencode --help >/dev/null" in harness_install_command("opencode")
+    assert "hermes --help >/dev/null" in harness_install_command("hermes")
+
+
 def test_sqlite_contract_is_file_only():
     spec = RunpodLocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
 
@@ -45,6 +77,36 @@ def test_sqlite_contract_is_file_only():
     assert spec.runtime_contract.env.values["DATABASE_URL"] == "sqlite:////workspace/db/app.sqlite"
     assert spec.runtime_contract.commands[0].source == "local_sql"
     assert "sqlite3" in spec.runtime_contract.commands[0].command
+
+
+def test_package_node_chains_install_commands_and_apt_updates():
+    apt = RunpodPackageNode().build("apt", "jq curl", -10, "fail")[0]
+    pip = RunpodPackageNode().build("pip", "pytest", -5, "continue", previous=apt)[0]
+
+    assert [command.order for command in pip.commands] == [-10, -5]
+    assert "apt-get update" in apt.commands[0].command
+    assert "apt-get install" in apt.commands[0].command
+    assert "python3 -m pip install pytest" in pip.commands[1].command
+
+
+def test_language_runtime_node_installs_node_from_nodesource_and_python_from_apt():
+    node = RunpodLanguageRuntimeNode().build("nodejs", 22)[0]
+    python = RunpodLanguageRuntimeNode().build("python", 22, previous=node)[0]
+
+    assert "https://deb.nodesource.com/node_22.x" in node.commands[0].command
+    assert "python3-pip python3-venv pipx" in python.commands[1].command
+
+
+def test_build_container_node_commits_and_pushes_with_dockerhub_env():
+    snapshot = RunpodBuildContainerNode().build("docker.io/example/crag:latest", "nerdctl", True)[0]
+
+    command = snapshot.commands[0]
+    assert command.phase == "after_ready"
+    assert "nerdctl" in command.command
+    assert "commit \"$container_id\" \"$image_tag\"" in command.command
+    assert "DOCKERHUB_USERNAME" in command.command
+    assert "DOCKERHUB_TOKEN" in command.command
+    assert "push \"$image_tag\"" in command.command
 
 
 def test_browser_same_pod_adds_agent_capability():

@@ -402,6 +402,7 @@ def launcher_runtime_files() -> dict[str, str]:
         "launcher.d/10-preflight.sh": launcher_preflight_script(),
         "launcher.d/harnesses/codex.sh": codex_harness_script(),
         "launcher.d/harnesses/claude.sh": claude_harness_script(),
+        "launcher.d/harnesses/hermes.sh": hermes_harness_script(),
         "launcher.d/harnesses/opencode.sh": opencode_harness_script(),
         "launcher.d/harnesses/pi.sh": pi_harness_script(),
         "launcher.d/harnesses/generic.sh": generic_harness_script(),
@@ -604,6 +605,24 @@ if [ -n "$AGENT_MODEL" ]; then
   args+=(--model "$AGENT_MODEL")
 fi
 exec opencode "${args[@]}" "$prompt"
+"""
+
+
+def hermes_harness_script() -> str:
+    return r"""#!/usr/bin/env bash
+set -euo pipefail
+if ! command -v hermes >/dev/null 2>&1; then
+  exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
+fi
+prompt=""
+if [ -f "$AGENT_PROMPT_FILE" ]; then
+  prompt="$(cat "$AGENT_PROMPT_FILE")"
+fi
+args=(chat -q "$prompt")
+if [ -n "$AGENT_MODEL" ]; then
+  args+=(--model "$AGENT_MODEL")
+fi
+exec hermes "${args[@]}"
 """
 
 

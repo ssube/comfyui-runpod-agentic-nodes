@@ -8,7 +8,14 @@ from typing import Any
 from .config import get_ssh_env_config
 from .planner import Planner
 from .runner import default_state_path
-from .setup_commands import local_sql_setup_command, skill_install_command
+from .setup_commands import (
+    container_snapshot_command,
+    harness_install_command,
+    language_runtime_install_command,
+    local_sql_setup_command,
+    package_install_command,
+    skill_install_command,
+)
 from .specs import (
     AgentSpec,
     BrowserSpec,
@@ -502,7 +509,14 @@ class RunpodAgentNode:
                 if spec.kind == "llm_server":
                     raise ValidationError("LLM Server same_pod materialization is not supported in the MVP.")
                 capabilities.extend(spec.required_image_capabilities)
-        contract = RuntimeContract(EnvPatch({"AGENT_HARNESS": norm(harness), "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "AGENT_SYSTEM_PROMPT": system_prompt, "WORKSPACE_DIR": workspace_path}))
+        harness_id = norm(harness)
+        install_commands = []
+        if harness_id in {"codex", "claude", "opencode", "hermes"}:
+            install_commands.append(RuntimeCommand(harness_install_command(harness_id), "before_start", -30000, "fail", 0, f"harness:{harness_id}"))
+        contract = RuntimeContract(
+            EnvPatch({"AGENT_HARNESS": harness_id, "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "AGENT_SYSTEM_PROMPT": system_prompt, "WORKSPACE_DIR": workspace_path}),
+            commands=install_commands,
+        )
         if mcp_servers:
             contract = RuntimeContract(
                 EnvPatch({**contract.env.values, **mcp_servers.runtime_contract.env.values}, [*contract.env.secrets, *mcp_servers.runtime_contract.env.secrets]),
@@ -515,7 +529,7 @@ class RunpodAgentNode:
                 files={**contract.files, **skills.runtime_contract.files},
                 commands=[*contract.commands, *skills.runtime_contract.commands],
             )
-        return (AgentSpec("agent", norm(harness), model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, contract, capabilities, None, meta(node_id, harness)),)
+        return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, contract, capabilities, None, meta(node_id, harness)),)
 
 
 class RunpodNetworkStorageNode:
@@ -570,6 +584,87 @@ class RunpodSSHCommandNode:
         commands = list(previous.commands) if previous else []
         commands.append(SSHCommand(command, phase, int(order), failure_policy, int(retry_count)))
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "SSH Command")),)
+
+
+class RunpodPackageNode:
+    CATEGORY = "Runpod/Command"
+    RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
+    RETURN_NAMES = ("commands",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "package_manager": (["apt", "npm", "pip"],),
+                "packages": ("STRING", {"default": ""}),
+                "order": ("INT", {"default": -25000}),
+                "failure_policy": (["fail", "continue", "retry"],),
+                "retry_count": ("INT", {"default": 0, "min": 0}),
+            },
+            "optional": {"previous": (RUNPOD_COMMAND_SSH,)},
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, package_manager: str, packages: str, order: int = -25000, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None):
+        commands = list(previous.commands) if previous else []
+        commands.append(SSHCommand(package_install_command(package_manager, packages), "before_start", int(order), failure_policy, int(retry_count)))
+        return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Package")),)
+
+
+class RunpodLanguageRuntimeNode:
+    CATEGORY = "Runpod/Command"
+    RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
+    RETURN_NAMES = ("commands",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "runtime": (["nodejs", "python"],),
+                "node_major_version": ("INT", {"default": 22, "min": 18}),
+                "order": ("INT", {"default": -28000}),
+                "failure_policy": (["fail", "continue", "retry"],),
+                "retry_count": ("INT", {"default": 0, "min": 0}),
+            },
+            "optional": {"previous": (RUNPOD_COMMAND_SSH,)},
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, runtime: str, node_major_version: int = 22, order: int = -28000, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None):
+        commands = list(previous.commands) if previous else []
+        commands.append(SSHCommand(language_runtime_install_command(runtime, int(node_major_version)), "before_start", int(order), failure_policy, int(retry_count)))
+        return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Language Runtime")),)
+
+
+class RunpodBuildContainerNode:
+    CATEGORY = "Runpod/Command"
+    RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
+    RETURN_NAMES = ("commands",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image_tag": ("STRING", {"default": "docker.io/user/crag-agent:latest"}),
+                "runtime": (["nerdctl", "docker", "podman"],),
+                "push_to_docker_hub": ("BOOLEAN", {"default": False}),
+                "dockerhub_username_env": ("STRING", {"default": "DOCKERHUB_USERNAME"}),
+                "dockerhub_token_env": ("STRING", {"default": "DOCKERHUB_TOKEN"}),
+                "order": ("INT", {"default": 90000}),
+                "failure_policy": (["fail", "continue", "retry"],),
+                "retry_count": ("INT", {"default": 0, "min": 0}),
+            },
+            "optional": {"previous": (RUNPOD_COMMAND_SSH,)},
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, image_tag: str, runtime: str = "nerdctl", push_to_docker_hub: bool = False, dockerhub_username_env: str = "DOCKERHUB_USERNAME", dockerhub_token_env: str = "DOCKERHUB_TOKEN", order: int = 90000, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None):
+        commands = list(previous.commands) if previous else []
+        commands.append(SSHCommand(container_snapshot_command(image_tag, runtime, bool(push_to_docker_hub), dockerhub_username_env, dockerhub_token_env), "after_ready", int(order), failure_policy, int(retry_count)))
+        return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Build Container")),)
 
 
 class RunpodKeepAliveNode:
@@ -878,6 +973,9 @@ NODE_CLASSES = [
     RunpodNetworkStorageNode,
     RunpodS3StorageNode,
     RunpodSSHCommandNode,
+    RunpodPackageNode,
+    RunpodLanguageRuntimeNode,
+    RunpodBuildContainerNode,
     RunpodKeepAliveNode,
     RunpodSSHAccessNode,
     RunpodPodNode,

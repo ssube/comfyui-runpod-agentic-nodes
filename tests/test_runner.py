@@ -266,9 +266,11 @@ def test_launcher_runtime_files_include_common_harness_stubs():
     assert "launcher.d/10-preflight.sh" in files
     assert "launcher.d/harnesses/codex.sh" in files
     assert "launcher.d/harnesses/claude.sh" in files
+    assert "launcher.d/harnesses/hermes.sh" in files
     assert "launcher.d/harnesses/opencode.sh" in files
     assert "launcher.d/harnesses/pi.sh" in files
     assert "No compatible agent launcher" in files["launcher.d/harnesses/generic.sh"]
+    assert 'args=(chat -q "$prompt")' in files["launcher.d/harnesses/hermes.sh"]
 
 
 def test_pi_runtime_files_configure_ollama_cloud():
