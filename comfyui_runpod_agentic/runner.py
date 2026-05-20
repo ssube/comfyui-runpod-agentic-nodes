@@ -304,7 +304,7 @@ def keep_alive_pod_timer_command(plan: DeploymentPlan) -> str:
     script = keep_alive_pod_timer_script(plan.keep_alive)
     if not script:
         return ""
-    return f"mkdir -p .runpod_agentic && nohup bash -lc {shell_env(script)} > .runpod_agentic/keepalive.log 2>&1 &"
+    return f"mkdir -p .runpod_agentic && (nohup bash -lc {shell_env(script)} > .runpod_agentic/keepalive.log 2>&1 &)"
 
 
 def keep_alive_pod_timer_script(policy: KeepAlivePolicy | None) -> str:

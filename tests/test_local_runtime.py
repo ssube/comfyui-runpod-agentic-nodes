@@ -1,10 +1,12 @@
 import json
 import os
+import subprocess
 from types import SimpleNamespace
 
 import yaml
 
 from comfyui_runpod_agentic.local_runtime import (
+    agent_run_script,
     apply_compose_file,
     apply_local_runtime_plan,
     command_for_engine,
@@ -111,6 +113,19 @@ def test_agent_compose_command_layers_pod_side_keep_alive():
     assert "RUNPOD_API_KEY" in agent_service["command"]
     assert "podTerminate" in agent_service["command"]
     assert "kill -TERM 1" in agent_service["command"]
+
+
+def test_agent_auto_start_with_keep_alive_generates_valid_shell():
+    agent = AgentNode().build("Pi", "model", "auto_start", "/workspace")[0]
+    keep_alive = KeepAliveNode().build("time", "stop", 5, "minutes", 0, 0.0, 0, "both")[0]
+    deployment = DeployNode().build(agent, gpu_count=0, keep_alive=keep_alive)[0]
+    plan = Planner().build(deployment, prompt="run once")
+    script = agent_run_script(plan, keep_container_alive=True)
+
+    assert "& &&" not in script
+    completed = subprocess.run(["bash", "-n"], input=script, capture_output=True, text=True, check=False)
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_apply_compose_file_runs_docker_compose(monkeypatch, tmp_path):
