@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from comfyui_runpod_agentic import NODE_DISPLAY_NAME_MAPPINGS
 from comfyui_runpod_agentic.nodes import (
     RunpodAgentNode,
@@ -42,6 +45,18 @@ def test_local_runtime_nodes_expose_deployment_actions_only():
     assert action_choices == ["save_only", "plan", "apply", "apply_and_wait", "stop", "terminate"]
     assert "config" not in action_choices
     assert "pull" not in action_choices
+
+
+def test_ollama_deepseek_example_uses_setup_nodes_for_packages():
+    workflow = json.loads(Path("examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json").read_text())
+    class_types = [node["class_type"] for node in workflow.values()]
+
+    assert "RunpodLanguageRuntime" in class_types
+    assert class_types.count("RunpodPackage") == 2
+    assert class_types.count("RunpodSSHCommand") == 1
+    assert workflow["3"]["inputs"]["package_manager"] == "apt"
+    assert workflow["4"]["inputs"]["package_manager"] == "npm"
+    assert workflow["7"]["inputs"]["action"] == "apply_and_wait"
 
 
 def test_agent_accepts_generic_llm_sources():
