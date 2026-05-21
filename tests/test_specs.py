@@ -3,6 +3,7 @@ from pathlib import Path
 
 from comfyui_runpod_agentic import NODE_DISPLAY_NAME_MAPPINGS
 from comfyui_runpod_agentic.harnesses import CENTRAL_SKILLS_PATH, harness_matrix_rows
+from comfyui_runpod_agentic.local_runtime import LocalApplyResult
 from comfyui_runpod_agentic.nodes import (
     AgentNode,
     BrowserNode,
@@ -364,6 +365,24 @@ def test_build_container_node_commits_and_pushes_with_dockerhub_env():
     assert "DOCKERHUB_USERNAME" in command
     assert "DOCKERHUB_TOKEN" in command
     assert "push \"$image_tag\"" in command
+
+
+def test_build_container_node_returns_named_comfy_outputs(monkeypatch, tmp_path):
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent)[0]
+    output_path = tmp_path / "build.yaml"
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.compose_yaml_for_plan", lambda *_args, **_kwargs: "services: {}\n")
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.write_compose_file", lambda *_args, **_kwargs: str(output_path))
+    monkeypatch.setattr(
+        "comfyui_runpod_agentic.local_runtime.apply_local_runtime_plan",
+        lambda *_args, **_kwargs: (LocalApplyResult("containerd", "apply_and_wait", str(output_path), ["nerdctl"], 0, "built\n", ""), False),
+    )
+
+    output = BuildContainerNode().apply(deployment, "example/crag:latest", output_path=str(output_path), workflow_graph={"nodes": []})
+
+    assert output["ui"]["response"] == ["built\n"]
+    assert output["ui"]["saved_path"] == [str(output_path)]
 
 
 def test_command_nodes_ignore_legacy_order_argument_and_infer_from_chain():

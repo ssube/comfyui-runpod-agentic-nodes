@@ -828,7 +828,8 @@ class BuildContainerNode:
                 os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
         payload = json.loads(result.to_text())
         payload["reused"] = reused
-        return (json.dumps(payload, indent=2, sort_keys=True), result.stdout, result.stderr, compose_yaml, saved_path)
+        output = (json.dumps(payload, indent=2, sort_keys=True), result.stdout, result.stderr, compose_yaml, saved_path)
+        return comfy_output(output, workflow_graph, self.RETURN_NAMES)
 
 
 class KeepAliveNode:
