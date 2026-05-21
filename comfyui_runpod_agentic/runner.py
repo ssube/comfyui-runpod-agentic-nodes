@@ -556,6 +556,19 @@ def startup_script_for_plan(plan: DeploymentPlan) -> str:
         lines.extend(file_write_lines(f"{base}/{relative_path}", content))
     for relative_path, content in launcher_runtime_files().items():
         lines.extend(file_write_lines(f"{base}/{relative_path}", content))
+    lines.append(
+        " ".join(
+            [
+                f"WORKSPACE_DIR={shell_env(workspace)}",
+                f"CRAG_RUNTIME_DIR={shell_env(base)}",
+                f"AGENT_PROMPT_FILE={shell_env(base + '/prompt.txt')}",
+                f"AGENT_SYSTEM_PROMPT_FILE={shell_env(base + '/system_prompt.txt')}",
+                f"MCP_SERVERS_FILE={shell_env(base + '/mcp_servers.json')}",
+                "bash",
+                shell_env(base + "/launcher.d/20-harness-links.sh"),
+            ]
+        )
+    )
     for index, detail in enumerate(commands):
         if detail.get("phase") == "before_start":
             lines.extend(run_script_lines(f"crag_command_{index}", detail["command"]))
@@ -592,6 +605,7 @@ def launcher_runtime_files() -> dict[str, str]:
         "launcher.sh": agent_launcher_script(),
         "launcher.d/00-env.sh": launcher_env_script(),
         "launcher.d/10-preflight.sh": launcher_preflight_script(),
+        "launcher.d/20-harness-links.sh": harness_links_script(),
         "launcher.d/harnesses/codex.sh": codex_harness_script(),
         "launcher.d/harnesses/claude.sh": claude_harness_script(),
         "launcher.d/harnesses/hermes.sh": hermes_harness_script(),
@@ -706,6 +720,8 @@ fi
 export AGENT_MODEL="${AGENT_MODEL:-}"
 export AGENT_PROMPT_FILE="${AGENT_PROMPT_FILE:-$CRAG_RUNTIME_DIR/prompt.txt}"
 export AGENT_SYSTEM_PROMPT_FILE="${AGENT_SYSTEM_PROMPT_FILE:-$CRAG_RUNTIME_DIR/system_prompt.txt}"
+export AGENT_RESPONSE_FILE="${AGENT_RESPONSE_FILE:-$CRAG_RUNTIME_DIR/response.txt}"
+export AGENT_ERRORS_FILE="${AGENT_ERRORS_FILE:-$CRAG_RUNTIME_DIR/errors.txt}"
 export MCP_SERVERS_FILE="${MCP_SERVERS_FILE:-$CRAG_RUNTIME_DIR/mcp_servers.json}"
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
 if [ -n "${OLLAMA_API_KEY:-}" ] && [ -z "${OLLAMA_CLOUD_API_KEY:-}" ]; then
@@ -722,10 +738,6 @@ fi
 if [ -f "$MCP_SERVERS_FILE" ]; then
   export MCP_SERVERS_JSON="$(cat "$MCP_SERVERS_FILE")"
 fi
-if [ -d "$WORKSPACE_DIR/.codex/skills" ]; then
-  mkdir -p "$HOME/.agents"
-  ln -sfn "$WORKSPACE_DIR/.codex/skills" "$HOME/.agents/skills"
-fi
 if [ -d "$CRAG_RUNTIME_DIR/harness/pi" ]; then
   mkdir -p "$HOME/.pi/agent" "$WORKSPACE_DIR/.pi/agent"
   cp "$CRAG_RUNTIME_DIR/harness/pi/models.json" "$HOME/.pi/agent/models.json"
@@ -740,9 +752,68 @@ fi
 """
 
 
+def harness_links_script() -> str:
+    return r"""#!/usr/bin/env bash
+mkdir -p "$CRAG_RUNTIME_DIR/skills" "$CRAG_RUNTIME_DIR/agent" "$HOME/.agents" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode" "$HOME/.hermes" "$HOME/.pi"
+legacy_skills="$WORKSPACE_DIR/.codex/skills"
+if [ -d "$legacy_skills" ] && [ ! -L "$legacy_skills" ]; then
+  cp -a "$legacy_skills"/. "$CRAG_RUNTIME_DIR/skills"/ 2>/dev/null || true
+fi
+mkdir -p "$WORKSPACE_DIR/.codex"
+rm -rf "$legacy_skills"
+ln -sfn "$CRAG_RUNTIME_DIR/skills" "$legacy_skills"
+ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.agents/skills"
+ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.codex/skills"
+ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.claude/skills"
+ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.config/opencode/skills"
+ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.hermes/skills"
+ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.pi/skills"
+ln -sfn "$AGENT_PROMPT_FILE" "$CRAG_RUNTIME_DIR/agent/prompt.txt"
+ln -sfn "$AGENT_SYSTEM_PROMPT_FILE" "$CRAG_RUNTIME_DIR/agent/system_prompt.txt"
+ln -sfn "$MCP_SERVERS_FILE" "$CRAG_RUNTIME_DIR/agent/mcp_servers.json"
+"""
+
+
+def harness_command_wrapper() -> str:
+    return r"""
+run_harness_command() {
+  local binary="$1"
+  shift
+  local response_file="${AGENT_RESPONSE_FILE:-$CRAG_RUNTIME_DIR/response.txt}"
+  local errors_file="${AGENT_ERRORS_FILE:-$CRAG_RUNTIME_DIR/errors.txt}"
+  local status=0
+  mkdir -p "$(dirname "$response_file")" "$(dirname "$errors_file")"
+  set +e
+  {
+    echo "harness: ${AGENT_HARNESS:-}"
+    echo "model: ${AGENT_MODEL:-}"
+    echo "prompt_file: ${AGENT_PROMPT_FILE:-}"
+    echo "system_prompt_file: ${AGENT_SYSTEM_PROMPT_FILE:-}"
+    echo "mcp_servers_file: ${MCP_SERVERS_FILE:-}"
+    if [ "${AGENT_HARNESS:-}" = "pi" ]; then
+      echo "models_file: ${PI_MODELS_FILE:-$HOME/.pi/agent/models.json}"
+      echo "providers_file: ${PI_PROVIDERS_FILE:-$HOME/.pi/agent/providers.json}"
+    fi
+    echo
+    "$binary" "$@"
+    status=$?
+    echo
+    echo "[crag-agent] complete status=$status"
+  } > "$response_file" 2> "$errors_file"
+  set -e
+  cat "$response_file"
+  if [ -s "$errors_file" ]; then
+    cat "$errors_file" >&2
+  fi
+  return "$status"
+}
+"""
+
+
 def codex_harness_script() -> str:
     return r"""#!/usr/bin/env bash
 set -euo pipefail
+""" + harness_command_wrapper() + r"""
 if ! command -v codex >/dev/null 2>&1; then
   exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
 fi
@@ -757,13 +828,14 @@ fi
 if [ -s "$AGENT_SYSTEM_PROMPT_FILE" ]; then
   args+=(--system-prompt "$(cat "$AGENT_SYSTEM_PROMPT_FILE")")
 fi
-exec codex "${args[@]}" "$prompt"
+run_harness_command codex "${args[@]}" "$prompt"
 """
 
 
 def claude_harness_script() -> str:
     return r"""#!/usr/bin/env bash
 set -euo pipefail
+""" + harness_command_wrapper() + r"""
 if ! command -v claude >/dev/null 2>&1; then
   exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
 fi
@@ -778,13 +850,14 @@ fi
 if [ -s "$AGENT_SYSTEM_PROMPT_FILE" ]; then
   args+=(--system-prompt "$(cat "$AGENT_SYSTEM_PROMPT_FILE")")
 fi
-exec claude "${args[@]}"
+run_harness_command claude "${args[@]}"
 """
 
 
 def opencode_harness_script() -> str:
     return r"""#!/usr/bin/env bash
 set -euo pipefail
+""" + harness_command_wrapper() + r"""
 if ! command -v opencode >/dev/null 2>&1; then
   exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
 fi
@@ -796,13 +869,14 @@ args=(run)
 if [ -n "$AGENT_MODEL" ]; then
   args+=(--model "$AGENT_MODEL")
 fi
-exec opencode "${args[@]}" "$prompt"
+run_harness_command opencode "${args[@]}" "$prompt"
 """
 
 
 def hermes_harness_script() -> str:
     return r"""#!/usr/bin/env bash
 set -euo pipefail
+""" + harness_command_wrapper() + r"""
 if ! command -v hermes >/dev/null 2>&1; then
   exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
 fi
@@ -814,13 +888,14 @@ args=(chat -q "$prompt")
 if [ -n "$AGENT_MODEL" ]; then
   args+=(--model "$AGENT_MODEL")
 fi
-exec hermes "${args[@]}"
+run_harness_command hermes "${args[@]}"
 """
 
 
 def pi_harness_script() -> str:
     return r"""#!/usr/bin/env bash
 set -euo pipefail
+""" + harness_command_wrapper() + r"""
 if ! command -v pi >/dev/null 2>&1; then
   exec bash "$CRAG_RUNTIME_DIR/launcher.d/harnesses/generic.sh"
 fi
@@ -838,25 +913,7 @@ if [ "${LLM_PROVIDER:-}" = "ollama_cloud" ]; then
 elif [ -n "${PI_PROVIDER:-}" ]; then
   args+=(--provider "$PI_PROVIDER")
 fi
-response_file="${AGENT_RESPONSE_FILE:-$CRAG_RUNTIME_DIR/response.txt}"
-errors_file="${AGENT_ERRORS_FILE:-$CRAG_RUNTIME_DIR/errors.txt}"
-{
-  echo "model: ${AGENT_MODEL:-}"
-  echo "models_file: ${PI_MODELS_FILE:-$HOME/.pi/agent/models.json}"
-  echo "providers_file: ${PI_PROVIDERS_FILE:-$HOME/.pi/agent/providers.json}"
-  echo
-  set +e
-  pi "${args[@]}" -p "$prompt"
-  status=$?
-  set -e
-  echo
-  echo "[crag-agent] complete status=$status"
-  exit "$status"
-} > "$response_file" 2> "$errors_file"
-cat "$response_file"
-if [ -s "$errors_file" ]; then
-  cat "$errors_file" >&2
-fi
+run_harness_command pi "${args[@]}" -p "$prompt"
 """
 
 

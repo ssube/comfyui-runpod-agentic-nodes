@@ -1,3 +1,5 @@
+import os
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -492,6 +494,7 @@ def test_launcher_runtime_files_include_common_harness_stubs():
     assert "launcher.sh" in files
     assert "launcher.d/00-env.sh" in files
     assert "launcher.d/10-preflight.sh" in files
+    assert "launcher.d/20-harness-links.sh" in files
     assert "launcher.d/harnesses/codex.sh" in files
     assert "launcher.d/harnesses/claude.sh" in files
     assert "launcher.d/harnesses/hermes.sh" in files
@@ -499,6 +502,78 @@ def test_launcher_runtime_files_include_common_harness_stubs():
     assert "launcher.d/harnesses/pi.sh" in files
     assert "No compatible agent launcher" in files["launcher.d/harnesses/generic.sh"]
     assert 'args=(chat -q "$prompt")' in files["launcher.d/harnesses/hermes.sh"]
+    for harness in ("codex", "claude", "opencode", "hermes", "pi"):
+        assert "run_harness_command" in files[f"launcher.d/harnesses/{harness}.sh"]
+
+
+def test_harness_scripts_capture_response_files_for_supported_harnesses(tmp_path):
+    files = launcher_runtime_files()
+    workspace = tmp_path / "workspace"
+    runtime = workspace / ".runpod_agentic"
+    bin_dir = tmp_path / "bin"
+    harness_dir = runtime / "launcher.d" / "harnesses"
+    harness_dir.mkdir(parents=True)
+    bin_dir.mkdir()
+    (runtime / "prompt.txt").write_text("do the task")
+    (runtime / "system_prompt.txt").write_text("be brief")
+
+    for path, content in files.items():
+        target = runtime / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+        target.chmod(0o755)
+
+    for harness in ("codex", "claude", "opencode", "hermes", "pi"):
+        binary = bin_dir / harness
+        binary.write_text("#!/usr/bin/env bash\nprintf '%s argv: %s\\n' \"$(basename \"$0\")\" \"$*\"\n")
+        binary.chmod(0o755)
+        env = {
+            **os.environ,
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "WORKSPACE_DIR": str(workspace),
+            "CRAG_RUNTIME_DIR": str(runtime),
+            "AGENT_HARNESS": harness,
+            "AGENT_MODEL": "model-1",
+            "AGENT_PROMPT_FILE": str(runtime / "prompt.txt"),
+            "AGENT_SYSTEM_PROMPT_FILE": str(runtime / "system_prompt.txt"),
+            "MCP_SERVERS_FILE": str(runtime / "mcp_servers.json"),
+        }
+
+        result = subprocess.run(["bash", str(harness_dir / f"{harness}.sh")], env=env, text=True, capture_output=True, check=False)
+
+        response = (runtime / "response.txt").read_text()
+        assert result.returncode == 0, result.stderr
+        assert f"harness: {harness}" in response
+        assert f"{harness} argv:" in response
+        assert "[crag-agent] complete status=0" in response
+        assert (runtime / "errors.txt").exists()
+        (runtime / "response.txt").unlink()
+        (runtime / "errors.txt").unlink()
+
+
+def test_harness_links_script_projects_central_skills(tmp_path):
+    files = launcher_runtime_files()
+    workspace = tmp_path / "workspace"
+    runtime = workspace / ".runpod_agentic"
+    legacy = workspace / ".codex" / "skills"
+    legacy.mkdir(parents=True)
+    (legacy / "SKILL.md").write_text("legacy")
+    env = {
+        **os.environ,
+        "WORKSPACE_DIR": str(workspace),
+        "CRAG_RUNTIME_DIR": str(runtime),
+        "AGENT_PROMPT_FILE": str(runtime / "prompt.txt"),
+        "AGENT_SYSTEM_PROMPT_FILE": str(runtime / "system_prompt.txt"),
+        "MCP_SERVERS_FILE": str(runtime / "mcp_servers.json"),
+        "HOME": str(tmp_path / "home"),
+    }
+
+    subprocess.run(["bash", "-c", files["launcher.d/20-harness-links.sh"]], env=env, text=True, capture_output=True, check=True)
+
+    assert legacy.is_symlink()
+    assert legacy.resolve() == runtime / "skills"
+    assert (runtime / "skills" / "SKILL.md").read_text() == "legacy"
+    assert (tmp_path / "home" / ".agents" / "skills").resolve() == runtime / "skills"
 
 
 def test_pi_runtime_files_configure_ollama_cloud():

@@ -190,6 +190,16 @@ Apps and services:
 - `Compose YAML`: exports a local Docker Compose compatible projection.
 - `Run Local Containers`: save or plan the same deployment against a local Docker, Podman, or containerd engine, then optionally apply, reuse, stop, or terminate it.
 
+Harness support:
+
+| Harness | Prompt | Model | System prompt | LLM env | MCP env | Skills | Response files |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Codex | yes | yes | yes | yes | yes | symlinked | yes |
+| Claude | yes | yes | yes | yes | yes | symlinked | yes |
+| OpenCode | yes | yes | no | yes | yes | symlinked | yes |
+| Hermes | yes | yes | no | yes | yes | symlinked | yes |
+| Pi | yes | yes | no | yes | yes | symlinked | yes |
+
 ## Example Workflows
 
 ### Claude API, Postgres, Qdrant, Playwright, Setup Command
@@ -197,7 +207,7 @@ Apps and services:
 ```text
 LLM API(provider=Claude, model=claude-sonnet, secret=anthropic_key)
 MCP Server(name=filesystem, transport=stdio, command=npx, args="-y @modelcontextprotocol/server-filesystem /workspace")
-Skill Framework(framework=Superpowers, target_root=/workspace/.codex/skills)
+Skill Framework(framework=Superpowers, target_root=/workspace/.runpod_agentic/skills)
 Remote SQL Database(engine=Postgres, connection_mode=own_pod, database=app, username=app, secret=pg_password)
 Vector Database(engine=Qdrant, collection=docs)
 Browser(browser=Playwright, placement=same_pod)

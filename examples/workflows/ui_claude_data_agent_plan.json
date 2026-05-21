@@ -219,7 +219,7 @@
         "research-notes",
         "https://github.com/example/agent-skills.git",
         "skills/research-notes",
-        "/workspace/.codex/skills/research-notes",
+        "/workspace/.runpod_agentic/skills/research-notes",
         ""
       ]
     },

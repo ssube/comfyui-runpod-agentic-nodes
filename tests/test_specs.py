@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from comfyui_runpod_agentic import NODE_DISPLAY_NAME_MAPPINGS
+from comfyui_runpod_agentic.harnesses import CENTRAL_SKILLS_PATH, harness_matrix_rows
 from comfyui_runpod_agentic.nodes import (
     AgentNode,
     BrowserNode,
@@ -317,9 +318,20 @@ def test_agent_accepts_chainable_skills():
     agent = AgentNode().build("Pi", "model", "manual", "/workspace", skills=framework)[0]
 
     assert len(agent.skills.skills) == 2
+    assert agent.skills.skills[0].target_path == f"{CENTRAL_SKILLS_PATH}/frontend-design"
+    assert agent.skills.skills[1].target_path == CENTRAL_SKILLS_PATH
     assert agent.skills.skills[1].kind == "framework"
     assert "RUNPOD_AGENT_SKILLS_JSON" in agent.runtime_contract.env.values
     assert [command.source for command in agent.runtime_contract.commands] == ["harness:pi", "skill:frontend-design", "skill:superpowers"]
+
+
+def test_harness_compatibility_matrix_covers_agent_choices():
+    rows = harness_matrix_rows()
+
+    assert [row["harness"] for row in rows] == ["Codex", "Claude", "OpenCode", "Hermes", "Pi"]
+    assert all(row["prompt"] for row in rows)
+    assert all(row["skills_symlink"] for row in rows)
+    assert all(row["response_capture"] for row in rows)
 
 
 def test_pod_validation_rejects_sqlite_outside_workspace():

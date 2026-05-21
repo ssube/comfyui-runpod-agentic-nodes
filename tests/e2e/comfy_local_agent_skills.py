@@ -69,11 +69,14 @@ def main() -> int:
                 report = wait_for_file(agent["id"], "/workspace/e2e/agent-skill-report.txt", timeout=1200)
                 package_marker = file_text(agent["id"], "/workspace/e2e/package-installed.txt").strip()
                 jq_version = file_text(agent["id"], "/workspace/e2e/jq-version.txt").strip()
-                skills = run_runtime(["nerdctl", "exec", agent["id"], "find", "/workspace/.codex/skills", "-maxdepth", "3", "-type", "f"]).stdout.strip().splitlines()
+                skills = run_runtime(["nerdctl", "exec", agent["id"], "find", "/workspace/.runpod_agentic/skills", "-maxdepth", "3", "-type", "f"]).stdout.strip().splitlines()
+                legacy_skills_link = run_runtime(["nerdctl", "exec", agent["id"], "readlink", "/workspace/.codex/skills"]).stdout.strip()
                 if package_marker != "startup package installed" or not jq_version.startswith("jq-"):
                     raise AssertionError(f"Package startup command did not complete: marker={package_marker!r} jq={jq_version!r}")
                 if not skills:
-                    raise AssertionError("Skill framework install did not create any files under /workspace/.codex/skills.")
+                    raise AssertionError("Skill framework install did not create any files under /workspace/.runpod_agentic/skills.")
+                if legacy_skills_link != "/workspace/.runpod_agentic/skills":
+                    raise AssertionError(f"Legacy skill path was not linked to central skills: {legacy_skills_link}")
                 if "List the skills available to you" not in report:
                     raise AssertionError(f"Agent harness did not receive the task prompt:\n{report}")
                 if "skills:" not in report or "database:" not in report or "llm:" not in report:

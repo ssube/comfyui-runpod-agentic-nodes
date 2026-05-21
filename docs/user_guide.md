@@ -346,6 +346,18 @@ Output:
 
 Use `startup_mode=wait_for_commands` when setup commands, skills, MCP files, or runtime config must be prepared before the agent starts.
 
+Harness compatibility:
+
+| Harness | Prompt | Model | System prompt | LLM env | MCP env | Skills symlink | Response capture |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Codex | yes | yes | yes | yes | yes | yes | yes |
+| Claude | yes | yes | yes | yes | yes | yes | yes |
+| OpenCode | yes | yes | no | yes | yes | yes | yes |
+| Hermes | yes | yes | no | yes | yes | yes | yes |
+| Pi | yes | yes | no | yes | yes | yes | yes |
+
+All harness wrappers use the same CRAG response contract: stdout goes to `.runpod_agentic/response.txt`, stderr goes to `.runpod_agentic/errors.txt`, and successful completion adds a `[crag-agent] complete status=0` marker. Harness-specific scripts only adapt command-line arguments for their CLI.
+
 ### Injected Runtime Launcher
 
 `Run on Runpod` writes a common launcher runtime into the agent workspace before launch:
@@ -356,8 +368,9 @@ Use `startup_mode=wait_for_commands` when setup commands, skills, MCP files, or 
 | `.runpod_agentic/launcher.d/*.sh` | Environment and preflight hook scripts loaded before dispatch. |
 | `.runpod_agentic/launcher.d/pre.d/*.sh` | Optional user-provided pre-launch hooks. |
 | `.runpod_agentic/launcher.d/harnesses/*.sh` | Per-harness stubs for Codex, Claude, Hermes, OpenCode, Pi, and generic fallback behavior. |
+| `.runpod_agentic/skills` | Central skill directory. The launcher symlinks this to `.codex/skills`, `~/.agents/skills`, and harness-specific skill locations. |
 
-This makes CRAG usable with arbitrary SSH-capable containers. Codex, Claude, Hermes, and OpenCode agents queue the recommended CLI installer before launch and verify the binary with `--help`; Pi expects its harness to already be present or provided by the image. Advanced users can override launch with `CRAG_AGENT_LAUNCH_COMMAND` or replace harness scripts with startup commands before launch.
+This makes CRAG usable with arbitrary SSH-capable containers. Codex, Claude, Hermes, OpenCode, and Pi agents queue the recommended CLI installer before launch and verify the binary with `--help`. Advanced users can override launch with `CRAG_AGENT_LAUNCH_COMMAND` or replace harness scripts with startup commands before launch.
 
 ### Browser
 
@@ -530,7 +543,7 @@ Inputs:
 | `name` | string | Skill name. |
 | `github_repo_url` | string | GitHub repo URL. Must start with `https://github.com/` or `git@github.com:`. |
 | `repo_path` | string | Path inside the repo to copy. |
-| `target_path` | string | Destination in the pod. Defaults to `/workspace/.codex/skills/{name}`. |
+| `target_path` | string | Destination in the pod. Defaults to `/workspace/.runpod_agentic/skills/{name}`. |
 | `git_ref` | string | Optional branch, tag, or commit. |
 | `previous` | `RUNPOD_AGENT_SKILLS` | Optional previous skills chain. |
 
@@ -553,7 +566,7 @@ Inputs:
 | `framework` | `Superpowers`, `Superpowers Skills`, `Anthropic Skills`, `Custom GitHub Repo` | Framework preset. |
 | `custom_github_repo_url` | string | Repo URL when using `Custom GitHub Repo`. |
 | `custom_repo_path` | string | Repo path when using `Custom GitHub Repo`. |
-| `target_root` | string | Destination root, default `/workspace/.codex/skills`. |
+| `target_root` | string | Destination root, default `/workspace/.runpod_agentic/skills`. |
 | `git_ref` | string | Optional branch, tag, or commit. |
 | `previous` | `RUNPOD_AGENT_SKILLS` | Optional previous skills chain. |
 

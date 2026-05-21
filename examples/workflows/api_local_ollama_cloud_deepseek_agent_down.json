@@ -5,7 +5,7 @@
       "framework": "Superpowers",
       "custom_github_repo_url": "",
       "custom_repo_path": "",
-      "target_root": "/workspace/.codex/skills",
+      "target_root": "/workspace/.runpod_agentic/skills",
       "git_ref": ""
     }
   },
@@ -51,7 +51,7 @@
         "4",
         0
       ],
-      "command": "set -e\nexport PATH=\"$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH\"\nmkdir -p /workspace/e2e\ncurl --version | head -n 1 > /workspace/e2e/curl-version.txt\njq --version > /workspace/e2e/jq-version.txt\nnode --version > /workspace/e2e/node-version.txt\nnpm --version > /workspace/e2e/npm-version.txt\nncu --version > /workspace/e2e/npm-check-updates-version.txt\npi --version > /workspace/e2e/pi-version.txt\ntest -s /workspace/.runpod_agentic/harness/pi/models.json\ntest -s /workspace/.runpod_agentic/harness/pi/providers.json\njq . /workspace/.runpod_agentic/harness/pi/models.json > /workspace/e2e/pi-models-normalized.json\njq . /workspace/.runpod_agentic/harness/pi/providers.json > /workspace/e2e/pi-providers-normalized.json\nfind /workspace/.codex/skills -maxdepth 3 -type f \\( -name 'SKILL.md' -o -name '*.md' \\) | sort | sed 's#^/workspace/.codex/skills/##' > /workspace/e2e/skills.txt",
+      "command": "set -e\nexport PATH=\"$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH\"\nmkdir -p /workspace/e2e\ncurl --version | head -n 1 > /workspace/e2e/curl-version.txt\njq --version > /workspace/e2e/jq-version.txt\nnode --version > /workspace/e2e/node-version.txt\nnpm --version > /workspace/e2e/npm-version.txt\nncu --version > /workspace/e2e/npm-check-updates-version.txt\npi --version > /workspace/e2e/pi-version.txt\ntest -s /workspace/.runpod_agentic/harness/pi/models.json\ntest -s /workspace/.runpod_agentic/harness/pi/providers.json\njq . /workspace/.runpod_agentic/harness/pi/models.json > /workspace/e2e/pi-models-normalized.json\njq . /workspace/.runpod_agentic/harness/pi/providers.json > /workspace/e2e/pi-providers-normalized.json\nfind /workspace/.runpod_agentic/skills -maxdepth 3 -type f \\( -name 'SKILL.md' -o -name '*.md' \\) | sort | sed 's#^/workspace/.runpod_agentic/skills/##' > /workspace/e2e/skills.txt",
       "phase": "before_start",
       "failure_policy": "fail",
       "retry_count": 0

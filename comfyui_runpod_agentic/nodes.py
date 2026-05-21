@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import get_ssh_env_config
+from .harnesses import CENTRAL_SKILLS_PATH
 from .planner import Planner
 from .runner import default_state_path
 from .runpod_options import optional_combo_or_string, runpod_dropdown_options
@@ -466,7 +467,7 @@ class SkillNode:
             raise ValidationError("Skill name is required.")
         if not repo_url.startswith(("https://github.com/", "git@github.com:")):
             raise ValidationError("Skill GitHub repo URL must start with https://github.com/ or git@github.com:.")
-        destination = target_path.strip() or f"/workspace/.codex/skills/{skill_name}"
+        destination = target_path.strip() or f"{CENTRAL_SKILLS_PATH}/{skill_name}"
         skill = SkillSource("skill", skill_name, repo_url, repo_path.strip() or ".", destination, git_ref.strip() or None)
         skills = [*(previous.skills if previous else []), skill]
         payload = {"skills": [skill_payload(item) for item in skills]}
@@ -487,14 +488,14 @@ class SkillFrameworkNode:
                 "framework": (list(SKILL_FRAMEWORKS),),
                 "custom_github_repo_url": ("STRING", {"default": ""}),
                 "custom_repo_path": ("STRING", {"default": ""}),
-                "target_root": ("STRING", {"default": "/workspace/.codex/skills"}),
+                "target_root": ("STRING", {"default": CENTRAL_SKILLS_PATH}),
                 "git_ref": ("STRING", {"default": ""}),
             },
             "optional": {"previous": (RUNPOD_AGENT_SKILLS,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, framework: str, custom_github_repo_url: str = "", custom_repo_path: str = "", target_root: str = "/workspace/.codex/skills", git_ref: str = "", previous: SkillSpec | None = None, node_id: str | None = None):
+    def build(self, framework: str, custom_github_repo_url: str = "", custom_repo_path: str = "", target_root: str = CENTRAL_SKILLS_PATH, git_ref: str = "", previous: SkillSpec | None = None, node_id: str | None = None):
         repo_url, repo_path = SKILL_FRAMEWORKS[framework]
         if framework == "Custom GitHub Repo":
             repo_url = custom_github_repo_url.strip()
@@ -502,7 +503,7 @@ class SkillFrameworkNode:
         if not repo_url.startswith(("https://github.com/", "git@github.com:")):
             raise ValidationError("Skill framework GitHub repo URL must start with https://github.com/ or git@github.com:.")
         framework_name = norm(framework)
-        skill = SkillSource("framework", framework_name, repo_url, repo_path, target_root.strip() or "/workspace/.codex/skills", git_ref.strip() or None)
+        skill = SkillSource("framework", framework_name, repo_url, repo_path, target_root.strip() or CENTRAL_SKILLS_PATH, git_ref.strip() or None)
         skills = [*(previous.skills if previous else []), skill]
         payload = {"skills": [skill_payload(item) for item in skills]}
         commands = [RuntimeCommand(skill_install_command(item), "before_start", -10000 + index, "fail", 0, f"skill:{item.name}") for index, item in enumerate(skills)]

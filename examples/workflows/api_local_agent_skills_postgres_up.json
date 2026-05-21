@@ -5,7 +5,7 @@
       "framework": "Superpowers",
       "custom_github_repo_url": "",
       "custom_repo_path": "",
-      "target_root": "/workspace/.codex/skills",
+      "target_root": "/workspace/.runpod_agentic/skills",
       "git_ref": ""
     }
   },
@@ -25,7 +25,7 @@
         "2",
         0
       ],
-      "command": "set -e\nmkdir -p /workspace/.runpod_agentic/launcher.d/harnesses /workspace/e2e\ncat > /workspace/.runpod_agentic/launcher.d/harnesses/pi.sh <<'PI_HARNESS'\n#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p /workspace/e2e\n{\n  echo 'prompt:'\n  cat \"${AGENT_PROMPT_FILE:-/workspace/.runpod_agentic/prompt.txt}\"\n  echo\n  echo 'skills:'\n  find /workspace/.codex/skills -maxdepth 3 -type f \\( -name 'SKILL.md' -o -name '*.md' \\) | sort | sed 's#^/workspace/.codex/skills/##'\n  echo\n  echo 'database:'\n  printf '%s\\n' \"${DATABASE_URL:-}\"\n  echo\n  echo 'llm:'\n  printf '%s\\n' \"${OLLAMA_HOST:-}\"\n} > /workspace/e2e/agent-skill-report.txt\nPI_HARNESS\nchmod +x /workspace/.runpod_agentic/launcher.d/harnesses/pi.sh",
+      "command": "set -e\nmkdir -p /workspace/.runpod_agentic/launcher.d/harnesses /workspace/e2e\ncat > /workspace/.runpod_agentic/launcher.d/harnesses/pi.sh <<'PI_HARNESS'\n#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p /workspace/e2e\n{\n  echo 'prompt:'\n  cat \"${AGENT_PROMPT_FILE:-/workspace/.runpod_agentic/prompt.txt}\"\n  echo\n  echo 'skills:'\n  find /workspace/.runpod_agentic/skills -maxdepth 3 -type f \\( -name 'SKILL.md' -o -name '*.md' \\) | sort | sed 's#^/workspace/.runpod_agentic/skills/##'\n  echo\n  echo 'database:'\n  printf '%s\\n' \"${DATABASE_URL:-}\"\n  echo\n  echo 'llm:'\n  printf '%s\\n' \"${OLLAMA_HOST:-}\"\n} > /workspace/e2e/agent-skill-report.txt\nPI_HARNESS\nchmod +x /workspace/.runpod_agentic/launcher.d/harnesses/pi.sh",
       "phase": "before_start",
       "failure_policy": "fail",
       "retry_count": 0

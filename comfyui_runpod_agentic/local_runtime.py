@@ -294,6 +294,7 @@ def local_runtime_file_writes(plan: DeploymentPlan) -> list[str]:
     for relative_path, content in launcher_runtime_files().items():
         lines.extend(shell_write_file_lines(f"{base}/{relative_path}", content))
     lines.append("chmod +x \"$crag_dir/launcher.sh\" \"$crag_dir\"/launcher.d/*.sh \"$crag_dir\"/launcher.d/harnesses/*.sh 2>/dev/null || true")
+    lines.append('WORKSPACE_DIR="$workspace" CRAG_RUNTIME_DIR="$crag_dir" AGENT_PROMPT_FILE="$crag_dir/prompt.txt" AGENT_SYSTEM_PROMPT_FILE="$crag_dir/system_prompt.txt" MCP_SERVERS_FILE="$crag_dir/mcp_servers.json" bash "$crag_dir/launcher.d/20-harness-links.sh"')
     return lines
 
 
