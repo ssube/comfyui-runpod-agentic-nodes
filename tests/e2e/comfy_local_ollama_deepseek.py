@@ -71,6 +71,8 @@ def main() -> int:
                     raise AssertionError(f"Pi providers.json does not reference OLLAMA_CLOUD_API_KEY:\n{json.dumps(providers, indent=2)}")
                 if "SKILL.md" not in skills:
                     raise AssertionError(f"Superpowers skills were not visible to the agent:\n{skills[:1000]}")
+                if "[crag-agent] complete status=0" not in response:
+                    raise AssertionError(f"Run node response output did not contain the agent reply:\nresponse:\n{response}\nruntime_response:\n{runtime_response}\nerrors:\n{errors}")
                 if "[crag-agent] complete status=0" not in runtime_response:
                     raise AssertionError(f"Pi did not complete successfully:\nresponse:\n{runtime_response}\nerrors:\n{errors}")
                 if "SKILL.md" not in runtime_response and "skill" not in runtime_response.lower():

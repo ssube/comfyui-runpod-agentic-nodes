@@ -664,12 +664,27 @@ def read_local_runtime_file(
     last_stderr = ""
     command: list[str] = []
     container_id = ""
+    requires_response_file = local_runtime_path_requires_ready_response(path)
     while time.time() < deadline:
         try:
             container_id = find_local_runtime_container(engine, project_name, role) or ""
         except RuntimeError as exc:
             return LocalRuntimeReadResult(engine, project_name, role, path, "", command, 127, "", str(exc))
         if not container_id:
+            stopped_container_id = find_local_runtime_project_container(engine, project_name, role)
+            if stopped_container_id:
+                logs_result = read_local_runtime_logs(engine, project_name, role, stopped_container_id)
+                return LocalRuntimeReadResult(
+                    engine,
+                    project_name,
+                    role,
+                    path,
+                    stopped_container_id,
+                    logs_result.command,
+                    1,
+                    "",
+                    logs_result.stdout or logs_result.stderr or f"{role} container exited before {path} was ready.",
+                )
             last_stderr = f"No running {role} container found for project {project_name}."
             time.sleep(1)
             continue
@@ -683,6 +698,10 @@ def read_local_runtime_file(
         last_stderr = completed.stderr
         logs_result = read_local_runtime_logs(engine, project_name, role, container_id)
         if logs_result.returncode == 0 and local_runtime_logs_are_complete(logs_result.stdout):
+            if requires_response_file:
+                last_stderr = logs_result.stdout or logs_result.stderr or f"{path} was not ready after the {role} container completed."
+                time.sleep(1)
+                continue
             return LocalRuntimeReadResult(engine, project_name, role, path, container_id, logs_result.command, logs_result.returncode, logs_result.stdout, logs_result.stderr)
         time.sleep(1)
     return LocalRuntimeReadResult(engine, project_name, role, path, container_id, command, 1, "", last_stderr)
@@ -709,9 +728,13 @@ def local_runtime_logs_are_complete(logs: str) -> bool:
 
 
 def local_runtime_response_is_ready(path: str, text: str) -> bool:
-    if path.endswith("/.runpod_agentic/response.txt"):
+    if local_runtime_path_requires_ready_response(path):
         return "[crag-agent] complete" in text
     return True
+
+
+def local_runtime_path_requires_ready_response(path: str) -> bool:
+    return path.endswith("/.runpod_agentic/response.txt")
 
 
 def find_local_runtime_container(engine: str, project_name: str, role: str, desired_hash: str | None = None) -> str | None:
@@ -742,6 +765,13 @@ def list_local_runtime_project_containers(engine: str, project_name: str) -> lis
         if container_id and name.startswith(f"{project_name}-"):
             containers.append(container_id)
     return containers
+
+
+def find_local_runtime_project_container(engine: str, project_name: str, role: str) -> str | None:
+    for container_id in list_local_runtime_project_containers(engine, project_name):
+        if inspect_container_role(engine, container_id) == role:
+            return container_id
+    return None
 
 
 def ps_args_for_engine(engine: str, *, all_containers: bool = False) -> list[str]:

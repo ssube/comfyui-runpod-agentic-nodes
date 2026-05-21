@@ -967,18 +967,22 @@ class RunOnRunpodNode:
             except Exception as exc:
                 result = {"status": "failed", "mode": mode, "error": str(exc), "errors": str(exc)}
             output = (json.dumps(result, indent=2, sort_keys=True), str(result.get("response") or ""), str(result.get("errors") or ""))
-            return comfy_output(output, workflow_graph)
+            return comfy_output(output, workflow_graph, self.RETURN_NAMES)
         plan = Planner().build(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph)
         progress.set_total(max(1, len(plan.actions)))
         progress.update("plan")
         output = (json.dumps(plan.to_dict(), indent=2, sort_keys=True), "", "")
-        return comfy_output(output, workflow_graph)
+        return comfy_output(output, workflow_graph, self.RETURN_NAMES)
 
 
-def comfy_output(result: tuple[str, ...], workflow_graph: Any):
+def comfy_output(result: tuple[str, ...], workflow_graph: Any, names: tuple[str, ...] | None = None):
     if workflow_graph is None:
         return result
-    return {"ui": {"text": [result[0]]}, "result": result}
+    ui: dict[str, list[str]] = {"text": [result[0]]}
+    if names is not None:
+        for name, value in zip(names, result):
+            ui[name] = [value]
+    return {"ui": ui, "result": result}
 
 
 class ComfyProgress:
@@ -1160,7 +1164,7 @@ class RunLocalContainersNode:
             result_payload["keep_alive"] = json.loads(keep_alive_result.to_text())
         errors = "\n".join(part for part in (result.stderr, response_errors, keep_alive_result.stderr if keep_alive_result else "") if part)
         output = (json.dumps(result_payload, indent=2, sort_keys=True), response, errors, compose_yaml, saved_path)
-        return comfy_output(output, workflow_graph)
+        return comfy_output(output, workflow_graph, self.RETURN_NAMES)
 
 
 def populate_local_volume_ids(workflow_graph: Any) -> Any:

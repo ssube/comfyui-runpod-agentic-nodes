@@ -17,6 +17,7 @@ from comfyui_runpod_agentic.local_runtime import (
     list_local_runtime_project_containers,
     local_resource_desired_hash,
     local_runtime_response_is_ready,
+    read_local_runtime_file,
     resolve_local_secret_placeholder,
 )
 from comfyui_runpod_agentic.nodes import (
@@ -512,6 +513,44 @@ def test_apply_node_reads_response_file_after_up(monkeypatch, tmp_path):
     assert ["docker", "exec", "agent1", "cat", "/workspace/result.txt"] in calls
 
 
+def test_apply_node_waits_for_agent_response_instead_of_returning_startup_logs(monkeypatch, tmp_path):
+    deployment = build_local_runtime_deployment()
+    apply_path = tmp_path / "up.yaml"
+    cat_calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal cat_calls
+        if command[:3] == ["docker", "ps", "--format"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout='[{"Config":{"Labels":{"comfyui-runpod-agentic.role":"agent"}}}]', stderr="")
+        if command == ["docker", "exec", "agent1", "cat", "/workspace/.runpod_agentic/response.txt"]:
+            cat_calls += 1
+            if cat_calls == 1:
+                return SimpleNamespace(returncode=1, stdout="", stderr="cat: missing\n")
+            return SimpleNamespace(returncode=0, stdout="agent reply\n[crag-agent] complete status=0\n", stderr="")
+        if command == ["docker", "logs", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout="[crag-local-runtime] startup commands complete\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.time.sleep", lambda _seconds: None)
+
+    _result_text, response, errors, _compose_yaml, _saved_path = RunLocalContainersNode().apply(
+        deployment,
+        engine="docker",
+        project_name="crag-node",
+        output_path=str(apply_path),
+        action="apply",
+        response_path="/workspace/.runpod_agentic/response.txt",
+        response_timeout_seconds=1,
+    )
+
+    assert response == "agent reply\n[crag-agent] complete status=0\n"
+    assert errors == ""
+    assert cat_calls == 2
+
+
 def test_apply_node_falls_back_to_completed_container_logs(monkeypatch, tmp_path):
     deployment = build_local_runtime_deployment()
     apply_path = tmp_path / "up.yaml"
@@ -541,6 +580,35 @@ def test_apply_node_falls_back_to_completed_container_logs(monkeypatch, tmp_path
 
     assert "script response" in response
     assert errors == ""
+
+
+def test_read_local_runtime_file_fails_fast_when_container_exited(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command == ["docker", "ps", "--format", "{{json .}}"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command == ["docker", "ps", "-a", "--format", "{{json .}}"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout='[{"Config":{"Labels":{"comfyui-runpod-agentic.role":"agent"}}}]', stderr="")
+        if command == ["docker", "logs", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout="/bin/bash: line 8: ncu: command not found\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result = read_local_runtime_file("docker", "crag-node", "agent", "/workspace/.runpod_agentic/response.txt", timeout_seconds=900)
+
+    assert result.returncode == 1
+    assert "ncu: command not found" in result.stderr
+    assert calls == [
+        ["docker", "ps", "--format", "{{json .}}"],
+        ["docker", "ps", "-a", "--format", "{{json .}}"],
+        ["docker", "inspect", "agent1"],
+        ["docker", "logs", "agent1"],
+    ]
 
 
 def test_missing_containerd_runtime_returns_error_result(monkeypatch, tmp_path):
