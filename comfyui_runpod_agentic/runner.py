@@ -104,6 +104,12 @@ class RunpodRunner:
         if wait and response:
             status = "completed"
         result = {"run_id": plan.run_id, "status": status, "pods": {name: pod.get("id") for name, pod in created.items()}, "response": response, "errors": errors, "plan": plan.to_dict()}
+        terminal_urls = terminal_urls_for_pods(plan, created)
+        if terminal_urls:
+            result["terminal_urls"] = terminal_urls
+            terminal_auth = terminal_auth_for_plan(plan)
+            if terminal_auth:
+                result["terminal_auth"] = terminal_auth
         if keep_alive_result:
             result["keep_alive"] = keep_alive_result
         return result
@@ -1024,6 +1030,45 @@ def public_http_endpoint(pod: dict[str, Any]) -> str | None:
             scheme = "https" if str(port.get("type") or port.get("protocol")).lower() == "https" else "http"
             return f"{scheme}://{host}:{int(public)}"
     return None
+
+
+def public_http_endpoint_for_private_port(pod: dict[str, Any], private_port: int) -> str | None:
+    ports = ((pod.get("runtime") or {}).get("ports") or pod.get("ports") or [])
+    for port in ports:
+        private = port.get("privatePort") or port.get("containerPort") or port.get("container_port")
+        if int(private or 0) != int(private_port):
+            continue
+        public = port.get("publicPort") or port.get("public_port")
+        host = port.get("ip") or port.get("host") or port.get("hostname")
+        if host and public:
+            scheme = "https" if str(port.get("type") or port.get("protocol")).lower() == "https" else "http"
+            return f"{scheme}://{host}:{int(public)}"
+    return None
+
+
+def terminal_urls_for_pods(plan: DeploymentPlan, pods: dict[str, dict[str, Any]]) -> dict[str, str]:
+    urls: dict[str, str] = {}
+    for resource in plan.resources:
+        env = resource.pod_input.get("env") or {}
+        if env.get("CRAG_WEB_TERMINAL") != "1":
+            continue
+        endpoint = public_http_endpoint_for_private_port(pods.get(resource.name, {}), int(env.get("CRAG_WEB_TERMINAL_PORT") or 7681))
+        if endpoint:
+            urls[resource.role] = endpoint
+    return urls
+
+
+def terminal_auth_for_plan(plan: DeploymentPlan) -> dict[str, dict[str, str]]:
+    auth: dict[str, dict[str, str]] = {}
+    for resource in plan.resources:
+        env = resource.pod_input.get("env") or {}
+        if env.get("CRAG_WEB_TERMINAL") != "1" or env.get("CRAG_WEB_TERMINAL_AUTH_MODE") != "password":
+            continue
+        username = str(env.get("CRAG_WEB_TERMINAL_USERNAME") or "")
+        password = str(env.get("CRAG_WEB_TERMINAL_PASSWORD") or "")
+        if username and password:
+            auth[resource.role] = {"username": username, "password": password}
+    return auth
 
 
 def readiness_probe_paths(role: str, env: dict[str, Any]) -> list[str]:

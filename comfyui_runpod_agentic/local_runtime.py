@@ -117,6 +117,9 @@ def compose_yaml_for_plan(plan: DeploymentPlan, *, project_name: str = "crag-loc
             volume_name, mount_path, retention_policy = volume_mount
             service["volumes"] = [f"{volume_name}:{mount_path}"]
             volumes[volume_name] = {"labels": {"comfyui-runpod-agentic.retention_policy": retention_policy}}
+        port_mappings = local_port_mappings(resource)
+        if port_mappings:
+            service["ports"] = port_mappings
         services[service_name] = service
     compose = {
         "name": project_name,
@@ -339,6 +342,19 @@ def volume_mount_for_resource(resource: ResourcePlan) -> tuple[str, str, str] | 
         return None
     retention_policy = resource.storage_retention_policy or "preserve"
     return (compose_service_name_from_text(str(volume_id)), str(mount_path), retention_policy)
+
+
+def local_port_mappings(resource: ResourcePlan) -> list[str]:
+    if resource.role != "agent":
+        return []
+    env = resource.pod_input.get("env") or {}
+    if env.get("CRAG_WEB_TERMINAL") != "1":
+        return []
+    container_port = int(env.get("CRAG_WEB_TERMINAL_PORT") or 7681)
+    host_port = int(env.get("CRAG_WEB_TERMINAL_HOST_PORT") or container_port)
+    if host_port <= 0:
+        return []
+    return [f"127.0.0.1:{host_port}:{container_port}"]
 
 
 def compose_service_name(resource: ResourcePlan) -> str:

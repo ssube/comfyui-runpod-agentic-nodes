@@ -46,12 +46,14 @@ from .specs import (
     SSHCommand,
     SSHCommandSpec,
     VectorDatabaseSpec,
+    WebTerminalSpec,
 )
 from .types import (
     RUNPOD_AGENT_SKILLS,
     RUNPOD_APP_AGENT,
     RUNPOD_APP_BROWSER,
     RUNPOD_APP_SQL_DATABASE,
+    RUNPOD_APP_TERMINAL,
     RUNPOD_APP_VECTOR_DATABASE,
     RUNPOD_COMMAND_SSH,
     RUNPOD_DEPLOYMENT_SPEC,
@@ -156,6 +158,75 @@ class BrowserNode:
                 meta(node_id, browser),
             ),
         )
+
+
+class WebTerminalNode:
+    CATEGORY = "Runpod/Apps"
+    RETURN_TYPES = (RUNPOD_APP_TERMINAL,)
+    RETURN_NAMES = ("terminal",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "shell": ("STRING", {"default": "/bin/bash"}),
+                "port": ("INT", {"default": 7681, "min": 1, "max": 65535}),
+                "host_port": ("INT", {"default": 7681, "min": 0, "max": 65535}),
+                "auth_mode": (["password", "none"],),
+                "username": ("STRING", {"default": "crag"}),
+                "password": ("STRING", {"default": "crag-terminal"}),
+            },
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, shell: str = "/bin/bash", port: int = 7681, host_port: int = 7681, auth_mode: str = "password", username: str = "crag", password: str = "crag-terminal", node_id: str | None = None):
+        terminal_port = int(port)
+        local_host_port = int(host_port)
+        terminal_shell = shell.strip() or "/bin/bash"
+        terminal_auth = "none" if auth_mode == "none" else "password"
+        terminal_user = username.strip() or "crag"
+        terminal_password = password.strip()
+        if terminal_auth == "password" and not terminal_password:
+            raise ValidationError("Web Terminal password is required when auth_mode=password.")
+        contract = RuntimeContract(
+            EnvPatch(
+                {
+                    "CRAG_WEB_TERMINAL": "1",
+                    "CRAG_WEB_TERMINAL_PORT": str(terminal_port),
+                    "CRAG_WEB_TERMINAL_HOST_PORT": str(local_host_port),
+                    "CRAG_WEB_TERMINAL_AUTH_MODE": terminal_auth,
+                    "CRAG_WEB_TERMINAL_USERNAME": terminal_user,
+                    "CRAG_WEB_TERMINAL_PASSWORD": terminal_password,
+                    "CRAG_WEB_TERMINAL_SHELL": terminal_shell,
+                }
+            ),
+            ports=[PortSpec("terminal", terminal_port, "http", True)],
+            commands=[RuntimeCommand(web_terminal_command(terminal_port, terminal_shell, terminal_auth, terminal_user, terminal_password), "before_start", -25000, "fail", 0, "web_terminal")],
+        )
+        return (WebTerminalSpec("web_terminal", terminal_shell, terminal_port, local_host_port, terminal_auth, terminal_user, terminal_password, contract, meta(node_id, "Web Terminal")),)
+
+
+def web_terminal_command(port: int, shell: str, auth_mode: str, username: str, password: str) -> str:
+    credential = f" -c {shlex.quote(username + ':' + password)}" if auth_mode == "password" else ""
+    return "\n".join(
+        [
+            "set -e",
+            "if ! command -v ttyd >/dev/null 2>&1; then",
+            "  if command -v apt-get >/dev/null 2>&1; then",
+            "    apt-get update",
+            "    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl ttyd || true",
+            "  fi",
+            "fi",
+            "if ! command -v ttyd >/dev/null 2>&1; then",
+            "  curl -fsSL -o /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
+            "  chmod +x /usr/local/bin/ttyd",
+            "fi",
+            'mkdir -p "${WORKSPACE_DIR:-/workspace}/.runpod_agentic"',
+            f"nohup ttyd -W -p {int(port)}{credential} {shlex.quote(shell)} > \"${{WORKSPACE_DIR:-/workspace}}/.runpod_agentic/ttyd.log\" 2>&1 &",
+            'echo $! > "${WORKSPACE_DIR:-/workspace}/.runpod_agentic/ttyd.pid"',
+        ]
+    )
 
 
 class LLMServerNode:
@@ -533,11 +604,11 @@ class AgentNode:
     def INPUT_TYPES(cls):
         return {
             "required": {"harness": (["Codex", "Claude", "OpenCode", "Hermes", "Pi"],), "model": ("STRING", {"default": ""}), "startup_mode": (["wait_for_commands", "auto_start", "manual"],), "workspace_path": ("STRING", {"default": "/workspace"}), "system_prompt": ("STRING", {"multiline": True, "default": ""})},
-            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm": (RUNPOD_LLM,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,), "skills": (RUNPOD_AGENT_SKILLS,)},
+            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm": (RUNPOD_LLM,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,), "skills": (RUNPOD_AGENT_SKILLS,), "terminal": (RUNPOD_APP_TERMINAL,)},
             "hidden": {"node_id": "UNIQUE_ID", "workflow_graph": "PROMPT"},
         }
 
-    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", system_prompt: str = "", browser=None, llm=None, sql_database=None, vector_database=None, mcp_servers=None, skills=None, node_id: str | None = None, workflow_graph: Any = None):
+    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", system_prompt: str = "", browser=None, llm=None, sql_database=None, vector_database=None, mcp_servers=None, skills=None, terminal=None, node_id: str | None = None, workflow_graph: Any = None):
         llm_api = llm if isinstance(llm, LLMApiSpec) else None
         llm_server = llm if isinstance(llm, LLMServerSpec) else None
         capabilities = []
@@ -566,7 +637,14 @@ class AgentNode:
                 files={**contract.files, **skills.runtime_contract.files},
                 commands=[*contract.commands, *skills.runtime_contract.commands],
             )
-        return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, contract, capabilities, None, meta(node_id, harness)),)
+        if terminal:
+            contract = RuntimeContract(
+                EnvPatch({**contract.env.values, **terminal.runtime_contract.env.values}, [*contract.env.secrets, *terminal.runtime_contract.env.secrets]),
+                ports=[*contract.ports, *terminal.runtime_contract.ports],
+                files={**contract.files, **terminal.runtime_contract.files},
+                commands=[*contract.commands, *terminal.runtime_contract.commands],
+            )
+        return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, terminal, contract, capabilities, None, meta(node_id, harness)),)
 
 
 class NetworkStorageNode:
@@ -880,11 +958,19 @@ class RunOnRunpodNode:
                 result = runner.run(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
             except Exception as exc:
                 result = {"status": "failed", "mode": mode, "error": str(exc), "errors": str(exc)}
-            return (json.dumps(result, indent=2, sort_keys=True), str(result.get("response") or ""), str(result.get("errors") or ""))
+            output = (json.dumps(result, indent=2, sort_keys=True), str(result.get("response") or ""), str(result.get("errors") or ""))
+            return comfy_output(output, workflow_graph)
         plan = Planner().build(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph)
         progress.set_total(max(1, len(plan.actions)))
         progress.update("plan")
-        return (json.dumps(plan.to_dict(), indent=2, sort_keys=True), "", "")
+        output = (json.dumps(plan.to_dict(), indent=2, sort_keys=True), "", "")
+        return comfy_output(output, workflow_graph)
+
+
+def comfy_output(result: tuple[str, ...], workflow_graph: Any):
+    if workflow_graph is None:
+        return result
+    return {"ui": {"text": [result[0]]}, "result": result}
 
 
 class ComfyProgress:
@@ -1050,10 +1136,17 @@ class RunLocalContainersNode:
                 os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
         result_payload = json.loads(result.to_text())
         result_payload["reused"] = reused
+        terminal_urls = local_terminal_urls(plan)
+        if terminal_urls:
+            result_payload["terminal_urls"] = terminal_urls
+            terminal_auth = local_terminal_auth(plan)
+            if terminal_auth:
+                result_payload["terminal_auth"] = terminal_auth
         if keep_alive_result:
             result_payload["keep_alive"] = json.loads(keep_alive_result.to_text())
         errors = "\n".join(part for part in (result.stderr, response_errors, keep_alive_result.stderr if keep_alive_result else "") if part)
-        return (json.dumps(result_payload, indent=2, sort_keys=True), response, errors, compose_yaml, saved_path)
+        output = (json.dumps(result_payload, indent=2, sort_keys=True), response, errors, compose_yaml, saved_path)
+        return comfy_output(output, workflow_graph)
 
 
 def populate_local_volume_ids(workflow_graph: Any) -> Any:
@@ -1071,6 +1164,31 @@ def populate_local_volume_ids(workflow_graph: Any) -> Any:
         volume_name = str(inputs.get("volume_name") or "crag-workspace")
         inputs["network_volume_id"] = generated_volume_id(str(node_id), volume_name)
     return workflow_graph
+
+
+def local_terminal_urls(plan) -> dict[str, str]:
+    urls = {}
+    for resource in plan.resources:
+        env = resource.pod_input.get("env") or {}
+        if env.get("CRAG_WEB_TERMINAL") != "1":
+            continue
+        host_port = int(env.get("CRAG_WEB_TERMINAL_HOST_PORT") or env.get("CRAG_WEB_TERMINAL_PORT") or 7681)
+        if host_port > 0:
+            urls[resource.role] = f"http://127.0.0.1:{host_port}"
+    return urls
+
+
+def local_terminal_auth(plan) -> dict[str, dict[str, str]]:
+    auth = {}
+    for resource in plan.resources:
+        env = resource.pod_input.get("env") or {}
+        if env.get("CRAG_WEB_TERMINAL") != "1" or env.get("CRAG_WEB_TERMINAL_AUTH_MODE") != "password":
+            continue
+        username = str(env.get("CRAG_WEB_TERMINAL_USERNAME") or "")
+        password = str(env.get("CRAG_WEB_TERMINAL_PASSWORD") or "")
+        if username and password:
+            auth[resource.role] = {"username": username, "password": password}
+    return auth
 
 
 class LogsNode:
@@ -1158,6 +1276,7 @@ def collect_remote_agent_logs(store, run_id: str, runpod_client, ssh_client) -> 
 NODE_CLASSES = [
     AgentNode,
     BrowserNode,
+    WebTerminalNode,
     LLMServerNode,
     LLMApiNode,
     LocalSQLDatabaseNode,

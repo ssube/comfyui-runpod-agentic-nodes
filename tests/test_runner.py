@@ -18,6 +18,7 @@ from comfyui_runpod_agentic.nodes import (
     SkillFrameworkNode,
     SkillNode,
     SSHCommandNode,
+    WebTerminalNode,
 )
 from comfyui_runpod_agentic.planner import Planner
 from comfyui_runpod_agentic.runner import (
@@ -138,6 +139,19 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
     commands = runner.state_store.list_commands(result["run_id"])
     assert len(commands) == 1
     assert any(command.endswith("pi --help >/dev/null") for command in ssh.commands)
+
+
+def test_runner_result_includes_web_terminal_url(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
+    deployment = DeployNode().build(agent)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply")
+
+    assert result["terminal_urls"] == {"agent": "http://127.0.0.1:7681"}
+    assert result["terminal_auth"] == {"agent": {"username": "crag", "password": "secret"}}
 
 
 def test_runner_reports_progress(tmp_path, monkeypatch):

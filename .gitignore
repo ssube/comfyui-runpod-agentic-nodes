@@ -12,6 +12,7 @@ dist/
 coverage.xml
 htmlcov/
 artifacts/
+artifacts/comfy-local-server/comfyui.pid
 .env
 .env.*
 .env.d/

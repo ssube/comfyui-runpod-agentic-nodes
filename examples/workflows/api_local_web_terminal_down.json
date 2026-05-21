@@ -1,0 +1,56 @@
+{
+  "1": {
+    "class_type": "WebTerminal",
+    "inputs": {
+      "shell": "/bin/bash",
+      "port": 7681,
+      "host_port": 7681,
+      "auth_mode": "password",
+      "username": "crag",
+      "password": "crag-terminal"
+    }
+  },
+  "2": {
+    "class_type": "Agent",
+    "inputs": {
+      "harness": "Pi",
+      "model": "manual-terminal",
+      "startup_mode": "manual",
+      "workspace_path": "/workspace",
+      "system_prompt": "Manual terminal demo.",
+      "terminal": [
+        "1",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "Deploy",
+    "inputs": {
+      "app": [
+        "2",
+        0
+      ]
+    }
+  },
+  "4": {
+    "class_type": "RunLocalContainers",
+    "inputs": {
+      "prompt": "Stop the interactive ttyd terminal demo.",
+      "deployment": [
+        "3",
+        0
+      ],
+      "engine": "containerd",
+      "project_name": "crag-local-web-terminal-demo",
+      "output_path": "artifacts/local-runtime/web-terminal-demo-compose.yaml",
+      "action": "terminate",
+      "use_sudo": true,
+      "timeout_seconds": 900,
+      "response_role": "agent",
+      "response_path": "",
+      "response_timeout_seconds": 0,
+      "reuse_policy": "reuse_matching"
+    }
+  }
+}

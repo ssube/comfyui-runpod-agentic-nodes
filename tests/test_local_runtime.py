@@ -26,6 +26,7 @@ from comfyui_runpod_agentic.nodes import (
     NetworkStorageNode,
     RunLocalContainersNode,
     SSHCommandNode,
+    WebTerminalNode,
     populate_local_volume_ids,
 )
 from comfyui_runpod_agentic.planner import Planner
@@ -69,6 +70,19 @@ def test_compose_yaml_preserves_volume_retention_intent():
     compose = yaml.safe_load(compose_yaml_for_plan(plan))
 
     assert compose["volumes"]["vol-workspace"]["labels"]["comfyui-runpod-agentic.retention_policy"] == "delete_when_unused"
+
+
+def test_compose_yaml_publishes_web_terminal_only_for_agent():
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", terminal=terminal)[0]
+    deployment = DeployNode().build(agent)[0]
+    plan = Planner().build(deployment)
+
+    compose = yaml.safe_load(compose_yaml_for_plan(plan, project_name="crag-terminal"))
+    agent_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
+
+    assert agent_service["ports"] == ["127.0.0.1:8765:7681"]
+    assert "ttyd" in agent_service["command"]
 
 
 def test_local_runtime_resolves_ollama_env_file_secret(tmp_path, monkeypatch):

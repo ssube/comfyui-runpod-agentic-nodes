@@ -173,6 +173,7 @@ Apps and services:
 
 - `Agent`: composition point for browser, LLM, SQL, vector, MCP resources, skills, and the agent system prompt.
 - `Browser`: Neko or Playwright.
+- `Web Terminal`: opt-in ttyd terminal for the agent container. The frontend extension opens an in-page terminal panel when a run returns a terminal URL.
 - `LLM Server`: Ollama or vLLM own-pod service.
 - `LLM API`: Codex/OpenAI, Claude/Anthropic, or Ollama Cloud env contract.
 - `MCP Server`: chainable stdio/http/sse MCP server definitions exposed to the agent as `MCP_SERVERS_JSON` and `.runpod_agentic/mcp_servers.json`.
@@ -218,6 +219,17 @@ Keep Alive(mode=time, value=30 minutes, action=stop)
 Deploy(app=Agent, network_storage=Network Storage, commands=SSH Command, keep_alive=Keep Alive)
 Run on Runpod(mode=plan or apply_and_wait, prompt="Implement the requested change.")
 ```
+
+### Local Web Terminal
+
+```text
+Web Terminal(shell=/bin/bash, port=7681, host_port=7681, auth=password)
+Agent(harness=Pi, startup_mode=manual, terminal=Web Terminal)
+Deploy(app=Agent)
+Run Local Containers(action=apply, prompt="Launch an interactive terminal.")
+```
+
+The local run result includes `terminal_urls.agent`, and the optional frontend extension opens that URL in an in-page terminal panel. The example pair is `examples/workflows/api_local_web_terminal_up.json` and `examples/workflows/api_local_web_terminal_down.json`.
 
 Plan order:
 

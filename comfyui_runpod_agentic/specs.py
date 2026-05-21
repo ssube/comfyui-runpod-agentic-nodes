@@ -76,6 +76,19 @@ class BrowserSpec:
 
 
 @dataclass(frozen=True)
+class WebTerminalSpec:
+    kind: Literal["web_terminal"]
+    shell: str
+    port: int
+    host_port: int
+    auth_mode: Literal["password", "none"]
+    username: str
+    password: str
+    runtime_contract: RuntimeContract
+    meta: SpecMeta = field(default_factory=SpecMeta)
+
+
+@dataclass(frozen=True)
 class LLMServerSpec:
     kind: Literal["llm_server"]
     engine: Literal["ollama", "vllm"]
@@ -180,6 +193,7 @@ class AgentSpec:
     vector_database: VectorDatabaseSpec | None = None
     mcp_servers: MCPServerSpec | None = None
     skills: SkillSpec | None = None
+    terminal: WebTerminalSpec | None = None
     runtime_contract: RuntimeContract = field(default_factory=RuntimeContract)
     required_image_capabilities: list[str] = field(default_factory=list)
     template_key: str | None = None

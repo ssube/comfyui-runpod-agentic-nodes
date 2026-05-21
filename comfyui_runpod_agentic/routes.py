@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import base64
 from typing import Any
+from urllib.parse import quote, urlencode
 
 from .runpod_client import RunpodClientProtocol
 from .state_store import StateStore
@@ -119,8 +122,102 @@ def register_routes(server: Any, handlers: RouteHandlers) -> None:
     async def turn(request):
         return _json_response(handlers.turn(request.match_info["run_id"]))
 
+    @routes.route("*", "/runpod-agentic/terminal/{port}/{tail:.*}")
+    async def terminal_proxy(request):
+        return await _terminal_proxy(request)
+
 
 def _json_response(payload: dict[str, Any]):
     from aiohttp import web
 
     return web.json_response(payload)
+
+
+def terminal_proxy_path(url: str) -> str:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("Terminal URL must use http or https.")
+    if parsed.hostname not in {"127.0.0.1", "localhost"}:
+        raise ValueError("Only local terminal URLs can be proxied.")
+    if parsed.port is None or parsed.port < 1 or parsed.port > 65535:
+        raise ValueError("Terminal URL must include a valid port.")
+    path = quote(parsed.path.lstrip("/"), safe="/")
+    query = f"?{parsed.query}" if parsed.query else ""
+    return f"/runpod-agentic/terminal/{parsed.port}/{path}{query}"
+
+
+async def _terminal_proxy(request):
+    from aiohttp import ClientSession, web
+
+    port = int(request.match_info["port"])
+    if port < 1 or port > 65535:
+        raise web.HTTPBadRequest(text="Invalid terminal port.")
+    tail = request.match_info.get("tail", "")
+    query = request.query.copy()
+    auth = query.pop("__crag_terminal_auth", None)
+    query_string = urlencode(list(query.items()))
+    target = f"http://127.0.0.1:{port}/{tail}"
+    if query_string:
+        target = f"{target}?{query_string}"
+
+    if request.headers.get("upgrade", "").lower() == "websocket":
+        return await _terminal_websocket_proxy(request, target, auth)
+
+    headers = {key: value for key, value in request.headers.items() if key.lower() not in {"host", "content-length", "connection", "upgrade"}}
+    if auth:
+        headers["Authorization"] = terminal_authorization_header(auth)
+    async with ClientSession() as session:
+        async with session.request(request.method, target, headers=headers, data=await request.read(), allow_redirects=False) as response:
+            body = await response.read()
+            proxy_headers = {key: value for key, value in response.headers.items() if key.lower() not in {"content-length", "transfer-encoding", "connection", "content-encoding"}}
+            content_type = response.headers.get("content-type", "")
+            if "text/html" in content_type:
+                body = _inject_terminal_base(body, f"/runpod-agentic/terminal/{port}/")
+                proxy_headers["content-length"] = str(len(body))
+            return web.Response(status=response.status, headers=proxy_headers, body=body)
+
+
+async def _terminal_websocket_proxy(request, target: str, auth: str | None):
+    from aiohttp import ClientSession, WSMsgType, web
+
+    ws_response = web.WebSocketResponse()
+    await ws_response.prepare(request)
+    target = "ws://" + target.removeprefix("http://")
+
+    async with ClientSession() as session:
+        headers = {"Authorization": terminal_authorization_header(auth)} if auth else None
+        async with session.ws_connect(target, headers=headers) as upstream:
+            async def client_to_upstream():
+                async for msg in ws_response:
+                    if msg.type == WSMsgType.TEXT:
+                        await upstream.send_str(msg.data)
+                    elif msg.type == WSMsgType.BINARY:
+                        await upstream.send_bytes(msg.data)
+                    elif msg.type == WSMsgType.CLOSE:
+                        await upstream.close()
+
+            async def upstream_to_client():
+                async for msg in upstream:
+                    if msg.type == WSMsgType.TEXT:
+                        await ws_response.send_str(msg.data)
+                    elif msg.type == WSMsgType.BINARY:
+                        await ws_response.send_bytes(msg.data)
+                    elif msg.type == WSMsgType.CLOSE:
+                        await ws_response.close()
+
+            await asyncio.gather(client_to_upstream(), upstream_to_client(), return_exceptions=True)
+    return ws_response
+
+
+def _inject_terminal_base(body: bytes, base_path: str) -> bytes:
+    marker = b"<head>"
+    if marker not in body:
+        return body
+    return body.replace(marker, marker + f'<base href="{base_path}">'.encode(), 1)
+
+
+def terminal_authorization_header(auth: str) -> str:
+    base64.b64decode(auth, validate=True)
+    return f"Basic {auth}"

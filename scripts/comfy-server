@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+action="${1:-restart}"
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+python_bin="${PYTHON:-${repo_dir}/venv/bin/python}"
+comfy_dir="${COMFYUI_E2E_DIR:-/tmp/comfyui-runpod-e2e}"
+host="${COMFYUI_HOST:-127.0.0.1}"
+port="${COMFYUI_PORT:-8199}"
+state_dir="${COMFYUI_SERVER_STATE_DIR:-${repo_dir}/artifacts/comfy-local-server}"
+base_dir="${COMFYUI_BASE_DIR:-${state_dir}/base}"
+user_dir="${COMFYUI_USER_DIR:-${state_dir}/user}"
+pid_file="${COMFYUI_PID_FILE:-${state_dir}/comfyui.pid}"
+log_file="${COMFYUI_LOG_FILE:-${state_dir}/comfyui.log}"
+database_url="${COMFYUI_DATABASE_URL:-sqlite:///${user_dir}/comfyui.db}"
+
+is_running() {
+  local pid="${1:-}"
+  [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1
+}
+
+read_pid() {
+  [[ -f "$pid_file" ]] && tr -d '[:space:]' <"$pid_file"
+}
+
+find_server_pid() {
+  pgrep -f "${comfy_dir}/main.py.*--port ${port}" | head -n 1 || true
+}
+
+stop_server() {
+  local pid
+  pid="$(read_pid || true)"
+  if ! is_running "$pid"; then
+    pid="$(find_server_pid)"
+  fi
+  if ! is_running "$pid"; then
+    rm -f "$pid_file"
+    return 0
+  fi
+  kill "$pid"
+  for _ in {1..50}; do
+    if ! is_running "$pid"; then
+      rm -f "$pid_file"
+      return 0
+    fi
+    sleep 0.1
+  done
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+  rm -f "$pid_file"
+}
+
+start_server() {
+  local pid
+  pid="$(read_pid || true)"
+  if ! is_running "$pid"; then
+    pid="$(find_server_pid)"
+  fi
+  if is_running "$pid"; then
+    echo "$pid" >"$pid_file"
+    echo "ComfyUI already running on ${host}:${port} with pid ${pid}"
+    return 0
+  fi
+
+  mkdir -p "$state_dir" "$base_dir/custom_nodes" "$user_dir"
+  rm -f "$pid_file"
+  (
+    cd "$comfy_dir"
+    nohup setsid "$python_bin" "${comfy_dir}/main.py" \
+      --cpu \
+      --listen "$host" \
+      --port "$port" \
+      --base-directory "$base_dir" \
+      --user-directory "$user_dir" \
+      --database-url "$database_url" \
+      --disable-api-nodes \
+      --whitelist-custom-nodes comfyui-runpod-agentic \
+      --log-stdout \
+      >"$log_file" 2>&1 &
+    echo "$!" >"$pid_file"
+  )
+  pid="$(read_pid)"
+  echo "ComfyUI started on http://${host}:${port} with pid ${pid}"
+  echo "Log: ${log_file}"
+}
+
+case "$action" in
+  start)
+    start_server
+    ;;
+  stop)
+    stop_server
+    ;;
+  restart)
+    stop_server
+    start_server
+    ;;
+  status)
+    pid="$(read_pid || true)"
+    if ! is_running "$pid"; then
+      pid="$(find_server_pid)"
+    fi
+    if is_running "$pid"; then
+      echo "$pid" >"$pid_file"
+      echo "ComfyUI running on http://${host}:${port} with pid ${pid}"
+    else
+      echo "ComfyUI is not running"
+      exit 1
+    fi
+    ;;
+  *)
+    echo "Usage: $0 [start|stop|restart|status]" >&2
+    exit 2
+    ;;
+esac

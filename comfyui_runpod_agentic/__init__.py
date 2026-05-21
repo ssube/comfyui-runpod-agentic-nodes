@@ -23,11 +23,13 @@ from .nodes import (
     SSHCommandNode,
     StartupScriptNode,
     VectorDatabaseNode,
+    WebTerminalNode,
 )
 
 NODE_CLASS_MAPPINGS = {
     "Agent": AgentNode,
     "Browser": BrowserNode,
+    "WebTerminal": WebTerminalNode,
     "LLMServer": LLMServerNode,
     "LLMApi": LLMApiNode,
     "MCPServer": MCPServerNode,
@@ -55,6 +57,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Agent": "Agent",
     "Browser": "Browser",
+    "WebTerminal": "Web Terminal",
     "LLMServer": "LLM Server",
     "LLMApi": "LLM API",
     "MCPServer": "MCP Server",

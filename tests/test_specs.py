@@ -21,6 +21,7 @@ from comfyui_runpod_agentic.nodes import (
     SkillFrameworkNode,
     SkillNode,
     SSHCommandNode,
+    WebTerminalNode,
 )
 from comfyui_runpod_agentic.setup_commands import container_snapshot_command, harness_install_command
 from comfyui_runpod_agentic.validation import ValidationError
@@ -35,6 +36,7 @@ def test_user_facing_core_node_names():
     assert NODE_DISPLAY_NAME_MAPPINGS["StartupScript"] == "Startup Script"
     assert NODE_DISPLAY_NAME_MAPPINGS["ComposeYAML"] == "Compose YAML"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunLocalContainers"] == "Run Local Containers"
+    assert NODE_DISPLAY_NAME_MAPPINGS["WebTerminal"] == "Web Terminal"
     assert NODE_DISPLAY_NAME_MAPPINGS["RemoteSQLDatabase"] == "Remote SQL Database"
     assert NODE_DISPLAY_NAME_MAPPINGS["LocalSQLDatabase"] == "Local SQL Database"
     assert "RunpodPod" not in NODE_DISPLAY_NAME_MAPPINGS
@@ -73,6 +75,30 @@ def test_deploy_is_graph_only_and_runpod_terminal_owns_placement_options():
     assert "engine" in local_required
     assert "reuse_policy" in local_required
     assert not {"gpu_type_id", "gpu_count", "cloud_type", "container_disk_gb", "volume_gb", "expose_public_ip"} & set(local_required)
+
+
+def test_web_terminal_adds_ttyd_contract_to_agent():
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
+
+    assert agent.terminal == terminal
+    assert agent.runtime_contract.ports[0].name == "terminal"
+    assert agent.runtime_contract.ports[0].container_port == 7681
+    assert "ttyd" in agent.runtime_contract.commands[-1].command
+    assert agent.runtime_contract.env.values["CRAG_WEB_TERMINAL_HOST_PORT"] == "8765"
+
+
+def test_run_nodes_emit_comfy_ui_text_when_called_by_graph(tmp_path):
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
+    deployment = DeployNode().build(agent)[0]
+
+    result = RunLocalContainersNode().apply(deployment, action="plan", output_path=str(tmp_path / "compose.yaml"), workflow_graph={})
+
+    assert result["ui"]["text"]
+    assert result["result"][0] == result["ui"]["text"][0]
+    payload = json.loads(result["result"][0])
+    assert payload["terminal_auth"] == {"agent": {"username": "crag", "password": "secret"}}
 
 
 def test_runpod_catalog_options_become_dropdowns(monkeypatch):

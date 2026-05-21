@@ -1,9 +1,10 @@
 import json
+from binascii import Error
 
 import pytest
 
 from comfyui_runpod_agentic import cleanup, schema_check
-from comfyui_runpod_agentic.routes import RouteHandlers, register_routes, route_payload
+from comfyui_runpod_agentic.routes import RouteHandlers, register_routes, route_payload, terminal_authorization_header, terminal_proxy_path
 
 
 class FakeRouteStore:
@@ -88,6 +89,23 @@ def test_route_handlers_report_missing_run_and_invalid_cleanup_action():
 
 def test_register_routes_noops_without_prompt_server():
     register_routes(object(), RouteHandlers(FakeRouteStore(), FakeRouteClient()))
+
+
+def test_terminal_proxy_path_accepts_only_local_terminal_urls():
+    assert terminal_proxy_path("http://127.0.0.1:7681/?arg=1") == "/runpod-agentic/terminal/7681/?arg=1"
+    assert terminal_proxy_path("http://localhost:8765/term/ws") == "/runpod-agentic/terminal/8765/term/ws"
+
+    with pytest.raises(ValueError, match="Only local"):
+        terminal_proxy_path("https://example.com:7681/")
+    with pytest.raises(ValueError, match="valid port"):
+        terminal_proxy_path("http://127.0.0.1/")
+
+
+def test_terminal_authorization_header_validates_base64():
+    assert terminal_authorization_header("Y3JhZzpzZWNyZXQ=") == "Basic Y3JhZzpzZWNyZXQ="
+
+    with pytest.raises(Error):
+        terminal_authorization_header("not base64")
 
 
 def test_cleanup_managed_pods_stops_or_terminates_matching_pods(monkeypatch):

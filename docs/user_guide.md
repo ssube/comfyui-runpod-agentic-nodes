@@ -391,6 +391,23 @@ Output:
 | --- | --- |
 | `browser` | `RUNPOD_APP_BROWSER` |
 
+### Web Terminal
+
+`Web Terminal` adds an opt-in `ttyd` terminal to the agent container. It is intended for interactive debugging and should be protected when exposed outside localhost.
+
+Inputs:
+
+| Input | Type / Choices | Use |
+| --- | --- | --- |
+| `shell` | string | Shell or command launched by `ttyd`, default `/bin/bash`. |
+| `port` | integer | Container HTTP port for `ttyd`, default `7681`. |
+| `host_port` | integer | Local runtime localhost port. Set `0` to avoid local host publishing. |
+| `auth_mode` | `password`, `none` | Whether ttyd requires basic auth. |
+| `username` | string | Basic auth username. |
+| `password` | string | Basic auth password. |
+
+Connect `Web Terminal` to `Agent.terminal`. Run results include `terminal_urls.agent`; the optional Comfy frontend extension opens that URL in an in-page terminal panel and adds an `Open Web Terminal` button to the run node.
+
 `Neko` only supports `own_pod`. `Playwright` can run as `same_pod` when the agent image supports it, or as an `own_pod` remote browser service.
 
 ### LLM API
