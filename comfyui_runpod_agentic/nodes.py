@@ -209,7 +209,7 @@ class WebTerminalNode:
 
 def web_terminal_command(port: int, shell: str, auth_mode: str, username: str, password: str) -> str:
     credential = f" -c {shlex.quote(username + ':' + password)}" if auth_mode == "password" else ""
-    terminal_command = "exec " + (shell.strip() or "/bin/bash")
+    terminal_command = shell.strip() or "/bin/bash"
     return "\n".join(
         [
             "set -e",
@@ -909,6 +909,12 @@ class RunOnRunpodNode:
     OUTPUT_NODE = True
 
     @classmethod
+    def IS_CHANGED(cls, **_kwargs):
+        import time
+
+        return time.time_ns()
+
+    @classmethod
     def INPUT_TYPES(cls):
         options = runpod_dropdown_options()
         return {
@@ -1060,6 +1066,12 @@ class RunLocalContainersNode:
     RETURN_NAMES = ("result", "response", "errors", "compose_yaml", "saved_path")
     FUNCTION = "apply"
     OUTPUT_NODE = True
+
+    @classmethod
+    def IS_CHANGED(cls, **_kwargs):
+        import time
+
+        return time.time_ns()
 
     @classmethod
     def INPUT_TYPES(cls):

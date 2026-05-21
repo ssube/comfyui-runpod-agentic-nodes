@@ -92,7 +92,7 @@ def test_web_terminal_adds_ttyd_contract_to_agent():
 def test_web_terminal_shell_supports_commands_with_arguments():
     terminal = WebTerminalNode().build("tmux attach -t crag-pi", 7681, 8765, "none", "crag", "secret")[0]
 
-    assert "/bin/bash -lc 'exec tmux attach -t crag-pi'" in terminal.runtime_contract.commands[0].command
+    assert "/bin/bash -lc 'tmux attach -t crag-pi'" in terminal.runtime_contract.commands[0].command
 
 
 def test_run_nodes_emit_comfy_ui_text_when_called_by_graph(tmp_path):
@@ -120,11 +120,18 @@ def test_stop_and_terminate_do_not_emit_terminal_urls(tmp_path):
     assert "terminal_auth" not in payload
 
 
+def test_run_nodes_are_not_cached_by_comfy():
+    assert RunLocalContainersNode.IS_CHANGED() != RunLocalContainersNode.IS_CHANGED()
+    assert RunOnRunpodNode.IS_CHANGED() != RunOnRunpodNode.IS_CHANGED()
+
+
 def test_frontend_terminal_uses_overlay_without_embedded_widget():
     script = Path("web/optional_frontend_extensions.js").read_text()
 
     assert "showFloatingTerminal(terminal)" in script
     assert "Open Web Terminal" in script
+    assert 'api.addEventListener("executed"' in script
+    assert "graphNodeById" in script
     assert "addDOMWidget" not in script
 
 

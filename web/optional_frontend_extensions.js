@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
 
 function candidateStrings(value, seen = new Set()) {
   if (value == null || seen.has(value)) {
@@ -134,13 +135,42 @@ function attachTerminalOverlay(node, terminal) {
 
   if (typeof node.addWidget === "function" && !node.__cragTerminalButton) {
     node.__cragTerminalButton = node.addWidget("button", "Open Web Terminal", null, () => showFloatingTerminal(terminal));
+    if (typeof node.computeSize === "function" && typeof node.setSize === "function") {
+      node.setSize(node.computeSize());
+    }
   }
 
   showFloatingTerminal(terminal);
 }
 
+function graphNodeById(nodeId) {
+  if (nodeId == null || !app.graph) {
+    return null;
+  }
+  if (typeof app.graph.getNodeById === "function") {
+    return app.graph.getNodeById(Number(nodeId)) ?? app.graph.getNodeById(nodeId);
+  }
+  return app.graph._nodes?.find((node) => String(node.id) === String(nodeId)) ?? null;
+}
+
+function attachTerminalFromExecution(detail) {
+  const terminal = terminalFromMessage(detail?.output ?? detail);
+  if (!terminal) {
+    return;
+  }
+  const node = graphNodeById(detail?.node ?? detail?.node_id ?? detail?.display_node);
+  if (node) {
+    attachTerminalOverlay(node, terminal);
+  } else {
+    showFloatingTerminal(terminal);
+  }
+}
+
 app.registerExtension({
   name: "comfyui-runpod-agentic.web-terminal",
+  setup() {
+    api.addEventListener("executed", (event) => attachTerminalFromExecution(event.detail));
+  },
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (!["RunLocalContainers", "RunOnRunpod"].includes(nodeData.name)) {
       return;
