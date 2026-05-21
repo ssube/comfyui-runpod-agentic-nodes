@@ -1,4 +1,5 @@
-from comfyui_runpod_agentic.config import get_runpod_api_key, get_ssh_env_config
+from comfyui_runpod_agentic import config as config_module
+from comfyui_runpod_agentic.config import RunpodAuthConfig, get_runpod_api_key, get_ssh_env_config
 from comfyui_runpod_agentic.nodes import LogsNode, collect_run_logs
 from comfyui_runpod_agentic.runpod_client import RunpodClient
 from comfyui_runpod_agentic.ssh_client import CommandResult
@@ -20,6 +21,22 @@ def test_runpod_client_loads_token_from_env_file(monkeypatch, tmp_path):
 
     assert get_runpod_api_key() == "rp_file_token"
     assert RunpodClient().api_key == "rp_file_token"
+
+
+def test_runpod_client_loads_token_from_repo_relative_env_file(monkeypatch, tmp_path):
+    package_dir = tmp_path / "comfyui_runpod_agentic"
+    package_dir.mkdir()
+    env_file = tmp_path / ".env.d" / "runpod.env"
+    env_file.parent.mkdir()
+    env_file.write_text("RUNPOD_API_KEY=rp_repo_token\n")
+    monkeypatch.setattr(config_module, "__file__", str(package_dir / "config.py"))
+    monkeypatch.chdir(tmp_path.parent)
+    monkeypatch.delenv("RUNPOD_API_KEY", raising=False)
+    monkeypatch.delenv("RUNPOD_ENV_FILE", raising=False)
+
+    config = RunpodAuthConfig(default_env_file=".env.d/runpod.env")
+
+    assert get_runpod_api_key(config) == "rp_repo_token"
 
 
 def test_ssh_config_loads_proxy_suffix_from_env_file(monkeypatch, tmp_path):
