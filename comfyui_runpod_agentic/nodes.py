@@ -428,7 +428,7 @@ class VectorDatabaseNode:
     def build(self, engine: str, collection_name: str, persistence_path: str = "/workspace/vector", network_storage=None, node_id: str | None = None):
         vector_engine = norm(engine)
         port = 6333 if vector_engine == "qdrant" else 8000
-        contract = RuntimeContract(EnvPatch({"VECTOR_KIND": vector_engine, "VECTOR_URL": f"crag://vector/{vector_engine}", "VECTOR_COLLECTION": collection_name}), [PortSpec(vector_engine, port, "http", True)])
+        contract = RuntimeContract(EnvPatch({"VECTOR_KIND": vector_engine, "VECTOR_URL": f"crag://vector/{vector_engine}", "VECTOR_COLLECTION": collection_name, "VECTOR_PERSISTENCE_PATH": persistence_path}), [PortSpec(vector_engine, port, "http", True)])
         return (VectorDatabaseSpec("vector_database", vector_engine, "own_pod", collection_name, persistence_path, contract, f"rp-vector-{vector_engine}", network_storage, meta(node_id, engine)),)
 
 

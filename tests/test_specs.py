@@ -24,6 +24,7 @@ from comfyui_runpod_agentic.nodes import (
     SkillNode,
     SSHCommandNode,
     StartupScriptNode,
+    VectorDatabaseNode,
     WebTerminalNode,
     with_terminal_options,
 )
@@ -110,6 +111,15 @@ def test_web_terminal_shell_supports_commands_with_arguments():
     terminal = WebTerminalNode().build("tmux attach -t crag-pi", 7681, 8765, "none", "crag", "secret")[0]
 
     assert "/bin/bash -lc 'tmux attach -t crag-pi'" in terminal.runtime_contract.commands[0].command
+
+
+def test_web_terminal_password_mode_requires_password():
+    try:
+        WebTerminalNode().build("/bin/bash", 7681, 7681, "password", "crag", "")
+    except ValidationError as exc:
+        assert "password is required" in str(exc)
+    else:
+        raise AssertionError("expected ValidationError")
 
 
 def test_run_nodes_emit_comfy_ui_text_when_called_by_graph(tmp_path):
@@ -274,6 +284,17 @@ def test_agent_accepts_generic_llm_sources():
     assert agent.llm_server is None
 
 
+def test_llm_api_base_url_overrides_provider_defaults():
+    codex = LLMApiNode().build("Codex", "gpt-test", "OPENAI_KEY", "https://openai-proxy.example/v1")[0]
+    claude = LLMApiNode().build("Claude", "claude-test", "ANTHROPIC_KEY", "https://anthropic-proxy.example")[0]
+    ollama = LLMApiNode().build("Ollama Cloud", "deepseek-test", "OLLAMA_KEY", "https://ollama-proxy.example")[0]
+
+    assert codex.runtime_contract.env.values["OPENAI_BASE_URL"] == "https://openai-proxy.example/v1"
+    assert claude.runtime_contract.env.values["LLM_API_BASE_URL"] == "https://anthropic-proxy.example"
+    assert "OPENAI_BASE_URL" not in claude.runtime_contract.env.values
+    assert ollama.runtime_contract.env.values["OLLAMA_HOST"] == "https://ollama-proxy.example"
+
+
 def test_agent_installs_supported_harnesses_before_start():
     expected_packages = {
         "Codex": "@openai/codex",
@@ -434,6 +455,15 @@ def test_service_nodes_accept_network_storage():
     assert llm.network_storage == storage
     assert sql.network_storage == storage
     assert storage.retention_policy == "preserve"
+
+
+def test_vector_database_contract_includes_persistence_path():
+    vector = VectorDatabaseNode().build("Chroma", "docs", "/data/chroma")[0]
+
+    assert vector.engine == "chroma"
+    assert vector.runtime_contract.env.values["VECTOR_URL"] == "crag://vector/chroma"
+    assert vector.runtime_contract.env.values["VECTOR_PERSISTENCE_PATH"] == "/data/chroma"
+    assert vector.runtime_contract.ports[0].container_port == 8000
 
 
 def test_network_storage_retention_policy_warns_for_destructive_intent():

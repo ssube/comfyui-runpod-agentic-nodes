@@ -521,7 +521,7 @@ Output:
 | --- | --- |
 | `vector_database` | `RUNPOD_APP_VECTOR_DATABASE` |
 
-Qdrant uses an HTTP service contract on port 6333. Chroma uses an HTTP service contract on port 8000.
+Qdrant uses an HTTP service contract on port 6333. Chroma uses an HTTP service contract on port 8000. The persistence path is exposed to the runtime as `VECTOR_PERSISTENCE_PATH`.
 
 ## Skills And MCP Nodes
 

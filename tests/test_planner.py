@@ -86,6 +86,24 @@ def test_ollama_dependency_binds_to_local_interface_but_agent_gets_placeholder(t
     assert plan.runtime_contract.env.values["OLLAMA_HOST"] == "crag://llm/ollama"
 
 
+def test_internal_sshd_access_injects_public_key_and_command(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_ENV_FILE", str(tmp_path / "missing.env"))
+    monkeypatch.delenv("RUNPOD_SSH_PRIVATE_KEY_PATH", raising=False)
+    private_key = tmp_path / "id_ed25519"
+    public_key = tmp_path / "id_ed25519.pub"
+    private_key.write_text("private")
+    public_key.write_text("ssh-ed25519 AAAATEST crag-test")
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    ssh_access = SSHAccessNode().build("internal_sshd", "root", str(private_key), "", 22, True)[0]
+    deployment = replace(DeployNode().build(agent)[0], ssh_access=ssh_access)
+
+    plan = Planner().build(deployment, mode="plan")
+    agent_resource = next(resource for resource in plan.resources if resource.role == "agent")
+
+    assert agent_resource.pod_input["env"]["RUNPOD_SSH_PUBLIC_KEY"] == "ssh-ed25519 AAAATEST crag-test"
+    assert "sshd" in agent_resource.pod_input["dockerArgs"]
+
+
 def test_dependency_pods_use_their_own_network_storage():
     storage = NetworkStorageNode().build("vol-sql", "/var/lib/postgresql/data")[0]
     sql = RemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", "pg_password", network_storage=storage)[0]

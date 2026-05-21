@@ -595,11 +595,13 @@ Chroma:
   VECTOR_KIND=chroma
   VECTOR_URL=<resolved after pod starts>
   VECTOR_COLLECTION=<collection_name>
+  VECTOR_PERSISTENCE_PATH=<persistence_path>
 
 Qdrant:
   VECTOR_KIND=qdrant
   VECTOR_URL=<resolved after pod starts>
   VECTOR_COLLECTION=<collection_name>
+  VECTOR_PERSISTENCE_PATH=<persistence_path>
 ```
 
 ## 6.7 Network Storage Node
