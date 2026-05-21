@@ -547,6 +547,7 @@ def startup_script_for_plan(plan: DeploymentPlan) -> str:
         "set -euo pipefail",
         f"workspace={shell_env(workspace)}",
         "mkdir -p \"$workspace/.runpod_agentic\"",
+        "rm -f \"$workspace/.runpod_agentic/startup.ready\"",
         "cd \"$workspace\"",
         *file_write_lines(f"{base}/resources.json", json.dumps({"resources": [to_plain(resource) for resource in plan.resources if resource.role != "agent"]}, indent=2, sort_keys=True)),
         *file_write_lines(f"{base}/session.env", "\n".join(f"export {key}={shell_env(value)}" for key, value in sorted(plan.runtime_contract.env.values.items())) + "\n"),
@@ -583,6 +584,7 @@ def startup_script_for_plan(plan: DeploymentPlan) -> str:
         lines.append(launch)
     else:
         lines.append("echo 'CRAG startup mode is manual; launcher not started.'")
+    lines.append("touch \"$workspace/.runpod_agentic/startup.ready\"")
     lines.append("CRAG_STARTUP")
     return "\n".join(lines)
 

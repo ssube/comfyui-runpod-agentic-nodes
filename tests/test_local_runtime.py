@@ -136,6 +136,7 @@ def test_terminal_compose_command_does_not_block_startup_commands():
 
     assert "run_crag_command web_terminal continue 0" in agent_service["command"]
     assert "printf startup-ok > /workspace/startup.txt" in agent_service["command"]
+    assert "startup.ready" in agent_service["command"]
 
 
 def test_local_resource_hash_changes_with_startup_commands():

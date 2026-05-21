@@ -237,6 +237,7 @@ def agent_run_script(plan: DeploymentPlan, *, keep_container_alive: bool = False
         "workspace=\"${WORKSPACE_DIR:-/workspace}\"",
         "crag_dir=\"$workspace/.runpod_agentic\"",
         "mkdir -p \"$crag_dir/local-runtime\"",
+        "rm -f \"$crag_dir/startup.ready\"",
         "cd \"$workspace\"",
         *local_runtime_file_writes(plan),
         "run_crag_command() {",
@@ -283,6 +284,7 @@ def agent_run_script(plan: DeploymentPlan, *, keep_container_alive: bool = False
         script.append(launch)
     else:
         script.append("echo '[crag-local-runtime] startup mode is manual; launcher not started.'")
+    script.append("touch \"$crag_dir/startup.ready\"")
     script.append("echo '[crag-local-runtime] startup commands complete'")
     if keep_container_alive:
         script.extend(local_runtime_self_shutdown_lines(plan))

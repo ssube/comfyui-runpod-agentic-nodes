@@ -209,6 +209,7 @@ class WebTerminalNode:
 
 def web_terminal_command(port: int, shell: str, auth_mode: str, username: str, password: str) -> str:
     credential = f" -c {shlex.quote(username + ':' + password)}" if auth_mode == "password" else ""
+    terminal_command = "exec " + (shell.strip() or "/bin/bash")
     return "\n".join(
         [
             "set -e",
@@ -223,7 +224,7 @@ def web_terminal_command(port: int, shell: str, auth_mode: str, username: str, p
             "  chmod +x /usr/local/bin/ttyd",
             "fi",
             'mkdir -p "${WORKSPACE_DIR:-/workspace}/.runpod_agentic"',
-            f"nohup ttyd -W -p {int(port)}{credential} {shlex.quote(shell)} > \"${{WORKSPACE_DIR:-/workspace}}/.runpod_agentic/ttyd.log\" 2>&1 &",
+            f"nohup ttyd -W -p {int(port)}{credential} /bin/bash -lc {shlex.quote(terminal_command)} > \"${{WORKSPACE_DIR:-/workspace}}/.runpod_agentic/ttyd.log\" 2>&1 &",
             'echo $! > "${WORKSPACE_DIR:-/workspace}/.runpod_agentic/ttyd.pid"',
         ]
     )
@@ -619,7 +620,7 @@ class AgentNode:
                 capabilities.extend(spec.required_image_capabilities)
         harness_id = norm(harness)
         install_commands = []
-        skip_terminal_only_manual = startup_mode == "manual" and terminal
+        skip_terminal_only_manual = startup_mode == "manual" and terminal and not any((browser, llm, sql_database, vector_database, mcp_servers, skills))
         if not skip_terminal_only_manual and harness_id in {"codex", "claude", "opencode", "hermes", "pi"} and os.environ.get("CRAG_SKIP_HARNESS_INSTALL") != "1":
             install_commands.append(RuntimeCommand(harness_install_command(harness_id), "before_start", -30000, "continue" if terminal else "fail", 0, f"harness:{harness_id}"))
         contract = RuntimeContract(
@@ -1137,7 +1138,7 @@ class RunLocalContainersNode:
                 os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
         result_payload = json.loads(result.to_text())
         result_payload["reused"] = reused
-        terminal_urls = local_terminal_urls(plan)
+        terminal_urls = local_terminal_urls(plan) if action in {"apply", "apply_and_wait"} and result.returncode == 0 else {}
         if terminal_urls:
             result_payload["terminal_urls"] = terminal_urls
             terminal_auth = local_terminal_auth(plan)

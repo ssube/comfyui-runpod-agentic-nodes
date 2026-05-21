@@ -89,6 +89,12 @@ def test_web_terminal_adds_ttyd_contract_to_agent():
     assert agent.runtime_contract.env.values["CRAG_WEB_TERMINAL_HOST_PORT"] == "8765"
 
 
+def test_web_terminal_shell_supports_commands_with_arguments():
+    terminal = WebTerminalNode().build("tmux attach -t crag-pi", 7681, 8765, "none", "crag", "secret")[0]
+
+    assert "/bin/bash -lc 'exec tmux attach -t crag-pi'" in terminal.runtime_contract.commands[0].command
+
+
 def test_run_nodes_emit_comfy_ui_text_when_called_by_graph(tmp_path):
     terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
     agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
@@ -99,7 +105,19 @@ def test_run_nodes_emit_comfy_ui_text_when_called_by_graph(tmp_path):
     assert result["ui"]["text"]
     assert result["result"][0] == result["ui"]["text"][0]
     payload = json.loads(result["result"][0])
-    assert payload["terminal_auth"] == {"agent": {"username": "crag", "password": "secret"}}
+    assert "terminal_auth" not in payload
+
+
+def test_stop_and_terminate_do_not_emit_terminal_urls(tmp_path):
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
+    deployment = DeployNode().build(agent)[0]
+
+    result = RunLocalContainersNode().apply(deployment, action="terminate", output_path=str(tmp_path / "compose.yaml"), workflow_graph={})
+
+    payload = json.loads(result["result"][0])
+    assert "terminal_urls" not in payload
+    assert "terminal_auth" not in payload
 
 
 def test_frontend_terminal_uses_overlay_without_embedded_widget():
@@ -135,6 +153,21 @@ def test_ollama_deepseek_example_uses_setup_nodes_for_packages():
     assert workflow["4"]["inputs"]["packages"] == "npm-check-updates"
     assert all("order" not in node["inputs"] for node in workflow.values())
     assert workflow["7"]["inputs"]["action"] == "apply_and_wait"
+
+
+def test_pi_ollama_terminal_example_attaches_ttyd_to_tmux_session():
+    workflow = json.loads(Path("examples/workflows/api_local_pi_ollama_terminal_up.json").read_text())
+    class_types = [node["class_type"] for node in workflow.values()]
+
+    assert "WebTerminal" in class_types
+    assert "LLMApi" in class_types
+    assert workflow["1"]["inputs"]["shell"] == "while [ ! -f /workspace/.runpod_agentic/startup.ready ]; do sleep 1; done; exec tmux attach -t crag-pi"
+    assert workflow["4"]["inputs"]["phase"] == "before_start"
+    assert "tmux new-session -d -s crag-pi" in workflow["4"]["inputs"]["command"]
+    assert "pi --provider ollama-cloud" in workflow["4"]["inputs"]["command"]
+    assert workflow["5"]["inputs"]["provider"] == "Ollama Cloud"
+    assert workflow["6"]["inputs"]["startup_mode"] == "manual"
+    assert workflow["8"]["inputs"]["action"] == "apply"
 
 
 def test_container_snapshot_example_uses_build_container_plan():
@@ -256,11 +289,15 @@ def test_manual_agent_skips_harness_install_and_terminal_runs_first():
     terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
     manual_agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
     auto_agent = AgentNode().build("Pi", "model", "auto_start", terminal=terminal)[0]
+    llm = LLMApiNode().build("Ollama Cloud", "deepseek-v4-flash", "OLLAMA_API_KEY")[0]
+    configured_manual_agent = AgentNode().build("Pi", "model", "manual", terminal=terminal, llm=llm)[0]
 
     assert [command.source for command in manual_agent.runtime_contract.commands] == ["web_terminal"]
     ordered = sorted(auto_agent.runtime_contract.commands, key=lambda command: command.order)
     assert [command.source for command in ordered] == ["web_terminal", "harness:pi"]
     assert next(command for command in auto_agent.runtime_contract.commands if command.source == "harness:pi").failure_policy == "continue"
+    configured_ordered = sorted(configured_manual_agent.runtime_contract.commands, key=lambda command: command.order)
+    assert [command.source for command in configured_ordered] == ["web_terminal", "harness:pi"]
 
 
 def test_terminal_active_agent_keeps_skill_startup_commands():
