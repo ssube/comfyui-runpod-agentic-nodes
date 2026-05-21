@@ -9,6 +9,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -227,11 +228,8 @@ def agent_startup_command(plan: DeploymentPlan, resource: ResourcePlan) -> str:
 
 
 def agent_run_script(plan: DeploymentPlan, *, keep_container_alive: bool = False) -> str:
-    commands = [
-        action.detail
-        for action in plan.actions
-        if action.action == "RUN_SSH_COMMAND" and action.role == "agent" and action.detail.get("phase") in {"before_start", "after_start", "after_ready"}
-    ]
+    before_commands = local_runtime_commands_for_phase(plan, {"before_start"})
+    after_commands = local_runtime_commands_for_phase(plan, {"after_start", "after_ready"})
     script = [
         "set -euo pipefail",
         "workspace=\"${WORKSPACE_DIR:-/workspace}\"",
@@ -265,7 +263,7 @@ def agent_run_script(plan: DeploymentPlan, *, keep_container_alive: bool = False
         "  done",
         "}",
     ]
-    for index, command in enumerate(commands):
+    for index, command in enumerate(before_commands):
         label = command.get("source") or f"{command.get('phase', 'command')}:{index}"
         script.append(
             "run_crag_command "
@@ -284,12 +282,33 @@ def agent_run_script(plan: DeploymentPlan, *, keep_container_alive: bool = False
         script.append(launch)
     else:
         script.append("echo '[crag-local-runtime] startup mode is manual; launcher not started.'")
+    for index, command in enumerate(after_commands):
+        label = command.get("source") or f"{command.get('phase', 'command')}:{index}"
+        script.append(
+            "run_crag_command "
+            + " ".join(
+                [
+                    shlex.quote(str(label)),
+                    shlex.quote(str(command.get("failure_policy") or "fail")),
+                    shlex.quote(str(int(command.get("retry_count") or 0))),
+                    shlex.quote(str(command.get("command") or "")),
+                ]
+            )
+        )
     script.append("touch \"$crag_dir/startup.ready\"")
     script.append("echo '[crag-local-runtime] startup commands complete'")
     if keep_container_alive:
         script.extend(local_runtime_self_shutdown_lines(plan))
         script.append("sleep infinity")
     return "\n".join(script)
+
+
+def local_runtime_commands_for_phase(plan: DeploymentPlan, phases: set[str]) -> list[dict[str, Any]]:
+    return [
+        action.detail
+        for action in plan.actions
+        if action.action == "RUN_SSH_COMMAND" and action.role == "agent" and action.detail.get("phase") in phases
+    ]
 
 
 def local_runtime_self_shutdown_lines(plan: DeploymentPlan) -> list[str]:
@@ -462,6 +481,22 @@ def apply_local_runtime_plan(
         container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=local_resource_desired_hash(agent, plan)) if all_local_runtime_resources_running(engine, project_name, plan) else None
         if container_id:
             return exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds), True
+        if plan.reuse_policy == "resume_stopped" and all_local_runtime_resources_exist(engine, project_name, plan):
+            start_result = start_local_runtime_project(engine, compose_path, project_name, timeout_seconds=timeout_seconds)
+            if start_result.returncode != 0:
+                return start_result, False
+            container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=local_resource_desired_hash(agent, plan))
+            if container_id:
+                exec_result = exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds)
+                return LocalApplyResult(
+                    exec_result.engine,
+                    "resume_stopped",
+                    exec_result.compose_path,
+                    [*start_result.command, "&&", *exec_result.command] if start_result.command and exec_result.command else exec_result.command or start_result.command,
+                    exec_result.returncode,
+                    "\n".join(part for part in (start_result.stdout, exec_result.stdout) if part),
+                    "\n".join(part for part in (start_result.stderr, exec_result.stderr) if part),
+                ), True
         cleanup = reconcile_stale_local_runtime_project(engine, compose_path, project_name, plan, timeout_seconds=timeout_seconds)
         if cleanup and cleanup.returncode != 0:
             return cleanup, False
@@ -554,6 +589,17 @@ def stop_local_runtime_project_containers(engine: str, project_name: str, *, tim
     return LocalApplyResult(engine, "stop", "", command, completed.returncode, completed.stdout, completed.stderr)
 
 
+def start_local_runtime_project(engine: str, compose_path: str | Path, project_name: str, *, timeout_seconds: int = 1800) -> LocalApplyResult:
+    try:
+        command = [*command_for_engine(engine, str(compose_path), project_name, "plan")[:-1], "start"]
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
+    except (FileNotFoundError, RuntimeError) as exc:
+        return LocalApplyResult(engine, "resume_stopped", str(compose_path), [], 127, "", str(exc))
+    except subprocess.TimeoutExpired as exc:
+        return LocalApplyResult(engine, "resume_stopped", str(compose_path), exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
+    return LocalApplyResult(engine, "resume_stopped", str(compose_path), command, completed.returncode, completed.stdout, completed.stderr)
+
+
 def local_retention_volume_names(project_name: str, plan: DeploymentPlan) -> list[str]:
     names = []
     for resource in plan.resources:
@@ -568,6 +614,10 @@ def local_retention_volume_names(project_name: str, plan: DeploymentPlan) -> lis
 
 def all_local_runtime_resources_running(engine: str, project_name: str, plan: DeploymentPlan) -> bool:
     return all(find_local_runtime_container(engine, project_name, resource.role, desired_hash=local_resource_desired_hash(resource, plan)) for resource in plan.resources)
+
+
+def all_local_runtime_resources_exist(engine: str, project_name: str, plan: DeploymentPlan) -> bool:
+    return all(find_local_runtime_project_container(engine, project_name, resource.role, desired_hash=local_resource_desired_hash(resource, plan)) for resource in plan.resources)
 
 
 def plan_has_web_terminal(plan: DeploymentPlan) -> bool:
@@ -793,9 +843,10 @@ def list_local_runtime_project_containers(engine: str, project_name: str, *, onl
     return containers
 
 
-def find_local_runtime_project_container(engine: str, project_name: str, role: str) -> str | None:
+def find_local_runtime_project_container(engine: str, project_name: str, role: str, desired_hash: str | None = None) -> str | None:
     for container_id in list_local_runtime_project_containers(engine, project_name):
-        if inspect_container_role(engine, container_id) == role:
+        labels = inspect_container_labels(engine, container_id)
+        if labels.get("comfyui-runpod-agentic.role") == role and (desired_hash is None or labels.get("comfyui-runpod-agentic.desired_hash") == desired_hash):
             return container_id
     return None
 

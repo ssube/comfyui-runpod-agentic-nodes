@@ -126,6 +126,20 @@ def test_agent_compose_command_runs_startup_commands():
     assert "sleep infinity" in agent_service["command"]
 
 
+def test_agent_compose_command_runs_after_commands_after_launch():
+    agent = AgentNode().build("Pi", "model", "auto_start", "/workspace")[0]
+    before = SSHCommandNode().build("printf before", "before_start", "fail")[0]
+    after = SSHCommandNode().build("printf after", "after_start", "fail", previous=before)[0]
+    deployment = DeployNode().build(agent, commands=after)[0]
+    plan = Planner().build(deployment, prompt="run")
+
+    script = agent_run_script(plan, keep_container_alive=True)
+
+    launch_index = script.rindex("nohup .runpod_agentic/launcher.sh")
+    assert script.rindex("run_crag_command before_start") < launch_index
+    assert launch_index < script.rindex("run_crag_command after_start")
+
+
 def test_terminal_compose_command_does_not_block_startup_commands():
     terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "none", "crag", "secret")[0]
     agent = AgentNode().build("Pi", "model", "manual", "/workspace", terminal=terminal)[0]
@@ -294,6 +308,43 @@ def test_apply_local_runtime_recreates_when_dependency_container_is_missing(monk
     assert reused is False
     assert ["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "up", "-d"] in calls
     assert not any(command[:4] == ["docker", "exec", "agent1", "bash"] for command in calls)
+
+
+def test_apply_local_runtime_resumes_stopped_matching_project(monkeypatch, tmp_path):
+    agent_spec = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
+    deployment = replace(DeployNode().build(agent_spec)[0], reuse_policy="resume_stopped")
+    plan = Planner().build(deployment, prompt="second prompt")
+    agent = next(resource for resource in plan.resources if resource.role == "agent")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    calls = []
+    started = False
+
+    def fake_run(command, **kwargs):
+        nonlocal started
+        calls.append(command)
+        if command == ["docker", "ps", "--format", "{{json .}}"]:
+            stdout = '{"ID":"agent1","Names":"crag-node-agent"}\n' if started else ""
+            return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+        if command == ["docker", "ps", "-a", "--format", "{{json .}}"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": local_resource_desired_hash(agent, plan)}}}]), stderr="")
+        if command[:3] == ["docker", "compose", "-f"]:
+            started = True
+            return SimpleNamespace(returncode=0, stdout="started\n", stderr="")
+        if command[:4] == ["docker", "exec", "agent1", "bash"]:
+            return SimpleNamespace(returncode=0, stdout="relaunched\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="apply")
+
+    assert reused is True
+    assert result.action == "resume_stopped"
+    assert "relaunched\n" in result.stdout
+    assert ["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "start"] in calls
 
 
 def test_apply_local_runtime_reconciles_stale_project_before_up(monkeypatch, tmp_path):
