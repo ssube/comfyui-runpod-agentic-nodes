@@ -116,13 +116,13 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
    Connect the agent to `app` and attach storage, commands, and keep-alive policy. This is the portable workload spec.
 
 8. Add `Run on Runpod`.
-   Choose GPU hints, disk size, exposure, reuse policy, and optional `SSH Access`. Start with `mode=plan`. Inspect the JSON. Move to `apply`, `apply_and_wait`, `stop`, `terminate`, or `destroy` only after the plan is correct.
+   Choose GPU hints, disk size, exposure, reuse policy, and optional `SSH Access`. Start with `mode=plan`. Inspect the JSON. Move to `apply`, `apply_and_wait`, `stop`, or `terminate` only after the plan is correct.
 
 9. Inspect outputs and logs.
    Connect `Run on Runpod.result`, `response`, and `errors` to preview nodes. Use `Logs` with a run ID to collect saved command stdout/stderr.
 
 10. Clean up.
-   Use `terminate` or `destroy` when the deployment is no longer needed. For managed leftovers, use `scripts/cleanup-runpod-pods --action terminate`.
+   Use `terminate` when the deployment is no longer needed. For managed leftovers, use `scripts/cleanup-runpod-pods --action terminate`.
 
 ## Core Nodes
 
@@ -135,7 +135,7 @@ Inputs:
 | Input | Type | Use |
 | --- | --- | --- |
 | `deployment` | `RUNPOD_DEPLOYMENT_SPEC` | The compiled pod deployment from `Deploy`. |
-| `mode` | `plan`, `apply`, `apply_and_wait`, `stop`, `terminate`, `destroy` | Selects whether to preview, create/run, wait, or clean up resources. |
+| `mode` | `plan`, `apply`, `apply_and_wait`, `stop`, `terminate` | Selects whether to preview, create/run, wait, or clean up resources. |
 | `prompt` | multiline string | The task prompt for this run. |
 | `on_error` | `stop_created`, `terminate_created`, `leave_running` | Cleanup behavior if apply fails after resources were created. |
 | `log_level` | `info`, `debug` | Verbosity for result JSON. |
@@ -157,15 +157,14 @@ Modes:
 | `apply_and_wait` | Apply and wait for completion/readiness behavior supported by the runner. |
 | `stop` | Stop managed pods for the deployment. |
 | `terminate` | Terminate managed pods. |
-| `destroy` | Clean managed resources and local state for the deployment. |
 
 Output:
 
 | Output | Type | Use |
 | --- | --- | --- |
 | `result` | `RUNPOD_RUN_RESULT` | JSON plan or execution result, usually connected to `PreviewAny`. |
-| `response` | `STRING` | Captured stdout from remote startup commands and the agent launch command. |
-| `errors` | `STRING` | Captured stderr from remote startup commands and the agent launch command. |
+| `response` | `STRING` | Captured agent response text from the launcher response file or foreground launch output. |
+| `errors` | `STRING` | Captured agent stderr plus setup command stderr. Startup command stdout is saved for `Logs`, not mixed into `response`. |
 
 ### Startup Script
 
@@ -210,7 +209,7 @@ Inputs shared by the apply nodes:
 | `timeout_seconds` | integer | Timeout for the local runtime command. |
 | `response_role` | string | Container role to read after `up`, usually `agent`. |
 | `response_path` | string | File to read from the role container after `up`, for example `/workspace/e2e/agent-skill-report.txt`. |
-| `response_timeout_seconds` | integer | How long to wait for the response file. Set `0` to skip response collection. If the file is missing but CRAG startup has completed, local runtime nodes fall back to the agent container logs. |
+| `response_timeout_seconds` | integer | How long to wait for the response file. Set `0` to skip response collection. For `.runpod_agentic/response.txt`, logs are treated as diagnostics rather than a successful response. |
 
 Outputs:
 
@@ -224,7 +223,7 @@ Outputs:
 
 With `engine=containerd`, `Run Local Containers` uses `nerdctl compose` rather than raw `ctr`; direct `ctr` does not provide the Compose-level dependency, env, port, and volume model these workflows need. If the selected engine is not installed, the node reports that as an apply error and still leaves the YAML on disk.
 
-Local apply follows the same lifecycle vocabulary as `Run on Runpod`. With `reuse_matching`, a later `apply` for the same deployment reuses the existing agent container while it is still alive, rewrites the runtime config and prompt files, and launches the harness again. Keep-alive policies are enforced locally: time policies schedule `stop` or `terminate`, and a new apply refreshes that timer.
+Local apply follows the same lifecycle vocabulary as `Run on Runpod`. With `reuse_matching`, a later `apply` for the same deployment reuses the existing agent container while it is still alive, rewrites the runtime config and prompt files, and launches the harness again. With `resume_stopped`, matching stopped local containers are started before the harness is relaunched. Keep-alive policies are enforced locally: time policies schedule `stop` or `terminate`, and a new apply refreshes that timer.
 
 ### Deploy
 
@@ -357,6 +356,8 @@ Harness compatibility:
 | Pi | yes | yes | no | yes | yes | yes | yes |
 
 All harness wrappers use the same CRAG response contract: stdout goes to `.runpod_agentic/response.txt`, stderr goes to `.runpod_agentic/errors.txt`, and successful completion adds a `[crag-agent] complete status=0` marker. Harness-specific scripts only adapt command-line arguments for their CLI.
+
+When a system prompt is supplied for a harness that does not advertise a system-prompt CLI flag, the node records `CRAG_AGENT_WARNINGS` in the runtime environment and leaves the prompt file available for custom launchers instead of passing an unverified flag.
 
 ### Injected Runtime Launcher
 

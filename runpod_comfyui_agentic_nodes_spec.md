@@ -164,7 +164,7 @@ CommandPhase = Literal["before_start", "after_start", "after_ready", "teardown"]
 FailurePolicy = Literal["fail", "continue", "retry"]
 KeepAliveMode = Literal["time", "turns", "cost", "manual"]
 LimitAction = Literal["stop", "terminate"]
-RunMode = Literal["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"]
+RunMode = Literal["plan", "apply", "apply_and_wait", "stop", "terminate"]
 ```
 
 ### 5.2 Common structs
@@ -759,7 +759,7 @@ deployment: RUNPOD_DEPLOYMENT_SPEC
 Widgets:
 
 ```text
-mode: plan | apply | apply_and_wait | stop | terminate | destroy
+mode: plan | apply | apply_and_wait | stop | terminate
 on_error: stop_created | terminate_created | leave_running
 log_level: info | debug
 ```
@@ -771,7 +771,7 @@ Rules:
 - In `plan` mode, do not call create/resume/stop/terminate mutations and do not run SSH.
 - In `apply` mode, create/resume resources, run commands, launch the agent, and return immediately after launch.
 - In `apply_and_wait` mode, monitor until agent completion or keep-alive limit.
-- In `stop`, `terminate`, and `destroy` modes, operate on previously managed resources found via state ledger and Runpod reconciliation.
+- In `stop` and `terminate` modes, operate on previously managed resources found via state ledger and Runpod reconciliation.
 
 ## 7. Template Strategy
 
@@ -1195,7 +1195,7 @@ CREATE TABLE IF NOT EXISTS counters (
 );
 ```
 
-Before every apply/stop/terminate/destroy operation:
+Before every apply/stop/terminate operation:
 
 ```text
 1. Load local ledger.

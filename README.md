@@ -165,7 +165,7 @@ For a complete walkthrough of the CRAG node mission, graph model, node inputs, c
 Core:
 
 - `Deploy`: creates the portable workload spec around the primary agent.
-- `Run on Runpod`: plan/apply/stop/terminate/destroy output node for the Runpod target with the per-run agent prompt and placement settings.
+- `Run on Runpod`: plan/apply/stop/terminate output node for the Runpod target with the per-run agent prompt and placement settings.
 - `Keep Alive`: time, turns, cost, or manual policy with server-side, pod-side, or layered enforcement.
 - `Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
 
@@ -358,7 +358,7 @@ Preview sanitized inputs without calling Runpod:
 scripts/create-runpod-templates --dry-run
 ```
 
-The runner injects a small runtime layer under `.runpod_agentic` over SSH before starting the agent, so templates do not need to bake in the CRAG launcher. The entrypoint is `.runpod_agentic/launcher.sh`; it loads `.runpod_agentic/launcher.d/*.sh`, runs optional preflight hooks, uses `CRAG_AGENT_LAUNCH_COMMAND` when set, falls back to `runpod-agent-launch` if the image provides it, and then dispatches to harness stubs under `.runpod_agentic/launcher.d/harnesses/` for tools such as Codex, Claude, Hermes, OpenCode, and Pi. Codex, Claude, Hermes, and OpenCode agents queue their recommended CLI install command before launch and verify it with `--help`.
+The runner injects a small runtime layer under `.runpod_agentic` over SSH before starting the agent, so templates do not need to bake in the CRAG launcher. The entrypoint is `.runpod_agentic/launcher.sh`; it loads `.runpod_agentic/launcher.d/*.sh`, runs optional preflight hooks, uses `CRAG_AGENT_LAUNCH_COMMAND` when set, falls back to `runpod-agent-launch` if the image provides it, and then dispatches to harness stubs under `.runpod_agentic/launcher.d/harnesses/` for tools such as Codex, Claude, Hermes, OpenCode, and Pi. Supported agents queue their recommended CLI install command before launch and verify it with `--help`.
 
 ## Security Notes
 

@@ -10,7 +10,7 @@ FailurePolicy = Literal["fail", "continue", "retry"]
 KeepAliveMode = Literal["time", "turns", "cost", "manual"]
 LimitAction = Literal["stop", "terminate"]
 KeepAliveEnforcement = Literal["server_side", "pod_side", "both"]
-RunMode = Literal["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"]
+RunMode = Literal["plan", "apply", "apply_and_wait", "stop", "terminate"]
 VolumeRetentionPolicy = Literal["preserve", "delete_when_unused", "delete_with_deployment"]
 
 SPEC_VERSION = "0.1"

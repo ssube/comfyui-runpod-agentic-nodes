@@ -223,7 +223,7 @@ def test_ui_examples_match_terminal_widget_order():
             values = node.get("widgets_values") or []
             if node["type"] == "RunOnRunpod":
                 assert len(values) == 11, path
-                assert isinstance(values[0], str) and values[1] in {"plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"}, path
+                assert isinstance(values[0], str) and values[1] in {"plan", "apply", "apply_and_wait", "stop", "terminate"}, path
                 assert values[4] in {"auto", "SECURE", "COMMUNITY"}, path
                 assert values[9] in {"stop_created", "terminate_created", "leave_running"}, path
                 assert values[10] in {"info", "debug"}, path

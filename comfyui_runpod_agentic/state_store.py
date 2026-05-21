@@ -237,6 +237,10 @@ class StateStore:
                 rows = conn.execute("SELECT * FROM events ORDER BY timestamp DESC").fetchall()
             return [dict(row) for row in rows]
 
+    def mark_resource_status(self, resource_id: str, status: str) -> None:
+        with self.connect() as conn:
+            conn.execute("UPDATE resources SET status = ?, last_seen_at = ? WHERE id = ?", (status, utc_now(), resource_id))
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()

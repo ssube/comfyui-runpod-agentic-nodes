@@ -42,6 +42,7 @@ class FakeRunpodClient:
         self.stopped = []
         self.terminated = []
         self.resumed = []
+        self.deleted_network_volumes = []
         self.network_volumes = []
         self.pods = {}
         self.fail_create = fail_create
@@ -83,6 +84,7 @@ class FakeRunpodClient:
         return {"id": f"vol-{len(self.network_volumes)}"}
 
     def delete_network_volume(self, volume_id):
+        self.deleted_network_volumes.append(volume_id)
         return None
 
 
@@ -248,7 +250,7 @@ def test_runner_creates_network_volume_from_size(tmp_path, monkeypatch):
     assert "_networkVolumeSizeGb" not in runpod.created[0]
 
 
-def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):
+def test_runner_keeps_setup_stdout_out_of_response(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     command = "printf response && printf warning >&2"
     agent = AgentNode().build("Pi", "model", "manual")[0]
@@ -259,8 +261,10 @@ def test_runner_result_exposes_response_and_errors(tmp_path, monkeypatch):
 
     result = runner.run(deployment, mode="apply")
 
-    assert result["response"] == "response\n"
+    assert result["response"] == ""
     assert result["errors"] == "warning\n"
+    command_logs = runner.state_store.list_commands(result["run_id"])
+    assert any(Path(command["stdout_path"]).read_text() == "response\n" for command in command_logs)
 
 
 def test_runner_executes_command_phases_around_launch(tmp_path, monkeypatch):
@@ -294,7 +298,7 @@ def test_runner_retries_retry_commands(tmp_path, monkeypatch):
 
     result = runner.run(deployment, mode="apply")
 
-    assert result["response"].endswith("ok\n")
+    assert result["response"] == ""
     assert ssh.commands.count(command) == 2
     assert any(event["event_type"] == "ssh_command_retry" for event in runner.state_store.list_events(result["run_id"]))
 
@@ -334,6 +338,27 @@ def test_runner_apply_and_wait_collects_agent_response_file(tmp_path, monkeypatc
     assert result["status"] == "completed"
     assert result["response"].endswith("agent done\n")
     assert any(event["event_type"] == "agent_response_collected" for event in runner.state_store.list_events(result["run_id"]))
+
+
+def test_runner_apply_and_wait_does_not_return_agent_log_as_response(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setenv("CRAG_AGENT_RESPONSE_TIMEOUT_SECONDS", "1")
+    agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = DeployNode().build(agent)[0]
+    ssh = FakeSSHClient(
+        outputs={
+            "test -s '/workspace/.runpod_agentic/response.txt' && cat '/workspace/.runpod_agentic/response.txt'": ("", "", 1),
+            "test -s '/workspace/.runpod_agentic/errors.txt' && cat '/workspace/.runpod_agentic/errors.txt'": ("", "", 1),
+            "test -s '/workspace/.runpod_agentic/agent.log' && cat '/workspace/.runpod_agentic/agent.log'": ("setup log\n[crag-agent] complete status=0\n", ""),
+        }
+    )
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply_and_wait")
+
+    assert result["status"] == "waiting"
+    assert result["response"] == ""
+    assert any(event["event_type"] == "agent_log_collected" for event in runner.state_store.list_events(result["run_id"]))
 
 
 def test_runner_apply_and_wait_enforces_turn_keep_alive(tmp_path, monkeypatch):

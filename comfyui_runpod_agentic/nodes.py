@@ -922,7 +922,7 @@ class RunOnRunpodNode:
             "required": {
                 "prompt": ("STRING", {"multiline": True, "default": ""}),
                 "deployment": (RUNPOD_DEPLOYMENT_SPEC,),
-                "mode": (["plan", "apply", "apply_and_wait", "stop", "terminate", "destroy"],),
+                "mode": (["plan", "apply", "apply_and_wait", "stop", "terminate"],),
                 "gpu_type_id": optional_combo_or_string(options.gpu_type_ids),
                 "gpu_count": ("INT", {"default": 1, "min": 0}),
                 "cloud_type": (["auto", "SECURE", "COMMUNITY"],),

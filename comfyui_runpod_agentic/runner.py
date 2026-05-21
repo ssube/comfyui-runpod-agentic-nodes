@@ -62,7 +62,7 @@ class RunpodRunner:
         self.reconcile_managed_pods()
         self.state_store.record_run(plan.run_id, plan.workflow_hash, plan.deployment_hash, mode, "started")
         try:
-            if mode in {"stop", "terminate", "destroy"}:
+            if mode in {"stop", "terminate"}:
                 return self._lifecycle(plan, mode)
             result = self._apply(plan, wait=mode == "apply_and_wait")
             self.state_store.record_run(plan.run_id, plan.workflow_hash, plan.deployment_hash, mode, "completed")
@@ -191,8 +191,6 @@ class RunpodRunner:
                 if action.detail.get("phase") == "teardown":
                     continue
                 result = self._run_ssh_command_action(plan, action, host, port, resource_id)
-                if result.stdout:
-                    response_parts.append(result.stdout)
                 if result.stderr:
                     error_parts.append(result.stderr)
             elif action.action == "WRITE_RUNTIME_CONFIG":
@@ -274,7 +272,7 @@ class RunpodRunner:
             log_text = self._read_remote_file(host, port, log_path)
             if log_text and "[crag-agent] complete status=" in log_text:
                 self.state_store.add_event(plan.run_id, "agent_log_collected", log_path)
-                return log_text, errors or ""
+                return "", errors or ""
             last_error = errors or last_error
             time.sleep(interval_seconds)
         self.state_store.add_event(plan.run_id, "agent_response_timeout", response_path, payload={"timeout_seconds": timeout_seconds if timeout_seconds is not None else agent_response_timeout_seconds()})
@@ -416,7 +414,7 @@ class RunpodRunner:
     def _lifecycle(self, plan: DeploymentPlan, mode: str) -> dict[str, Any]:
         resources = self.state_store.list_resources()
         matched = [resource for resource in resources if resource.get("desired_hash") in {item.desired_hash for item in plan.resources}]
-        action = "terminate" if mode in {"terminate", "destroy"} else "stop"
+        action = "terminate" if mode == "terminate" else "stop"
         for resource in matched:
             pod_id = resource.get("runpod_pod_id")
             if not pod_id:
@@ -426,6 +424,7 @@ class RunpodRunner:
                 self.runpod_client.terminate_pod(pod_id)
             else:
                 self.runpod_client.stop_pod(pod_id)
+            self.state_store.mark_resource_status(resource["id"], action)
         return {"run_id": plan.run_id, "status": action, "resources": matched}
 
     def _run_teardown_commands(self, plan: DeploymentPlan, resource: dict[str, Any]) -> None:
