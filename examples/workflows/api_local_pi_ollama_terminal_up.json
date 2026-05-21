@@ -118,6 +118,7 @@
       "time_unit": "minutes",
       "turn_limit": 0,
       "cost_limit_usd": 0.0,
+      "idle_grace_seconds": 0,
       "idle_gpu_percent": 0,
       "enforcement": "server_side"
     }
