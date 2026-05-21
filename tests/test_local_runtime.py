@@ -14,6 +14,7 @@ from comfyui_runpod_agentic.local_runtime import (
     command_for_engine,
     compose_yaml_for_plan,
     enforce_local_keep_alive,
+    list_local_runtime_project_containers,
     local_resource_desired_hash,
     local_runtime_response_is_ready,
     resolve_local_secret_placeholder,
@@ -294,6 +295,59 @@ def test_apply_local_runtime_recreates_when_dependency_container_is_missing(monk
     assert not any(command[:4] == ["docker", "exec", "agent1", "bash"] for command in calls)
 
 
+def test_apply_local_runtime_reconciles_stale_project_before_up(monkeypatch, tmp_path):
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 7681, "none", "crag", "secret")[0]
+    agent_spec = AgentNode().build("Pi", "model", "manual", "/workspace", terminal=terminal)[0]
+    deployment = replace(DeployNode().build(agent_spec)[0], reuse_policy="reuse_matching")
+    plan = Planner().build(deployment, prompt="new terminal")
+    agent = next(resource for resource in plan.resources if resource.role == "agent")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command == ["docker", "ps", "--format", "{{json .}}"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"stale1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "ps", "-a", "--format", "{{json .}}"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"stale1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "stale1"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": "old-hash"}}}]), stderr="")
+        if command[:3] == ["docker", "compose", "-f"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command == ["docker", "logs", "fresh1"]:
+            return SimpleNamespace(returncode=0, stdout="[crag-local-runtime] startup commands complete\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    def fake_find(engine, project_name, role, desired_hash=None):
+        if calls.count(["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "up", "-d"]):
+            assert desired_hash == local_resource_desired_hash(agent, plan)
+            return "fresh1"
+        return None
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.find_local_runtime_container", fake_find)
+
+    result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="apply")
+
+    assert reused is False
+    assert result.returncode == 0
+    assert calls.index(["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "down", "--remove-orphans"]) < calls.index(["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "up", "-d"])
+
+
+def test_list_local_runtime_project_containers_includes_stopped(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout='{"ID":"one","Names":"crag-node-agent"}\n{"ID":"two","Names":"other-agent"}\n', stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    assert list_local_runtime_project_containers("docker", "crag-node") == ["one"]
+    assert calls == [["docker", "ps", "-a", "--format", "{{json .}}"]]
+
+
 def test_apply_local_runtime_creates_when_reuse_is_disabled(monkeypatch, tmp_path):
     agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
     deployment = replace(DeployNode().build(agent)[0], reuse_policy="always_create")
@@ -311,7 +365,8 @@ def test_apply_local_runtime_creates_when_reuse_is_disabled(monkeypatch, tmp_pat
     _result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="apply")
 
     assert reused is False
-    assert calls[0][:5] == ["docker", "compose", "-f", str(compose_path), "-p"]
+    assert calls[0] == ["docker", "ps", "-a", "--format", "{{json .}}"]
+    assert calls[1][:5] == ["docker", "compose", "-f", str(compose_path), "-p"]
 
 
 def test_apply_local_runtime_removes_delete_with_deployment_volumes(monkeypatch, tmp_path):

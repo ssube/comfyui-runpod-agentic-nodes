@@ -456,12 +456,30 @@ def apply_local_runtime_plan(
     action: str = "apply",
     timeout_seconds: int = 1800,
 ) -> tuple[LocalApplyResult, bool]:
+    cleanup: LocalApplyResult | None = None
     if action in {"apply", "apply_and_wait"} and plan.reuse_policy != "always_create":
         agent = next(resource for resource in plan.resources if resource.role == "agent")
         container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=local_resource_desired_hash(agent, plan)) if all_local_runtime_resources_running(engine, project_name, plan) else None
         if container_id:
             return exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds), True
+        cleanup = reconcile_stale_local_runtime_project(engine, compose_path, project_name, plan, timeout_seconds=timeout_seconds)
+        if cleanup and cleanup.returncode != 0:
+            return cleanup, False
+    elif action in {"apply", "apply_and_wait"}:
+        cleanup = reconcile_stale_local_runtime_project(engine, compose_path, project_name, plan, timeout_seconds=timeout_seconds)
+        if cleanup and cleanup.returncode != 0:
+            return cleanup, False
     result = apply_compose_file(engine, compose_path, project_name=project_name, action=action, timeout_seconds=timeout_seconds)
+    if cleanup:
+        result = LocalApplyResult(
+            result.engine,
+            result.action,
+            result.compose_path,
+            [*cleanup.command, "&&", *result.command] if cleanup.command and result.command else result.command or cleanup.command,
+            result.returncode,
+            "\n".join(part for part in (cleanup.stdout, result.stdout) if part),
+            "\n".join(part for part in (cleanup.stderr, result.stderr) if part),
+        )
     if action in {"apply", "apply_and_wait"} and result.returncode == 0 and plan_has_web_terminal(plan):
         startup = wait_local_runtime_startup_complete(engine, project_name, "agent", plan, timeout_seconds=timeout_seconds)
         if startup.returncode != 0:
@@ -479,6 +497,21 @@ def apply_local_runtime_plan(
                 "\n".join(part for part in (result.stderr, cleanup.stderr) if part),
             )
     return result, False
+
+
+def reconcile_stale_local_runtime_project(
+    engine: str,
+    compose_path: str | Path,
+    project_name: str,
+    plan: DeploymentPlan,
+    *,
+    timeout_seconds: int = 1800,
+) -> LocalApplyResult | None:
+    if not list_local_runtime_project_containers(engine, project_name):
+        return None
+    if all_local_runtime_resources_running(engine, project_name, plan):
+        return None
+    return apply_compose_file(engine, compose_path, project_name=project_name, action="terminate", timeout_seconds=timeout_seconds)
 
 
 def remove_local_retention_volumes(engine: str, project_name: str, plan: DeploymentPlan, *, timeout_seconds: int = 1800) -> LocalApplyResult | None:
@@ -697,11 +730,25 @@ def find_local_runtime_container(engine: str, project_name: str, role: str, desi
     return None
 
 
-def ps_args_for_engine(engine: str) -> list[str]:
+def list_local_runtime_project_containers(engine: str, project_name: str) -> list[str]:
+    command = local_runtime_command(engine, ps_args_for_engine(engine, all_containers=True))
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+    if completed.returncode != 0:
+        return []
+    containers = []
+    for item in parse_container_list(completed.stdout):
+        name = str(item.get("Names") or item.get("Name") or item.get("NamesString") or "")
+        container_id = str(item.get("ID") or item.get("Id") or item.get("ContainerID") or "")
+        if container_id and name.startswith(f"{project_name}-"):
+            containers.append(container_id)
+    return containers
+
+
+def ps_args_for_engine(engine: str, *, all_containers: bool = False) -> list[str]:
     if engine == "containerd":
-        return ["ps", "--format", "json"]
+        return ["ps", *(["-a"] if all_containers else []), "--format", "json"]
     if engine in {"docker", "podman"}:
-        return ["ps", "--format", "{{json .}}"]
+        return ["ps", *(["-a"] if all_containers else []), "--format", "{{json .}}"]
     raise RuntimeError(f"Unsupported local runtime engine: {engine}")
 
 
