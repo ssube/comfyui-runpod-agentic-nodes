@@ -19,11 +19,15 @@ from comfyui_runpod_agentic.nodes import (
     RemoteSQLDatabaseNode,
     RunLocalContainersNode,
     RunOnRunpodNode,
+    S3StorageNode,
     SkillFrameworkNode,
     SkillNode,
     SSHCommandNode,
+    StartupScriptNode,
     WebTerminalNode,
+    with_terminal_options,
 )
+from comfyui_runpod_agentic.planner import Planner
 from comfyui_runpod_agentic.setup_commands import container_snapshot_command, harness_install_command
 from comfyui_runpod_agentic.validation import ValidationError
 
@@ -76,6 +80,18 @@ def test_deploy_is_graph_only_and_runpod_terminal_owns_placement_options():
     assert "engine" in local_required
     assert "reuse_policy" in local_required
     assert not {"gpu_type_id", "gpu_count", "cloud_type", "container_disk_gb", "volume_gb", "expose_public_ip"} & set(local_required)
+
+
+def test_cpu_runpod_placement_omits_gpu_type_id():
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = with_terminal_options(DeployNode().build(agent)[0], gpu_type_id="CPU", gpu_count=0, cloud_type="SECURE")
+
+    plan = Planner().build(deployment, mode="plan")
+
+    assert deployment.resource_hints.cpu_only is True
+    assert deployment.resource_hints.gpu_type_id is None
+    assert plan.resources[0].pod_input["gpuCount"] == 0
+    assert "gpuTypeId" not in plan.resources[0].pod_input
 
 
 def test_web_terminal_adds_ttyd_contract_to_agent():
@@ -427,6 +443,29 @@ def test_network_storage_retention_policy_warns_for_destructive_intent():
     deployment = DeployNode().build(agent, network_storage=storage)[0]
 
     assert deployment.network_storage.retention_policy == "delete_with_deployment"
+
+
+def test_s3_storage_merges_server_env_secret_contract():
+    storage = S3StorageNode().build("https://s3.example.test", "bucket", "us-east-1", "ACCESS_ENV", "SECRET_ENV")[0]
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+
+    deployment = DeployNode().build(agent, s3_storage=storage)[0]
+    plan = Planner().build(deployment, mode="plan")
+
+    assert plan.runtime_contract.env.values["S3_BUCKET"] == "bucket"
+    assert [secret.env_var for secret in plan.runtime_contract.env.secrets] == ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
+
+
+def test_startup_script_node_exports_prompted_launcher_sequence():
+    agent = AgentNode().build("Pi", "model", "wait_for_commands", system_prompt="Stay concise.")[0]
+    deployment = DeployNode().build(agent)[0]
+
+    script = StartupScriptNode().export(deployment, prompt="Say hello.")[0]
+
+    assert script.startswith("bash <<'CRAG_STARTUP'")
+    assert ".runpod_agentic/launcher.sh" in script
+    assert "Say hello." in script
+    assert "Stay concise." in script
 
 
 def test_agent_accepts_mcp_servers():

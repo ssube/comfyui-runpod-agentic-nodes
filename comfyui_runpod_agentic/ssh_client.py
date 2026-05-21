@@ -37,17 +37,23 @@ class SubprocessSSHClient:
     def run(self, host: str, port: int, command: str, *, timeout_seconds: int | None = None) -> CommandResult:
         if is_runpod_proxy_host(host):
             args = self._base_args(host, port, allocate_tty=True)
-            proc = subprocess.run(
-                args,
-                input=f"{command}\nexit\n",
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds or self.config.command_timeout_seconds,
-                check=False,
-            )
+            try:
+                proc = subprocess.run(
+                    args,
+                    input=f"{command}\nexit\n",
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds or self.config.command_timeout_seconds,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                return CommandResult(124, exc.stdout or "", exc.stderr or f"SSH command timed out after {exc.timeout} seconds.")
         else:
             args = self._base_args(host, port) + [command]
-            proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout_seconds or self.config.command_timeout_seconds, check=False)
+            try:
+                proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout_seconds or self.config.command_timeout_seconds, check=False)
+            except subprocess.TimeoutExpired as exc:
+                return CommandResult(124, exc.stdout or "", exc.stderr or f"SSH command timed out after {exc.timeout} seconds.")
         return normalize_ssh_result(CommandResult(proc.returncode, proc.stdout, proc.stderr))
 
     def write_file(self, host: str, port: int, path: str, content: str) -> None:

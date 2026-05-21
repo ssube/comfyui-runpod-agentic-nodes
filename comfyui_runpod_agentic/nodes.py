@@ -105,7 +105,8 @@ def with_terminal_options(
     reuse_policy: str = "reuse_matching",
     ssh_access: SSHAccessPolicy | None = None,
 ) -> DeploymentSpec:
-    hints = PodResourceHints(gpu_type_id or None, int(gpu_count), None if cloud_type == "auto" else cloud_type, int(container_disk_gb), int(volume_gb) or None, bool(expose_public_ip), int(gpu_count) == 0)
+    gpu_count_int = int(gpu_count)
+    hints = PodResourceHints(None if gpu_count_int == 0 else gpu_type_id or None, gpu_count_int, None if cloud_type == "auto" else cloud_type, int(container_disk_gb), int(volume_gb) or None, bool(expose_public_ip), gpu_count_int == 0)
     return replace(deployment, resource_hints=hints, reuse_policy=reuse_policy, ssh_access=ssh_access or deployment.ssh_access)
 
 

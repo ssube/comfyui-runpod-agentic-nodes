@@ -1,5 +1,6 @@
 import io
 import json
+import subprocess
 import urllib.error
 
 import pytest
@@ -236,6 +237,19 @@ def test_subprocess_ssh_client_raises_on_write_failure(monkeypatch):
 
     with pytest.raises(SSHError):
         client.write_file("1.2.3.4", 2222, "/workspace/file.txt", "hello")
+
+
+def test_subprocess_ssh_client_returns_timeout_result(monkeypatch):
+    def fake_run(*_args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["ssh"], timeout=kwargs["timeout"])
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    client = SubprocessSSHClient(SSHConfig(username="ubuntu", private_key_path="/tmp/key", command_timeout_seconds=7))
+
+    result = client.run("pod-abc@ssh.runpod.io", 22, "true", timeout_seconds=3)
+
+    assert result.exit_code == 124
+    assert "timed out" in result.stderr
 
 
 def test_format_graphql_errors_preserves_path_and_code():
