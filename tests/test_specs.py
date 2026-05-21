@@ -293,6 +293,14 @@ def test_agent_can_skip_harness_install_for_local_e2e(monkeypatch):
     assert agent.runtime_contract.commands == []
 
 
+def test_agent_warns_when_system_prompt_is_not_supported_by_harness():
+    agent = AgentNode().build("Pi", "model", "manual", system_prompt="Be brief.")[0]
+    supported = AgentNode().build("Codex", "model", "manual", system_prompt="Be brief.")[0]
+
+    assert "does not advertise system prompt support" in agent.runtime_contract.env.values["CRAG_AGENT_WARNINGS"]
+    assert "CRAG_AGENT_WARNINGS" not in supported.runtime_contract.env.values
+
+
 def test_manual_agent_skips_harness_install_and_terminal_runs_first():
     terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
     manual_agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]

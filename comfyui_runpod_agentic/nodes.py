@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import get_ssh_env_config
-from .harnesses import CENTRAL_SKILLS_PATH
+from .harnesses import CENTRAL_SKILLS_PATH, HARNESS_SUPPORT
 from .planner import Planner
 from .runner import default_state_path
 from .runpod_options import optional_combo_or_string, runpod_dropdown_options
@@ -623,8 +623,12 @@ class AgentNode:
         skip_terminal_only_manual = startup_mode == "manual" and terminal and not any((browser, llm, sql_database, vector_database, mcp_servers, skills))
         if not skip_terminal_only_manual and harness_id in {"codex", "claude", "opencode", "hermes", "pi"} and os.environ.get("CRAG_SKIP_HARNESS_INSTALL") != "1":
             install_commands.append(RuntimeCommand(harness_install_command(harness_id), "before_start", -30000, "continue" if terminal else "fail", 0, f"harness:{harness_id}"))
+        env = {"AGENT_HARNESS": harness_id, "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "AGENT_SYSTEM_PROMPT": system_prompt, "WORKSPACE_DIR": workspace_path}
+        harness_warning = harness_capability_warning(harness_id, system_prompt)
+        if harness_warning:
+            env["CRAG_AGENT_WARNINGS"] = harness_warning
         contract = RuntimeContract(
-            EnvPatch({"AGENT_HARNESS": harness_id, "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "AGENT_SYSTEM_PROMPT": system_prompt, "WORKSPACE_DIR": workspace_path}),
+            EnvPatch(env),
             commands=install_commands,
         )
         if mcp_servers:
@@ -647,6 +651,13 @@ class AgentNode:
                 commands=[*contract.commands, *terminal.runtime_contract.commands],
             )
         return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, terminal, contract, capabilities, None, meta(node_id, harness)),)
+
+
+def harness_capability_warning(harness_id: str, system_prompt: str) -> str:
+    support = HARNESS_SUPPORT.get(harness_id)
+    if support and system_prompt.strip() and not support.system_prompt:
+        return f"{support.display_name} does not advertise system prompt support; AGENT_SYSTEM_PROMPT is available in the environment but the built-in launcher will not pass a guessed CLI flag."
+    return ""
 
 
 class NetworkStorageNode:
