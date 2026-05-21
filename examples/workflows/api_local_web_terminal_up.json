@@ -4,7 +4,7 @@
     "inputs": {
       "shell": "/bin/bash",
       "port": 7681,
-      "host_port": 7681,
+      "host_port": 7682,
       "auth_mode": "none",
       "username": "crag",
       "password": "crag-terminal"
