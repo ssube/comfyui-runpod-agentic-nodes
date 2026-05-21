@@ -202,7 +202,7 @@ class WebTerminalNode:
                 }
             ),
             ports=[PortSpec("terminal", terminal_port, "http", True)],
-            commands=[RuntimeCommand(web_terminal_command(terminal_port, terminal_shell, terminal_auth, terminal_user, terminal_password), "before_start", -25000, "fail", 0, "web_terminal")],
+            commands=[RuntimeCommand(web_terminal_command(terminal_port, terminal_shell, terminal_auth, terminal_user, terminal_password), "before_start", -40000, "fail", 0, "web_terminal")],
         )
         return (WebTerminalSpec("web_terminal", terminal_shell, terminal_port, local_host_port, terminal_auth, terminal_user, terminal_password, contract, meta(node_id, "Web Terminal")),)
 
@@ -619,8 +619,9 @@ class AgentNode:
                 capabilities.extend(spec.required_image_capabilities)
         harness_id = norm(harness)
         install_commands = []
-        if harness_id in {"codex", "claude", "opencode", "hermes", "pi"} and os.environ.get("CRAG_SKIP_HARNESS_INSTALL") != "1":
-            install_commands.append(RuntimeCommand(harness_install_command(harness_id), "before_start", -30000, "fail", 0, f"harness:{harness_id}"))
+        skip_terminal_only_manual = startup_mode == "manual" and terminal
+        if not skip_terminal_only_manual and harness_id in {"codex", "claude", "opencode", "hermes", "pi"} and os.environ.get("CRAG_SKIP_HARNESS_INSTALL") != "1":
+            install_commands.append(RuntimeCommand(harness_install_command(harness_id), "before_start", -30000, "continue" if terminal else "fail", 0, f"harness:{harness_id}"))
         contract = RuntimeContract(
             EnvPatch({"AGENT_HARNESS": harness_id, "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "AGENT_SYSTEM_PROMPT": system_prompt, "WORKSPACE_DIR": workspace_path}),
             commands=install_commands,

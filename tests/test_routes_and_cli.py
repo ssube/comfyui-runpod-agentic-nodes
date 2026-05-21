@@ -4,7 +4,14 @@ from binascii import Error
 import pytest
 
 from comfyui_runpod_agentic import cleanup, schema_check
-from comfyui_runpod_agentic.routes import RouteHandlers, register_routes, route_payload, terminal_authorization_header, terminal_proxy_path
+from comfyui_runpod_agentic.routes import (
+    RouteHandlers,
+    register_routes,
+    route_payload,
+    terminal_authorization_header,
+    terminal_proxy_path,
+    websocket_protocols,
+)
 
 
 class FakeRouteStore:
@@ -106,6 +113,12 @@ def test_terminal_authorization_header_validates_base64():
 
     with pytest.raises(Error):
         terminal_authorization_header("not base64")
+
+
+def test_websocket_protocols_preserve_ttyd_subprotocol():
+    assert websocket_protocols("tty") == ("tty",)
+    assert websocket_protocols(" tty, other ") == ("tty", "other")
+    assert websocket_protocols(None) == ()
 
 
 def test_cleanup_managed_pods_stops_or_terminates_matching_pods(monkeypatch):

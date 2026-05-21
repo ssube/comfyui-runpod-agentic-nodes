@@ -5,7 +5,7 @@
       "shell": "/bin/bash",
       "port": 7681,
       "host_port": 7681,
-      "auth_mode": "password",
+      "auth_mode": "none",
       "username": "crag",
       "password": "crag-terminal"
     }

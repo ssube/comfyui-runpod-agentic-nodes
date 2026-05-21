@@ -218,7 +218,7 @@ def test_agent_installs_supported_harnesses_before_start():
     }
 
     for harness, package in expected_packages.items():
-        agent = AgentNode().build(harness, "model", "manual")[0]
+        agent = AgentNode().build(harness, "model", "auto_start")[0]
 
         command = agent.runtime_contract.commands[0]
         assert command.phase == "before_start"
@@ -241,6 +241,17 @@ def test_agent_can_skip_harness_install_for_local_e2e(monkeypatch):
     agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
 
     assert agent.runtime_contract.commands == []
+
+
+def test_manual_agent_skips_harness_install_and_terminal_runs_first():
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
+    manual_agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
+    auto_agent = AgentNode().build("Pi", "model", "auto_start", terminal=terminal)[0]
+
+    assert [command.source for command in manual_agent.runtime_contract.commands] == ["web_terminal"]
+    ordered = sorted(auto_agent.runtime_contract.commands, key=lambda command: command.order)
+    assert [command.source for command in ordered] == ["web_terminal", "harness:pi"]
+    assert next(command for command in auto_agent.runtime_contract.commands if command.source == "harness:pi").failure_policy == "continue"
 
 
 def test_sqlite_contract_is_file_only():

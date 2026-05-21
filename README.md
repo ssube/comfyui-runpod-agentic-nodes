@@ -223,7 +223,7 @@ Run on Runpod(mode=plan or apply_and_wait, prompt="Implement the requested chang
 ### Local Web Terminal
 
 ```text
-Web Terminal(shell=/bin/bash, port=7681, host_port=7681, auth=password)
+Web Terminal(shell=/bin/bash, port=7681, host_port=7681, auth=none)
 Agent(harness=Pi, startup_mode=manual, terminal=Web Terminal)
 Deploy(app=Agent)
 Run Local Containers(action=apply, prompt="Launch an interactive terminal.")
