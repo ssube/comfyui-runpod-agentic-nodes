@@ -980,7 +980,7 @@ def comfy_output(result: tuple[str, ...], workflow_graph: Any, names: tuple[str,
         return result
     ui: dict[str, list[str]] = {"text": [result[0]]}
     if names is not None:
-        for name, value in zip(names, result):
+        for name, value in zip(names, result, strict=False):
             ui[name] = [value]
     return {"ui": ui, "result": result}
 
