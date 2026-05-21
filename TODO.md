@@ -18,3 +18,4 @@ Most repo-local TODO items have been implemented. The remaining work needs confi
 - Replace bootstrap template images and commands with production CRAG runtime images once those images are published.
 - Finalize richer service-specific readiness probes after production template endpoint shapes are locked.
 - Add direct remote pod log streaming if Runpod exposes a stable pod logs API. Current log collection reads local command logs captured by `Run on Runpod`.
+- Figure out the supported Runpod API path for CPU-only pods and add first-class CRAG support. `CPU` is not returned by `gpuTypes`, and `podFindAndDeployOnDemand` currently rejects omitted `gpuTypeId`.
