@@ -85,6 +85,7 @@ def test_web_terminal_adds_ttyd_contract_to_agent():
     assert agent.runtime_contract.ports[0].name == "terminal"
     assert agent.runtime_contract.ports[0].container_port == 7681
     assert "ttyd" in agent.runtime_contract.commands[-1].command
+    assert agent.runtime_contract.commands[-1].failure_policy == "continue"
     assert agent.runtime_contract.env.values["CRAG_WEB_TERMINAL_HOST_PORT"] == "8765"
 
 
@@ -99,6 +100,14 @@ def test_run_nodes_emit_comfy_ui_text_when_called_by_graph(tmp_path):
     assert result["result"][0] == result["ui"]["text"][0]
     payload = json.loads(result["result"][0])
     assert payload["terminal_auth"] == {"agent": {"username": "crag", "password": "secret"}}
+
+
+def test_frontend_terminal_uses_overlay_without_embedded_widget():
+    script = Path("web/optional_frontend_extensions.js").read_text()
+
+    assert "showFloatingTerminal(terminal)" in script
+    assert "Open Web Terminal" in script
+    assert "addDOMWidget" not in script
 
 
 def test_runpod_catalog_options_become_dropdowns(monkeypatch):
@@ -252,6 +261,16 @@ def test_manual_agent_skips_harness_install_and_terminal_runs_first():
     ordered = sorted(auto_agent.runtime_contract.commands, key=lambda command: command.order)
     assert [command.source for command in ordered] == ["web_terminal", "harness:pi"]
     assert next(command for command in auto_agent.runtime_contract.commands if command.source == "harness:pi").failure_policy == "continue"
+
+
+def test_terminal_active_agent_keeps_skill_startup_commands():
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
+    skill = SkillNode().build("frontend-design", "https://github.com/example/skills.git", "frontend-design", "", "main")[0]
+    agent = AgentNode().build("Pi", "model", "auto_start", terminal=terminal, skills=skill)[0]
+    ordered = sorted(agent.runtime_contract.commands, key=lambda command: command.order)
+
+    assert [command.source for command in ordered] == ["web_terminal", "harness:pi", "skill:frontend-design"]
+    assert ordered[0].failure_policy == "continue"
 
 
 def test_sqlite_contract_is_file_only():

@@ -202,7 +202,7 @@ class WebTerminalNode:
                 }
             ),
             ports=[PortSpec("terminal", terminal_port, "http", True)],
-            commands=[RuntimeCommand(web_terminal_command(terminal_port, terminal_shell, terminal_auth, terminal_user, terminal_password), "before_start", -40000, "fail", 0, "web_terminal")],
+            commands=[RuntimeCommand(web_terminal_command(terminal_port, terminal_shell, terminal_auth, terminal_user, terminal_password), "before_start", -40000, "continue", 0, "web_terminal")],
         )
         return (WebTerminalSpec("web_terminal", terminal_shell, terminal_port, local_host_port, terminal_auth, terminal_user, terminal_password, contract, meta(node_id, "Web Terminal")),)
 

@@ -127,35 +127,13 @@ function showFloatingTerminal(terminal) {
   panel.append(terminalFrame(terminal));
 }
 
-function attachTerminalFrame(node, terminal) {
+function attachTerminalOverlay(node, terminal) {
   if (!terminal?.url) {
     return;
   }
 
   if (typeof node.addWidget === "function" && !node.__cragTerminalButton) {
     node.__cragTerminalButton = node.addWidget("button", "Open Web Terminal", null, () => showFloatingTerminal(terminal));
-  }
-
-  if (typeof node.addDOMWidget === "function") {
-    if (node.__cragTerminalWidget) {
-      node.__cragTerminalWidget.element.querySelector("iframe").src = sameOriginTerminalUrl(terminal);
-      showFloatingTerminal(terminal);
-      return;
-    }
-    const wrapper = document.createElement("div");
-    wrapper.style.width = "100%";
-    wrapper.style.height = "360px";
-    wrapper.style.border = "1px solid #444";
-    wrapper.style.borderRadius = "6px";
-    wrapper.style.overflow = "hidden";
-    wrapper.style.background = "#111";
-    wrapper.append(terminalFrame(terminal));
-
-    node.__cragTerminalWidget = node.addDOMWidget("terminal", "terminal", wrapper, {
-      getValue: () => terminal.url,
-      setValue: () => {},
-    });
-    node.setSize?.([Math.max(node.size?.[0] || 400, 640), Math.max(node.size?.[1] || 300, 560)]);
   }
 
   showFloatingTerminal(terminal);
@@ -170,7 +148,7 @@ app.registerExtension({
     const original = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function onExecuted(message) {
       original?.apply(this, arguments);
-      attachTerminalFrame(this, terminalFromMessage(message));
+      attachTerminalOverlay(this, terminalFromMessage(message));
     };
   },
 });

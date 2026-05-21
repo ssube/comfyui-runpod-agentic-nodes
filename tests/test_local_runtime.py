@@ -122,6 +122,20 @@ def test_agent_compose_command_runs_startup_commands():
     assert "sleep infinity" in agent_service["command"]
 
 
+def test_terminal_compose_command_does_not_block_startup_commands():
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "none", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", terminal=terminal)[0]
+    commands = SSHCommandNode().build("printf startup-ok > /workspace/startup.txt", "before_start", "fail")[0]
+    deployment = DeployNode().build(agent, commands=commands)[0]
+    plan = Planner().build(deployment)
+
+    compose = yaml.safe_load(compose_yaml_for_plan(plan))
+    agent_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
+
+    assert "run_crag_command web_terminal continue 0" in agent_service["command"]
+    assert "printf startup-ok > /workspace/startup.txt" in agent_service["command"]
+
+
 def test_agent_compose_command_layers_pod_side_keep_alive():
     agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
     keep_alive = KeepAliveNode().build("time", "terminate", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
