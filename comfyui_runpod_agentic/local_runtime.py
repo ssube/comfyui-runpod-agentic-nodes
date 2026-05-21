@@ -470,6 +470,18 @@ def apply_local_runtime_plan(
         if cleanup and cleanup.returncode != 0:
             return cleanup, False
     result = apply_compose_file(engine, compose_path, project_name=project_name, action=action, timeout_seconds=timeout_seconds)
+    if action == "stop" and result.returncode == 0:
+        stop_result = stop_local_runtime_project_containers(engine, project_name, timeout_seconds=timeout_seconds)
+        if stop_result:
+            result = LocalApplyResult(
+                result.engine,
+                result.action,
+                result.compose_path,
+                [*result.command, "&&", *stop_result.command] if result.command and stop_result.command else result.command or stop_result.command,
+                stop_result.returncode,
+                "\n".join(part for part in (result.stdout, stop_result.stdout) if part),
+                "\n".join(part for part in (result.stderr, stop_result.stderr) if part),
+            )
     if cleanup:
         result = LocalApplyResult(
             result.engine,
@@ -526,6 +538,20 @@ def remove_local_retention_volumes(engine: str, project_name: str, plan: Deploym
     except subprocess.TimeoutExpired as exc:
         return LocalApplyResult(engine, "volume_cleanup", "", exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
     return LocalApplyResult(engine, "volume_cleanup", "", command, completed.returncode, completed.stdout, completed.stderr)
+
+
+def stop_local_runtime_project_containers(engine: str, project_name: str, *, timeout_seconds: int = 1800) -> LocalApplyResult | None:
+    container_ids = list_local_runtime_project_containers(engine, project_name, only_running=True)
+    if not container_ids:
+        return None
+    try:
+        command = local_runtime_command(engine, ["stop", *container_ids])
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
+    except (FileNotFoundError, RuntimeError) as exc:
+        return LocalApplyResult(engine, "stop", "", [], 127, "", str(exc))
+    except subprocess.TimeoutExpired as exc:
+        return LocalApplyResult(engine, "stop", "", exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
+    return LocalApplyResult(engine, "stop", "", command, completed.returncode, completed.stdout, completed.stderr)
 
 
 def local_retention_volume_names(project_name: str, plan: DeploymentPlan) -> list[str]:
@@ -753,8 +779,8 @@ def find_local_runtime_container(engine: str, project_name: str, role: str, desi
     return None
 
 
-def list_local_runtime_project_containers(engine: str, project_name: str) -> list[str]:
-    command = local_runtime_command(engine, ps_args_for_engine(engine, all_containers=True))
+def list_local_runtime_project_containers(engine: str, project_name: str, *, only_running: bool = False) -> list[str]:
+    command = local_runtime_command(engine, ps_args_for_engine(engine, all_containers=not only_running))
     completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
     if completed.returncode != 0:
         return []

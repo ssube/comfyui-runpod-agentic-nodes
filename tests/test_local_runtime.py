@@ -336,6 +336,29 @@ def test_apply_local_runtime_reconciles_stale_project_before_up(monkeypatch, tmp
     assert calls.index(["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "down", "--remove-orphans"]) < calls.index(["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "up", "-d"])
 
 
+def test_stop_local_runtime_stops_project_orphan_containers(monkeypatch, tmp_path):
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
+    plan = Planner().build(DeployNode().build(agent)[0], prompt="stop")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command == ["docker", "ps", "--format", "{{json .}}"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"orphan1","Names":"crag-node-old-agent"}\n{"ID":"other1","Names":"other-agent"}\n', stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="stop")
+
+    assert reused is False
+    assert result.returncode == 0
+    assert ["docker", "compose", "-f", str(compose_path), "-p", "crag-node", "stop"] in calls
+    assert ["docker", "stop", "orphan1"] in calls
+
+
 def test_list_local_runtime_project_containers_includes_stopped(monkeypatch):
     calls = []
 
