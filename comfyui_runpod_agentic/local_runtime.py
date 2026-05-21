@@ -106,7 +106,7 @@ def compose_yaml_for_plan(plan: DeploymentPlan, *, project_name: str = "crag-loc
             "environment": compose_env(resource, service_names),
             "labels": {
                 "comfyui-runpod-agentic.role": resource.role,
-                "comfyui-runpod-agentic.desired_hash": resource.desired_hash,
+                "comfyui-runpod-agentic.desired_hash": local_resource_desired_hash(resource, plan, service_names),
             },
         }
         command = compose_command(resource, plan)
@@ -200,6 +200,26 @@ def compose_command(resource: ResourcePlan, plan: DeploymentPlan) -> str | None:
     if resource.role == "llm" and env.get("LLM_PROVIDER") == "ollama":
         return "serve"
     return None
+
+
+def local_resource_desired_hash(resource: ResourcePlan, plan: DeploymentPlan, service_names: dict[str, str] | None = None) -> str:
+    service_names = service_names or {item.name: compose_service_name(item) for item in plan.resources}
+    return stable_local_hash(
+        {
+            "image": image_for_resource(resource),
+            "environment": compose_env(resource, service_names),
+            "command": compose_command(resource, plan),
+            "ports": local_port_mappings(resource),
+            "volume_mount": volume_mount_for_resource(resource),
+        }
+    )[:12]
+
+
+def stable_local_hash(value: object) -> str:
+    import hashlib
+
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def agent_startup_command(plan: DeploymentPlan, resource: ResourcePlan) -> str:
@@ -436,10 +456,14 @@ def apply_local_runtime_plan(
 ) -> tuple[LocalApplyResult, bool]:
     if action in {"apply", "apply_and_wait"} and plan.reuse_policy != "always_create":
         agent = next(resource for resource in plan.resources if resource.role == "agent")
-        container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=agent.desired_hash) if all_local_runtime_resources_running(engine, project_name, plan) else None
+        container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=local_resource_desired_hash(agent, plan)) if all_local_runtime_resources_running(engine, project_name, plan) else None
         if container_id:
             return exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds), True
     result = apply_compose_file(engine, compose_path, project_name=project_name, action=action, timeout_seconds=timeout_seconds)
+    if action in {"apply", "apply_and_wait"} and result.returncode == 0 and plan_has_web_terminal(plan):
+        startup = wait_local_runtime_startup_complete(engine, project_name, "agent", plan, timeout_seconds=timeout_seconds)
+        if startup.returncode != 0:
+            return LocalApplyResult(result.engine, result.action, result.compose_path, result.command, startup.returncode, result.stdout, "\n".join(part for part in (result.stderr, startup.stderr) if part)), False
     if action == "terminate" and result.returncode == 0:
         cleanup = remove_local_retention_volumes(engine, project_name, plan, timeout_seconds=timeout_seconds)
         if cleanup:
@@ -482,7 +506,41 @@ def local_retention_volume_names(project_name: str, plan: DeploymentPlan) -> lis
 
 
 def all_local_runtime_resources_running(engine: str, project_name: str, plan: DeploymentPlan) -> bool:
-    return all(find_local_runtime_container(engine, project_name, resource.role, desired_hash=resource.desired_hash) for resource in plan.resources)
+    return all(find_local_runtime_container(engine, project_name, resource.role, desired_hash=local_resource_desired_hash(resource, plan)) for resource in plan.resources)
+
+
+def plan_has_web_terminal(plan: DeploymentPlan) -> bool:
+    agent = next((resource for resource in plan.resources if resource.role == "agent"), None)
+    env = (agent.pod_input.get("env") if agent else {}) or {}
+    return env.get("CRAG_WEB_TERMINAL") == "1"
+
+
+def wait_local_runtime_startup_complete(
+    engine: str,
+    project_name: str,
+    role: str,
+    plan: DeploymentPlan,
+    *,
+    timeout_seconds: int = 1800,
+) -> LocalRuntimeReadResult:
+    deadline = time.time() + int(timeout_seconds)
+    command: list[str] = []
+    last_stderr = ""
+    container_id = ""
+    desired_hash = local_resource_desired_hash(next(resource for resource in plan.resources if resource.role == role), plan)
+    while time.time() < deadline:
+        container_id = find_local_runtime_container(engine, project_name, role, desired_hash=desired_hash) or ""
+        if not container_id:
+            last_stderr = f"No running {role} container found for project {project_name}."
+            time.sleep(1)
+            continue
+        logs_result = read_local_runtime_logs(engine, project_name, role, container_id)
+        command = logs_result.command
+        if logs_result.returncode == 0 and local_runtime_logs_are_complete(logs_result.stdout):
+            return logs_result
+        last_stderr = logs_result.stderr
+        time.sleep(1)
+    return LocalRuntimeReadResult(engine, project_name, role, "<logs>", container_id, command, 1, "", last_stderr or "Timed out waiting for local runtime startup commands to complete.")
 
 
 def exec_agent_in_local_container(
@@ -608,6 +666,7 @@ def local_runtime_logs_are_complete(logs: str) -> bool:
     return any(
         marker in logs
         for marker in (
+            "[crag-local-runtime] startup commands complete",
             "[crag-local-runtime] startup mode is manual; launcher not started.",
             "No compatible agent launcher was found",
         )

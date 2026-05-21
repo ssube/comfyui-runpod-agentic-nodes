@@ -15,7 +15,7 @@
     "inputs": {
       "harness": "Pi",
       "model": "manual-terminal",
-      "startup_mode": "manual",
+      "startup_mode": "auto_start",
       "workspace_path": "/workspace",
       "system_prompt": "Manual terminal demo.",
       "terminal": [
@@ -29,6 +29,10 @@
     "inputs": {
       "app": [
         "2",
+        0
+      ],
+      "commands": [
+        "5",
         0
       ]
     }
@@ -51,6 +55,15 @@
       "response_path": "",
       "response_timeout_seconds": 0,
       "reuse_policy": "reuse_matching"
+    }
+  },
+  "5": {
+    "class_type": "LanguageRuntime",
+    "inputs": {
+      "runtime": "nodejs",
+      "node_major_version": 22,
+      "failure_policy": "fail",
+      "retry_count": 0
     }
   }
 }

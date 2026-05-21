@@ -14,6 +14,7 @@ from comfyui_runpod_agentic.local_runtime import (
     command_for_engine,
     compose_yaml_for_plan,
     enforce_local_keep_alive,
+    local_resource_desired_hash,
     local_runtime_response_is_ready,
     resolve_local_secret_placeholder,
 )
@@ -22,6 +23,7 @@ from comfyui_runpod_agentic.nodes import (
     ComposeYAMLNode,
     DeployNode,
     KeepAliveNode,
+    LanguageRuntimeNode,
     LLMServerNode,
     NetworkStorageNode,
     RunLocalContainersNode,
@@ -136,6 +138,53 @@ def test_terminal_compose_command_does_not_block_startup_commands():
     assert "printf startup-ok > /workspace/startup.txt" in agent_service["command"]
 
 
+def test_local_resource_hash_changes_with_startup_commands():
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "none", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "auto_start", "/workspace", terminal=terminal)[0]
+    first = DeployNode().build(agent)[0]
+    commands = LanguageRuntimeNode().build("nodejs", 22)[0]
+    second = DeployNode().build(agent, commands=commands)[0]
+    first_plan = Planner().build(first, prompt="Launch terminal.")
+    second_plan = Planner().build(second, prompt="Launch terminal.")
+    first_agent = next(resource for resource in first_plan.resources if resource.role == "agent")
+    second_agent = next(resource for resource in second_plan.resources if resource.role == "agent")
+
+    assert first_agent.desired_hash == second_agent.desired_hash
+    assert local_resource_desired_hash(first_agent, first_plan) != local_resource_desired_hash(second_agent, second_plan)
+
+
+def test_apply_local_runtime_waits_for_terminal_startup(monkeypatch, tmp_path):
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "none", "crag", "secret")[0]
+    agent_spec = AgentNode().build("Pi", "model", "auto_start", "/workspace", terminal=terminal)[0]
+    commands = LanguageRuntimeNode().build("nodejs", 22)[0]
+    deployment = replace(DeployNode().build(agent_spec, commands=commands)[0], reuse_policy="always_create")
+    plan = Planner().build(deployment, prompt="Launch terminal.")
+    agent = next(resource for resource in plan.resources if resource.role == "agent")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[:3] == ["docker", "compose", "-f"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command[:3] == ["docker", "ps", "--format"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": local_resource_desired_hash(agent, plan)}}}]), stderr="")
+        if command == ["docker", "logs", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout="[crag-local-runtime] startup commands complete\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="apply")
+
+    assert reused is False
+    assert result.returncode == 0
+    assert ["docker", "logs", "agent1"] in calls
+
+
 def test_agent_compose_command_layers_pod_side_keep_alive():
     agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
     keep_alive = KeepAliveNode().build("time", "terminate", 30, "seconds", 0, 0.0, 0, "pod_side")[0]
@@ -199,9 +248,9 @@ def test_apply_local_runtime_reuses_matching_agent_container(monkeypatch, tmp_pa
         if command[:3] == ["docker", "ps", "--format"]:
             return SimpleNamespace(returncode=0, stdout='{"ID":"llm1","Names":"crag-node-llm"}\n{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
         if command == ["docker", "inspect", "llm1"]:
-            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "llm", "comfyui-runpod-agentic.desired_hash": llm_resource.desired_hash}}}]), stderr="")
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "llm", "comfyui-runpod-agentic.desired_hash": local_resource_desired_hash(llm_resource, plan)}}}]), stderr="")
         if command == ["docker", "inspect", "agent1"]:
-            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": agent.desired_hash}}}]), stderr="")
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": local_resource_desired_hash(agent, plan)}}}]), stderr="")
         if command[:4] == ["docker", "exec", "agent1", "bash"]:
             return SimpleNamespace(returncode=0, stdout="relaunched\n", stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
@@ -232,7 +281,7 @@ def test_apply_local_runtime_recreates_when_dependency_container_is_missing(monk
         if command[:3] == ["docker", "ps", "--format"]:
             return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
         if command == ["docker", "inspect", "agent1"]:
-            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": agent.desired_hash}}}]), stderr="")
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": local_resource_desired_hash(agent, plan)}}}]), stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
