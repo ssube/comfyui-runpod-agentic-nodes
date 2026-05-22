@@ -8,13 +8,22 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from .backends import (
+    ContainerBuildBackend,
+    LocalContainerBackend,
+    RunpodBackend,
+    RuntimeOptions,
+    local_terminal_auth_for_plan,
+    local_terminal_urls_for_plan,
+    runtime_node_output,
+    with_reuse_policy,
+)
 from .config import get_ssh_env_config
 from .harnesses import CENTRAL_SKILLS_PATH, HARNESS_SUPPORT
 from .planner import Planner
 from .runner import default_state_path
 from .runpod_options import optional_combo_or_string, runpod_dropdown_options
 from .setup_commands import (
-    container_snapshot_command,
     harness_install_command,
     language_runtime_install_command,
     local_sql_setup_command,
@@ -816,31 +825,25 @@ class BuildContainerNode:
         timeout_seconds: int = 1800,
         workflow_graph: Any = None,
     ):
-        from .local_runtime import apply_local_runtime_plan, compose_yaml_for_plan, write_compose_file
-
-        build_command = SSHCommand(container_snapshot_command(image_tag, container_runtime, bool(push_to_docker_hub), dockerhub_username_env, dockerhub_token_env), "after_ready", 50000, failure_policy, int(retry_count))
-        commands = [*(deployment.ssh_commands.commands if deployment.ssh_commands else []), build_command]
-        build_deployment = replace(deployment, ssh_commands=SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(None, "Build Container")), reuse_policy="always_create")
-        plan = Planner().build(build_deployment, mode="plan", prompt=f"Build container {image_tag}", workflow_graph=workflow_graph)
-        project = project_name.strip() or "crag-build"
-        compose_yaml = compose_yaml_for_plan(plan, project_name=project)
-        saved_path = write_compose_file(output_path, compose_yaml)
-        old_sudo = os.environ.get("CRAG_LOCAL_RUNTIME_SUDO")
-        if use_sudo:
-            os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = "1"
-        else:
-            os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
-        engine = {"nerdctl": "containerd", "docker": "docker", "podman": "podman"}[container_runtime]
-        try:
-            result, reused = apply_local_runtime_plan(engine, saved_path, project, plan, action="apply_and_wait", timeout_seconds=int(timeout_seconds))
-        finally:
-            if old_sudo is None:
-                os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
-            else:
-                os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
-        payload = json.loads(result.to_text())
-        payload["reused"] = reused
-        output = (json.dumps(payload, indent=2, sort_keys=True), result.stdout, result.stderr, compose_yaml, saved_path)
+        result = ContainerBuildBackend().apply(
+            deployment,
+            RuntimeOptions(
+                action="apply_and_wait",
+                workflow_graph=workflow_graph,
+                image_tag=image_tag,
+                container_runtime=container_runtime,
+                push_to_docker_hub=bool(push_to_docker_hub),
+                dockerhub_username_env=dockerhub_username_env,
+                dockerhub_token_env=dockerhub_token_env,
+                failure_policy=failure_policy,
+                retry_count=int(retry_count),
+                project_name=project_name,
+                output_path=output_path,
+                use_sudo=bool(use_sudo),
+                timeout_seconds=int(timeout_seconds),
+            ),
+        )
+        output = runtime_node_output(result, self.RETURN_NAMES, (result.artifacts.get("compose_yaml", ""), result.artifacts.get("saved_path", "")))
         return comfy_output(output, workflow_graph, self.RETURN_NAMES)
 
 
@@ -968,22 +971,13 @@ class RunOnRunpodNode:
     ):
         progress = ComfyProgress()
         deployment = with_terminal_options(deployment, gpu_type_id=gpu_type_id, gpu_count=gpu_count, cloud_type=cloud_type, container_disk_gb=container_disk_gb, volume_gb=volume_gb, expose_public_ip=expose_public_ip, reuse_policy=reuse_policy, ssh_access=ssh_access)
+        backend = RunpodBackend(progress=progress)
+        options = RuntimeOptions(action=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
         if mode != "plan":
-            from .runner import RunpodRunner
-
-            try:
-                try:
-                    runner = RunpodRunner(progress=progress)
-                except TypeError:
-                    runner = RunpodRunner()
-                result = runner.run(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
-            except Exception as exc:
-                result = {"status": "failed", "mode": mode, "error": str(exc), "errors": str(exc)}
-            output = (json.dumps(result, indent=2, sort_keys=True), str(result.get("response") or ""), str(result.get("errors") or ""))
+            result = getattr(backend, mode)(deployment, options)
+            output = runtime_node_output(result, self.RETURN_NAMES)
             return comfy_output(output, workflow_graph, self.RETURN_NAMES)
-        plan = Planner().build(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph)
-        progress.set_total(max(1, len(plan.actions)))
-        progress.update("plan")
+        plan = backend.plan(deployment, options)
         output = (json.dumps(plan.to_dict(), indent=2, sort_keys=True), "", "")
         return comfy_output(output, workflow_graph, self.RETURN_NAMES)
 
@@ -1126,57 +1120,25 @@ class RunLocalContainersNode:
         reuse_policy: str = "reuse_matching",
         workflow_graph: Any = None,
     ):
-        import os
-
-        from .local_runtime import (
-            apply_local_runtime_plan,
-            compose_yaml_for_plan,
-            enforce_local_keep_alive,
-            read_local_runtime_file,
-            write_compose_file,
-        )
-
-        project = project_name.strip() or "crag-local"
         workflow_graph = populate_local_volume_ids(workflow_graph)
-        deployment = replace(deployment, reuse_policy=reuse_policy)
-        plan = Planner().build(deployment, mode="plan", prompt=prompt, workflow_graph=workflow_graph)
-        compose_yaml = compose_yaml_for_plan(plan, project_name=project)
-        saved_path = write_compose_file(output_path, compose_yaml)
-        old_sudo = os.environ.get("CRAG_LOCAL_RUNTIME_SUDO")
-        if use_sudo:
-            os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = "1"
-        else:
-            os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
-        try:
-            result, reused = apply_local_runtime_plan(engine, saved_path, project, plan, action=action, timeout_seconds=int(timeout_seconds))
-            response = ""
-            response_errors = ""
-            keep_alive_result = None
-            if action in {"apply", "apply_and_wait"} and result.returncode == 0:
-                keep_alive_result = enforce_local_keep_alive(engine, saved_path, project, plan, response_collected=False)
-                if response_path.strip() and int(response_timeout_seconds) > 0:
-                    read_result = read_local_runtime_file(engine, project, response_role.strip() or "agent", response_path.strip(), timeout_seconds=int(response_timeout_seconds))
-                    response = read_result.stdout
-                    response_errors = read_result.stderr
-                    response_keep_alive_result = enforce_local_keep_alive(engine, saved_path, project, plan, response_collected=bool(response))
-                    keep_alive_result = response_keep_alive_result or keep_alive_result
-        finally:
-            if old_sudo is None:
-                os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
-            else:
-                os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
-        result_payload = json.loads(result.to_text())
-        result_payload["reused"] = reused
-        terminal_urls = local_terminal_urls(plan) if action in {"apply", "apply_and_wait"} and result.returncode == 0 else {}
-        if terminal_urls:
-            result_payload["terminal_urls"] = terminal_urls
-            terminal_auth = local_terminal_auth(plan)
-            if terminal_auth:
-                result_payload["terminal_auth"] = terminal_auth
-        if keep_alive_result:
-            result_payload["keep_alive"] = json.loads(keep_alive_result.to_text())
-        errors = "\n".join(part for part in (result.stderr, response_errors, keep_alive_result.stderr if keep_alive_result else "") if part)
-        output = (json.dumps(result_payload, indent=2, sort_keys=True), response, errors, compose_yaml, saved_path)
+        deployment = with_reuse_policy(deployment, reuse_policy)
+        result = getattr(LocalContainerBackend(), action if action in {"apply", "stop", "terminate"} else "apply")(
+            deployment,
+            RuntimeOptions(
+                action=action,
+                prompt=prompt,
+                workflow_graph=workflow_graph,
+                engine=engine,
+                project_name=project_name,
+                output_path=output_path,
+                use_sudo=bool(use_sudo),
+                timeout_seconds=int(timeout_seconds),
+                response_role=response_role,
+                response_path=response_path,
+                response_timeout_seconds=int(response_timeout_seconds),
+            ),
+        )
+        output = runtime_node_output(result, self.RETURN_NAMES, (result.artifacts.get("compose_yaml", ""), result.artifacts.get("saved_path", "")))
         return comfy_output(output, workflow_graph, self.RETURN_NAMES)
 
 
@@ -1198,28 +1160,11 @@ def populate_local_volume_ids(workflow_graph: Any) -> Any:
 
 
 def local_terminal_urls(plan) -> dict[str, str]:
-    urls = {}
-    for resource in plan.resources:
-        env = resource.pod_input.get("env") or {}
-        if env.get("CRAG_WEB_TERMINAL") != "1":
-            continue
-        host_port = int(env.get("CRAG_WEB_TERMINAL_HOST_PORT") or env.get("CRAG_WEB_TERMINAL_PORT") or 7681)
-        if host_port > 0:
-            urls[resource.role] = f"http://127.0.0.1:{host_port}"
-    return urls
+    return local_terminal_urls_for_plan(plan)
 
 
 def local_terminal_auth(plan) -> dict[str, dict[str, str]]:
-    auth = {}
-    for resource in plan.resources:
-        env = resource.pod_input.get("env") or {}
-        if env.get("CRAG_WEB_TERMINAL") != "1" or env.get("CRAG_WEB_TERMINAL_AUTH_MODE") != "password":
-            continue
-        username = str(env.get("CRAG_WEB_TERMINAL_USERNAME") or "")
-        password = str(env.get("CRAG_WEB_TERMINAL_PASSWORD") or "")
-        if username and password:
-            auth[resource.role] = {"username": username, "password": password}
-    return auth
+    return local_terminal_auth_for_plan(plan)
 
 
 class LogsNode:
