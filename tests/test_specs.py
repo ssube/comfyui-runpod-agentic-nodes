@@ -247,7 +247,7 @@ def test_runpod_catalog_options_become_dropdowns(monkeypatch):
 
 
 def test_ollama_deepseek_example_uses_setup_nodes_for_packages():
-    workflow = json.loads(Path("examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json").read_text())
+    workflow = json.loads(Path("examples/workflows/api_local_ollama_cloud_deepseek_agent.json").read_text())
     class_types = [node["class_type"] for node in workflow.values()]
 
     assert "LanguageRuntime" in class_types
@@ -261,7 +261,7 @@ def test_ollama_deepseek_example_uses_setup_nodes_for_packages():
 
 
 def test_pi_ollama_terminal_example_attaches_ttyd_to_tmux_session():
-    workflow = json.loads(Path("examples/workflows/api_local_pi_ollama_terminal_up.json").read_text())
+    workflow = json.loads(Path("examples/workflows/api_local_pi_ollama_terminal.json").read_text())
     class_types = [node["class_type"] for node in workflow.values()]
 
     assert "WebTerminal" in class_types

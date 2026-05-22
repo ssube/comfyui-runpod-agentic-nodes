@@ -241,9 +241,9 @@ Deploy(app=Agent)
 Run Local Containers(action=apply, prompt="Launch an interactive terminal.")
 ```
 
-The local run result includes `terminal_urls.agent`, and the optional frontend extension opens that URL in an in-page terminal panel. The example pair is `examples/workflows/api_local_web_terminal_up.json` and `examples/workflows/api_local_web_terminal_down.json`.
+The local run result includes `terminal_urls.agent`, and the optional frontend extension opens that URL in an in-page terminal panel. The API example is `examples/workflows/api_local_web_terminal.json`; switch the `Run Local Containers` action from `apply` to `terminate` to tear it down.
 
-For a terminal that opens directly into a Pi chat backed by Ollama Cloud, use `examples/workflows/api_local_pi_ollama_terminal_up.json`. It installs Node.js, Pi, and `tmux`, writes Pi's Ollama Cloud provider config from `OLLAMA_API_KEY`, starts Pi in a named `tmux` session, and attaches ttyd to that session after startup is ready.
+For a terminal that opens directly into a Pi chat backed by Ollama Cloud, use `examples/workflows/api_local_pi_ollama_terminal.json`. It installs Node.js, Pi, and `tmux`, writes Pi's Ollama Cloud provider config from `OLLAMA_API_KEY`, starts Pi in a named `tmux` session, and attaches ttyd to that session after startup is ready.
 
 Plan order:
 

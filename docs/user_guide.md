@@ -817,12 +817,11 @@ API-format examples:
 | File | Purpose |
 | --- | --- |
 | `examples/workflows/api_container_snapshot_plan.json` | API-format local build workflow ending at `Build Container`. |
-| `examples/workflows/api_local_agent_skills_postgres_up.json` | Comprehensive local runtime preflight: Postgres, Ollama Cloud env, Superpowers skills, package install, harness prompt output. |
-| `examples/workflows/api_local_agent_skills_postgres_down.json` | Teardown pair for the comprehensive local runtime preflight. |
-| `examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json` | Real Pi + Ollama Cloud DeepSeek local runtime workflow using language and package setup nodes. |
-| `examples/workflows/api_local_ollama_cloud_deepseek_agent_down.json` | Teardown pair for the real Pi + Ollama Cloud DeepSeek workflow. |
-| `examples/workflows/api_local_runtime_containerd_up.json` | Containerd local runtime apply smoke. |
-| `examples/workflows/api_local_runtime_containerd_down.json` | Teardown pair for the containerd local runtime smoke. |
+| `examples/workflows/api_local_agent_skills_postgres.json` | Comprehensive local runtime preflight: Postgres, Ollama Cloud env, Superpowers skills, package install, harness prompt output. Change the run action to `terminate` for teardown. |
+| `examples/workflows/api_local_ollama_cloud_deepseek_agent.json` | Real Pi + Ollama Cloud DeepSeek local runtime workflow using language and package setup nodes. Change the run action to `terminate` for teardown. |
+| `examples/workflows/api_local_pi_ollama_terminal.json` | Pi + Ollama Cloud ttyd terminal workflow. Change the run action to `terminate` for teardown. |
+| `examples/workflows/api_local_runtime_containerd.json` | Containerd local runtime apply smoke. Change the run action to `terminate` for teardown. |
+| `examples/workflows/api_local_web_terminal.json` | Minimal local ttyd terminal workflow. Change the run action to `terminate` for teardown. |
 | `examples/workflows/api_plan_smoke.json` | Small API prompt for plan-mode smoke tests. |
 | `examples/workflows/api_real_neko_ollama_apply.json` | Real Runpod apply workflow for Neko plus Ollama. |
 

@@ -54,7 +54,7 @@ def main() -> int:
             wait_for_server(port, proc, output)
             server = f"http://127.0.0.1:{port}"
             try:
-                workflow_path = repo_dir / "examples/workflows/api_local_ollama_cloud_deepseek_agent_up.json"
+                workflow_path = repo_dir / "examples/workflows/api_local_ollama_cloud_deepseek_agent.json"
                 entry = submit_workflow(server, workflow_path, timeout=1800)
                 response = node_output_text(entry, "7", "response")
                 errors = node_output_text(entry, "7", "errors")
@@ -108,7 +108,9 @@ def main() -> int:
                 )
             finally:
                 try:
-                    submit_workflow(server, repo_dir / "examples/workflows/api_local_ollama_cloud_deepseek_agent_down.json", timeout=600)
+                    teardown_workflow = json.loads(workflow_path.read_text())
+                    teardown_workflow["7"]["inputs"].update({"action": "terminate", "response_timeout_seconds": 0})
+                    submit_workflow_payload(server, teardown_workflow, timeout=600, source=f"{workflow_path} action=terminate")
                 except Exception:
                     cleanup_project_containers(inspect_project(PROJECT_NAME))
                 remaining = inspect_project(PROJECT_NAME)

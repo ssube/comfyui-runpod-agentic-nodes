@@ -52,7 +52,8 @@ def main() -> int:
             wait_for_server(port, proc, output)
             server = f"http://127.0.0.1:{port}"
             try:
-                submit_workflow(server, repo_dir / "examples/workflows/api_local_runtime_containerd_up.json", timeout=900)
+                workflow_path = repo_dir / "examples/workflows/api_local_runtime_containerd.json"
+                submit_workflow(server, workflow_path, timeout=900)
                 services = inspect_project(PROJECT_NAME)
                 assert_project_services(services)
                 agent = next(service for service in services if service["role"] == "agent")
@@ -87,7 +88,7 @@ def main() -> int:
                     )
                 )
             finally:
-                submit_workflow(server, repo_dir / "examples/workflows/api_local_runtime_containerd_down.json", timeout=300)
+                submit_workflow(server, workflow_path, timeout=300, run_inputs={"prompt": "Tear down the local runtime e2e stack.", "action": "terminate", "response_timeout_seconds": 0})
                 remaining = inspect_project(PROJECT_NAME)
                 if remaining:
                     cleanup_project_containers(remaining)
@@ -102,8 +103,10 @@ def main() -> int:
     return 0
 
 
-def submit_workflow(server: str, workflow: Path, *, timeout: int) -> dict:
+def submit_workflow(server: str, workflow: Path, *, timeout: int, run_inputs: dict | None = None) -> dict:
     prompt = json.loads(workflow.read_text())
+    if run_inputs:
+        prompt["6"]["inputs"].update(run_inputs)
     response = post_json(f"{server}/prompt", {"prompt": prompt, "client_id": uuid.uuid4().hex})
     prompt_id = response["prompt_id"]
     history = wait_history(server, prompt_id, timeout)

@@ -52,7 +52,8 @@ def main() -> int:
             wait_for_server(port, proc, output)
             server = f"http://127.0.0.1:{port}"
             try:
-                submit_workflow(server, repo_dir / "examples/workflows/api_local_agent_skills_postgres_up.json", timeout=1200)
+                workflow_path = repo_dir / "examples/workflows/api_local_agent_skills_postgres.json"
+                submit_workflow(server, workflow_path, timeout=1200)
                 services = wait_for_services(PROJECT_NAME, {"agent", "sql"}, timeout=1200)
                 agent = next(service for service in services if service["role"] == "agent")
                 database_url = env_value(agent["id"], "DATABASE_URL")
@@ -97,7 +98,7 @@ def main() -> int:
                     )
                 )
             finally:
-                submit_workflow(server, repo_dir / "examples/workflows/api_local_agent_skills_postgres_down.json", timeout=600)
+                submit_workflow(server, workflow_path, timeout=600, run_inputs={"action": "terminate", "response_timeout_seconds": 0})
                 remaining = inspect_project(PROJECT_NAME)
                 if remaining:
                     cleanup_project_containers(remaining)
@@ -112,8 +113,11 @@ def main() -> int:
     return 0
 
 
-def submit_workflow(server: str, workflow: Path, *, timeout: int) -> dict:
-    response = post_json(f"{server}/prompt", {"prompt": json.loads(workflow.read_text()), "client_id": uuid.uuid4().hex})
+def submit_workflow(server: str, workflow: Path, *, timeout: int, run_inputs: dict | None = None) -> dict:
+    prompt = json.loads(workflow.read_text())
+    if run_inputs:
+        prompt["9"]["inputs"].update(run_inputs)
+    response = post_json(f"{server}/prompt", {"prompt": prompt, "client_id": uuid.uuid4().hex})
     prompt_id = response["prompt_id"]
     entry = wait_history(server, prompt_id, timeout)[prompt_id]
     status = entry.get("status", {})
