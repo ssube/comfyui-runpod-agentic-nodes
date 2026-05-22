@@ -1,6 +1,6 @@
-# ComfyUI Agentic Workflow Nodes
+# ComfyUI Runpod Agentic Graph Nodes
 
-ComfyUI Agentic workflow nodes, or CRAG nodes, are custom ComfyUI nodes for designing and running agentic systems on Runpod. CRAG nodes build a typed deployment graph for agents, browsers, LLMs, databases, storage, commands, and keep-alive policy.
+ComfyUI Runpod Agentic Graph Nodes, or CRAG, is a custom ComfyUI node pack for designing and running agentic systems on Runpod. CRAG nodes build a typed deployment graph for agents, browsers, LLMs, databases, storage, commands, and keep-alive policy.
 
 The CRAG node package follows one core rule: all nodes are declarative except `Run on Runpod`. In `plan` mode, `Run on Runpod` produces an ordered deployment plan and never calls Runpod. In apply modes, it uses injectable Runpod, SSH, and SQLite state abstractions so behavior can be tested and mocked.
 
@@ -113,7 +113,7 @@ App mode:
 
 ## Status
 
-The ComfyUI Agentic workflow nodes currently include:
+The CRAG node package currently includes:
 
 - ComfyUI node classes and registration mappings for agents, services, storage, commands, logs, and MCP servers.
 - Dataclass specs for the requested resource model.

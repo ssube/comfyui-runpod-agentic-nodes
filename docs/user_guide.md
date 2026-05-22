@@ -1,6 +1,6 @@
-# ComfyUI Agentic Workflow Nodes User Guide
+# ComfyUI Runpod Agentic Graph Nodes User Guide
 
-ComfyUI Agentic workflow nodes, or CRAG nodes, let you design, launch, connect, monitor, and shut down agentic systems on Runpod from a ComfyUI graph.
+ComfyUI Runpod Agentic Graph Nodes, or CRAG, lets you design, launch, connect, monitor, and shut down agentic systems on Runpod from a ComfyUI graph.
 
 The CRAG node mission is to make infrastructure for agents visible and repeatable. A workflow should show the agent, its model, browser, databases, storage, skills, MCP servers, setup commands, lifetime policy, and run prompt as typed nodes. Most nodes only describe intent. Terminal nodes are the side-effect boundary: `Run on Runpod` can create, mutate, or clean up Runpod resources, local runtime terminals can create or clean local containers, and `Build Container` can commit a local container image.
 
