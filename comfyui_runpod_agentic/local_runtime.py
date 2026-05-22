@@ -205,15 +205,38 @@ def compose_command(resource: ResourcePlan, plan: DeploymentPlan) -> str | None:
 
 def local_resource_desired_hash(resource: ResourcePlan, plan: DeploymentPlan, service_names: dict[str, str] | None = None) -> str:
     service_names = service_names or {item.name: compose_service_name(item) for item in plan.resources}
+    env = compose_env(resource, service_names)
+    command_shape: object = compose_command(resource, plan)
+    if resource.role == "agent":
+        env = stable_agent_env(env)
+        command_shape = stable_agent_command_shape(plan)
     return stable_local_hash(
         {
             "image": image_for_resource(resource),
-            "environment": compose_env(resource, service_names),
-            "command": compose_command(resource, plan),
+            "environment": env,
+            "command": command_shape,
             "ports": local_port_mappings(resource),
             "volume_mount": volume_mount_for_resource(resource),
         }
     )[:12]
+
+
+def stable_agent_env(env: dict[str, str]) -> dict[str, str]:
+    transient = {
+        "AGENT_PROMPT",
+        "CRAG_RUN_ID",
+        "CRAG_WORKFLOW_HASH",
+    }
+    return {key: value for key, value in env.items() if key not in transient}
+
+
+def stable_agent_command_shape(plan: DeploymentPlan) -> dict[str, object]:
+    return {
+        "before_start": local_runtime_commands_for_phase(plan, {"before_start"}),
+        "after_start": local_runtime_commands_for_phase(plan, {"after_start", "after_ready"}),
+        "keep_container_alive": True,
+        "launcher": launch_command_for_plan(plan),
+    }
 
 
 def stable_local_hash(value: object) -> str:

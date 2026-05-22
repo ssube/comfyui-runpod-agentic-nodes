@@ -269,6 +269,17 @@ def test_local_resource_hash_changes_with_startup_commands():
     assert local_resource_desired_hash(first_agent, first_plan) != local_resource_desired_hash(second_agent, second_plan)
 
 
+def test_local_resource_hash_ignores_prompt_and_run_id_for_agent_reuse():
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
+    deployment = DeployNode().build(agent)[0]
+    first_plan = Planner().build(deployment, prompt="first prompt", workflow_graph={"same": True})
+    second_plan = Planner().build(deployment, prompt="second prompt", workflow_graph={"same": True})
+    first_agent = next(resource for resource in first_plan.resources if resource.role == "agent")
+    second_agent = next(resource for resource in second_plan.resources if resource.role == "agent")
+
+    assert local_resource_desired_hash(first_agent, first_plan) == local_resource_desired_hash(second_agent, second_plan)
+
+
 def test_apply_local_runtime_waits_for_terminal_startup(monkeypatch, tmp_path):
     terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "none", "crag", "secret")[0]
     agent_spec = AgentNode().build("Pi", "model", "auto_start", "/workspace", terminal=terminal)[0]
