@@ -270,6 +270,7 @@ class PodResourceHints:
     volume_gb: int | None
     expose_public_ip: bool
     cpu_only: bool = False
+    vcpu_count: int | None = None
 
 
 @dataclass(frozen=True)

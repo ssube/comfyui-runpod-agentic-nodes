@@ -16,10 +16,12 @@ RUNPOD_REST_URL = "https://rest.runpod.io/v1"
 REQUIRED_GRAPHQL_TYPES: dict[str, list[str]] = {
     "PodFindAndDeployOnDemandInput": [
         "cloudType",
+        "computeType",
         "containerDiskInGb",
         "env",
         "gpuCount",
         "gpuTypeId",
+        "minVcpuCount",
         "name",
         "ports",
         "startSsh",
@@ -63,6 +65,8 @@ class RunpodClient:
             self.api_key = get_runpod_api_key()
 
     def create_or_deploy_pod(self, input: dict[str, Any]) -> dict[str, Any]:
+        if str(input.get("computeType") or "").upper() == "CPU":
+            return self.create_pod_rest(input)
         mutation = """
         mutation CreatePod($input: PodFindAndDeployOnDemandInput!) {
           podFindAndDeployOnDemand(input: $input) { id name desiredStatus runtime { uptimeInSeconds ports { ip isIpPublic privatePort publicPort type } } }
@@ -70,6 +74,9 @@ class RunpodClient:
         """
         data = self._graphql(mutation, {"input": normalize_pod_input(clean_none(input))})
         return data["podFindAndDeployOnDemand"]
+
+    def create_pod_rest(self, input: dict[str, Any]) -> dict[str, Any]:
+        return self._rest_json("POST", "/pods", normalize_pod_rest_input(clean_none(input)))
 
     def get_pod(self, pod_id: str) -> dict[str, Any]:
         query = """
@@ -277,6 +284,35 @@ def normalize_template_rest_input(input: dict[str, Any]) -> dict[str, Any]:
         normalized["dockerStartCmd"] = shlex.split(str(docker_args))
     normalized.setdefault("isPublic", False)
     normalized.setdefault("isServerless", False)
+    return normalized
+
+
+def normalize_pod_rest_input(input: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(input)
+    env = normalized.get("env")
+    if isinstance(env, list):
+        normalized["env"] = {str(item["key"]): str(item["value"]) for item in env if isinstance(item, dict) and "key" in item and "value" in item}
+    ports = normalized.get("ports")
+    if isinstance(ports, list):
+        normalized["ports"] = [f"{port['container_port']}/{port.get('protocol', 'http')}" if isinstance(port, dict) else str(port) for port in ports]
+    elif isinstance(ports, str):
+        normalized["ports"] = [part.strip() for part in ports.split(",") if part.strip()]
+    docker_args = normalized.pop("dockerArgs", None)
+    if docker_args and "dockerStartCmd" not in normalized:
+        normalized["dockerStartCmd"] = shlex.split(str(docker_args))
+    normalized.pop("startSsh", None)
+    normalized.pop("stopAfter", None)
+    if str(normalized.get("computeType") or "").upper() == "CPU":
+        normalized["computeType"] = "CPU"
+        min_vcpu_count = normalized.pop("minVcpuCount", None)
+        if min_vcpu_count is not None and "vcpuCount" not in normalized:
+            normalized["vcpuCount"] = min_vcpu_count
+        normalized.pop("gpuCount", None)
+        normalized.pop("gpuTypeId", None)
+        normalized.pop("gpuTypeIdList", None)
+        normalized.pop("gpuTypeIds", None)
+    elif normalized.get("gpuTypeId") and "gpuTypeIds" not in normalized:
+        normalized["gpuTypeIds"] = [normalized.pop("gpuTypeId")]
     return normalized
 
 

@@ -81,7 +81,7 @@ def test_deploy_is_graph_only_and_runpod_terminal_owns_placement_options():
     assert list(deploy_required) == ["app"]
     assert list(deploy_optional) == ["network_storage", "s3_storage", "commands", "keep_alive"]
     assert "ssh_access" not in deploy_optional
-    assert {"gpu_type_id", "gpu_count", "cloud_type", "container_disk_gb", "volume_gb", "expose_public_ip", "reuse_policy"} <= set(runpod_required)
+    assert {"gpu_type_id", "gpu_count", "vcpu_count", "cloud_type", "container_disk_gb", "volume_gb", "expose_public_ip", "reuse_policy"} <= set(runpod_required)
     assert "ssh_access" in RunOnRunpodNode.INPUT_TYPES()["optional"]
     assert "engine" in local_required
     assert "reuse_policy" in local_required
@@ -90,14 +90,26 @@ def test_deploy_is_graph_only_and_runpod_terminal_owns_placement_options():
 
 def test_cpu_runpod_placement_omits_gpu_type_id():
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    deployment = with_terminal_options(DeployNode().build(agent)[0], gpu_type_id="CPU", gpu_count=0, cloud_type="SECURE")
+    deployment = with_terminal_options(DeployNode().build(agent)[0], gpu_type_id="CPU", gpu_count=0, vcpu_count=4, cloud_type="SECURE")
 
     plan = Planner().build(deployment, mode="plan")
 
     assert deployment.resource_hints.cpu_only is True
     assert deployment.resource_hints.gpu_type_id is None
-    assert plan.resources[0].pod_input["gpuCount"] == 0
+    assert deployment.resource_hints.vcpu_count == 4
+    assert plan.resources[0].pod_input["computeType"] == "CPU"
+    assert plan.resources[0].pod_input["minVcpuCount"] == 4
+    assert "gpuCount" not in plan.resources[0].pod_input
     assert "gpuTypeId" not in plan.resources[0].pod_input
+
+
+def test_cpu_runpod_placement_uses_default_vcpu_count():
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = with_terminal_options(DeployNode().build(agent)[0], gpu_count=0)
+
+    plan = Planner().build(deployment, mode="plan")
+
+    assert plan.resources[0].pod_input["minVcpuCount"] == 2
 
 
 def test_web_terminal_adds_ttyd_contract_to_agent():

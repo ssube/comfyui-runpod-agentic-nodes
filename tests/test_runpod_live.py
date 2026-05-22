@@ -1,9 +1,12 @@
 import os
 import time
 
+import pytest
+
+from comfyui_runpod_agentic.config import get_runpod_api_key
 from comfyui_runpod_agentic.live_smoke import build_smoke_deployment
 from comfyui_runpod_agentic.planner import Planner
-from comfyui_runpod_agentic.runpod_client import REQUIRED_GRAPHQL_TYPES, RunpodClient
+from comfyui_runpod_agentic.runpod_client import REQUIRED_GRAPHQL_TYPES, RunpodClient, RunpodClientError
 
 
 class FakeLiveRunpodClient:
@@ -20,24 +23,34 @@ class FakeLiveRunpodClient:
         self.terminated.append(pod_id)
 
 
-def live_client():
-    if os.environ.get("RUNPOD_LIVE_TESTS") == "1" and os.environ.get("RUNPOD_API_KEY"):
+def live_client(enabled: bool | None = None):
+    should_use_live = live_tests_enabled() if enabled is None else enabled
+    if should_use_live:
         return RunpodClient()
     return FakeLiveRunpodClient()
 
 
+def live_tests_enabled():
+    return os.environ.get("RUNPOD_LIVE_TESTS") == "1" and bool(get_runpod_api_key())
+
+
 def test_live_graphql_schema_has_required_inputs():
-    result = live_client().validate_graphql_schema()
+    try:
+        result = live_client().validate_graphql_schema()
+    except RunpodClientError as exc:
+        if live_tests_enabled() and "INTROSPECTION_DISABLED" in str(exc):
+            pytest.skip("Runpod production GraphQL API has introspection disabled.")
+        raise
 
     assert set(REQUIRED_GRAPHQL_TYPES).issubset(result)
     assert all(item["present"] and not item["missing"] for item in result.values())
 
 
 def test_live_create_test_template_pod_when_explicitly_enabled():
-    live_create = os.environ.get("RUNPOD_LIVE_TESTS") == "1" and os.environ.get("RUNPOD_LIVE_CREATE_POD") == "1"
+    live_create = live_tests_enabled() and os.environ.get("RUNPOD_LIVE_CREATE_POD") == "1"
     template_id = os.environ.get("RUNPOD_TEST_TEMPLATE_ID") if live_create else "template-offline-live-test"
     gpu_type_id = os.environ.get("RUNPOD_TEST_GPU_TYPE_ID") if live_create else "gpu-offline-live-test"
-    client = live_client()
+    client = live_client(live_create)
     pod = client.create_or_deploy_pod(
         {
             "name": f"crag-pytest-{int(time.time())}",
@@ -52,6 +65,30 @@ def test_live_create_test_template_pod_when_explicitly_enabled():
             "env": [],
         }
     )
+    try:
+        assert pod["id"]
+    finally:
+        client.terminate_pod(pod["id"])
+
+
+def test_live_create_cpu_pod_when_explicitly_enabled():
+    live_create = live_tests_enabled() and os.environ.get("RUNPOD_LIVE_CREATE_CPU_POD") == "1"
+    client = live_client(live_create)
+    deployment = build_smoke_deployment(
+        "",
+        0,
+        int(os.environ.get("RUNPOD_TEST_CPU_KEEPALIVE_MINUTES", "5")),
+        os.environ.get("RUNPOD_TEST_CPU_CLOUD_TYPE", "SECURE"),
+    )
+    plan = Planner().build(deployment, mode="plan", workflow_graph={"live_cpu_pod": True, "live_create": live_create})
+    agent = next(resource for resource in plan.resources if resource.role == "agent")
+
+    assert agent.pod_input["computeType"] == "CPU"
+    assert agent.pod_input["minVcpuCount"] == 2
+    assert "gpuTypeId" not in agent.pod_input
+    assert "gpuCount" not in agent.pod_input
+
+    pod = client.create_or_deploy_pod(agent.pod_input)
     try:
         assert pod["id"]
     finally:

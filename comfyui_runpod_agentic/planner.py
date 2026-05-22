@@ -201,10 +201,15 @@ class Planner:
             "ports": ensure_ssh_port([to_plain(port) for port in contract.ports]),
             "startSsh": True,
             "containerDiskInGb": hints.container_disk_gb,
-            "gpuCount": hints.gpu_count,
             "cloudType": hints.cloud_type,
         }
-        if hints.gpu_type_id:
+        if hints.cpu_only:
+            pod_input["computeType"] = "CPU"
+            if hints.vcpu_count:
+                pod_input["minVcpuCount"] = hints.vcpu_count
+        else:
+            pod_input["gpuCount"] = hints.gpu_count
+        if not hints.cpu_only and hints.gpu_type_id:
             pod_input["gpuTypeId"] = hints.gpu_type_id
         if hints.volume_gb:
             pod_input["volumeInGb"] = hints.volume_gb

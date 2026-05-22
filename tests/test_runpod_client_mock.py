@@ -13,6 +13,7 @@ from comfyui_runpod_agentic.runpod_client import (
     endpoint_with_api_key,
     format_graphql_errors,
     normalize_pod_input,
+    normalize_pod_rest_input,
     normalize_template_rest_input,
 )
 from comfyui_runpod_agentic.ssh_client import (
@@ -143,6 +144,60 @@ def test_runpod_client_methods_parse_graphql_payloads(monkeypatch):
     assert client.terminate_pod("pod-1") is None
     assert client.save_template({"name": "tpl"}) == {"id": "tpl-1"}
     assert "ports" not in seen[0][1]["input"]
+
+
+def test_runpod_client_cpu_pods_use_rest_api(monkeypatch):
+    calls = []
+
+    def fake_rest(self, method, path, payload):
+        calls.append((method, path, payload))
+        return {"id": "cpu-pod", "desiredStatus": "RUNNING"}
+
+    monkeypatch.setattr(RunpodClient, "_rest_json", fake_rest)
+    client = RunpodClient(api_key="token", rest_endpoint="https://rest.example/v1")
+
+    pod = client.create_or_deploy_pod({"name": "cpu-pod", "computeType": "CPU", "minVcpuCount": 2, "gpuTypeId": "CPU", "gpuCount": 0, "ports": [{"container_port": 22, "protocol": "tcp"}], "dockerArgs": "sleep infinity", "startSsh": True, "stopAfter": "2026-05-22T00:00:00Z"})
+
+    assert pod["id"] == "cpu-pod"
+    assert calls == [("POST", "/pods", {"name": "cpu-pod", "computeType": "CPU", "vcpuCount": 2, "ports": ["22/tcp"], "dockerStartCmd": ["sleep", "infinity"]})]
+
+
+def test_normalize_pod_input_preserves_cpu_fields():
+    normalized = normalize_pod_input(
+        {
+            "computeType": "CPU",
+            "minVcpuCount": 2,
+            "ports": [{"container_port": 22, "protocol": "tcp"}],
+        }
+    )
+
+    assert normalized == {"computeType": "CPU", "minVcpuCount": 2, "ports": "22/tcp"}
+
+
+def test_normalize_pod_rest_input_converts_cpu_fields():
+    normalized = normalize_pod_rest_input({"computeType": "CPU", "minVcpuCount": 2, "gpuTypeId": "CPU", "gpuCount": 0, "ports": [{"container_port": 22, "protocol": "tcp"}], "dockerArgs": "sleep infinity", "startSsh": True, "stopAfter": "2026-05-22T00:00:00Z"})
+
+    assert normalized == {"computeType": "CPU", "vcpuCount": 2, "ports": ["22/tcp"], "dockerStartCmd": ["sleep", "infinity"]}
+
+
+def test_normalize_pod_rest_input_converts_env_ports_and_gpu_fields():
+    normalized = normalize_pod_rest_input(
+        {
+            "env": [{"key": "A", "value": "B"}],
+            "ports": "22/tcp,7681/http",
+            "gpuTypeId": "NVIDIA RTX A4000",
+            "dockerArgs": "ignored",
+            "dockerStartCmd": ["sleep", "infinity"],
+        }
+    )
+
+    assert normalized == {"env": {"A": "B"}, "ports": ["22/tcp", "7681/http"], "gpuTypeIds": ["NVIDIA RTX A4000"], "dockerStartCmd": ["sleep", "infinity"]}
+
+
+def test_normalize_pod_rest_input_preserves_cpu_vcpu_count():
+    normalized = normalize_pod_rest_input({"computeType": "CPU", "minVcpuCount": 2, "vcpuCount": 4})
+
+    assert normalized == {"computeType": "CPU", "vcpuCount": 4}
 
 
 def test_runpod_client_lists_runtime_dropdown_options(monkeypatch):

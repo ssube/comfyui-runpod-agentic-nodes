@@ -99,7 +99,7 @@ def generated_volume_id(node_id: str | None, volume_name: str | None) -> str:
 
 
 def default_resource_hints() -> PodResourceHints:
-    return PodResourceHints(None, 1, None, 40, None, True, False)
+    return PodResourceHints(None, 1, None, 40, None, True, False, None)
 
 
 def with_terminal_options(
@@ -111,11 +111,22 @@ def with_terminal_options(
     container_disk_gb: int = 40,
     volume_gb: int = 0,
     expose_public_ip: bool = True,
+    vcpu_count: int = 2,
     reuse_policy: str = "reuse_matching",
     ssh_access: SSHAccessPolicy | None = None,
 ) -> DeploymentSpec:
     gpu_count_int = int(gpu_count)
-    hints = PodResourceHints(None if gpu_count_int == 0 else gpu_type_id or None, gpu_count_int, None if cloud_type == "auto" else cloud_type, int(container_disk_gb), int(volume_gb) or None, bool(expose_public_ip), gpu_count_int == 0)
+    cpu_only = gpu_count_int == 0
+    hints = PodResourceHints(
+        None if cpu_only else gpu_type_id or None,
+        gpu_count_int,
+        None if cloud_type == "auto" else cloud_type,
+        int(container_disk_gb),
+        int(volume_gb) or None,
+        bool(expose_public_ip),
+        cpu_only,
+        int(vcpu_count) if cpu_only else None,
+    )
     return replace(deployment, resource_hints=hints, reuse_policy=reuse_policy, ssh_access=ssh_access or deployment.ssh_access)
 
 
@@ -940,6 +951,7 @@ class RunOnRunpodNode:
                 "mode": (["plan", "apply", "apply_and_wait", "stop", "terminate"],),
                 "gpu_type_id": optional_combo_or_string(options.gpu_type_ids),
                 "gpu_count": ("INT", {"default": 1, "min": 0}),
+                "vcpu_count": ("INT", {"default": 2, "min": 1}),
                 "cloud_type": (["auto", "SECURE", "COMMUNITY"],),
                 "container_disk_gb": ("INT", {"default": 40, "min": 5}),
                 "volume_gb": ("INT", {"default": 0, "min": 0}),
@@ -959,6 +971,7 @@ class RunOnRunpodNode:
         prompt: str = "",
         gpu_type_id: str = "",
         gpu_count: int = 1,
+        vcpu_count: int = 2,
         cloud_type: str = "auto",
         container_disk_gb: int = 40,
         volume_gb: int = 0,
@@ -970,7 +983,7 @@ class RunOnRunpodNode:
         workflow_graph: Any = None,
     ):
         progress = ComfyProgress()
-        deployment = with_terminal_options(deployment, gpu_type_id=gpu_type_id, gpu_count=gpu_count, cloud_type=cloud_type, container_disk_gb=container_disk_gb, volume_gb=volume_gb, expose_public_ip=expose_public_ip, reuse_policy=reuse_policy, ssh_access=ssh_access)
+        deployment = with_terminal_options(deployment, gpu_type_id=gpu_type_id, gpu_count=gpu_count, vcpu_count=vcpu_count, cloud_type=cloud_type, container_disk_gb=container_disk_gb, volume_gb=volume_gb, expose_public_ip=expose_public_ip, reuse_policy=reuse_policy, ssh_access=ssh_access)
         backend = RunpodBackend(progress=progress)
         options = RuntimeOptions(action=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
         if mode != "plan":

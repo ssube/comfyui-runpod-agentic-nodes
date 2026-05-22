@@ -139,8 +139,9 @@ Inputs:
 | `prompt` | multiline string | The task prompt for this run. |
 | `on_error` | `stop_created`, `terminate_created`, `leave_running` | Cleanup behavior if apply fails after resources were created. |
 | `log_level` | `info`, `debug` | Verbosity for result JSON. |
-| `gpu_type_id` | string | Runpod GPU type hint, for example `NVIDIA RTX A4000`. |
-| `gpu_count` | integer | GPU count. `0` marks a CPU-only intent where supported by templates/API. |
+| `gpu_type_id` | string | Runpod GPU type hint, for example `NVIDIA RTX A4000`. Ignored for CPU-only runs. |
+| `gpu_count` | integer | GPU count. Set to `0` to create a CPU-only Pod through Runpod's REST Pod API. |
+| `vcpu_count` | integer | Minimum requested vCPU count used when `gpu_count=0`. |
 | `cloud_type` | `auto`, `SECURE`, `COMMUNITY` | Runpod cloud selection. |
 | `container_disk_gb` | integer | Container disk size. |
 | `volume_gb` | integer | Pod volume size. |
