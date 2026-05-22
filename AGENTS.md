@@ -81,6 +81,15 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Assemble policy: `Deploy`, `Keep Alive`, and `SSH Access` build graph/lifecycle/access policy. `Deploy` is graph-only; Runpod placement belongs on `Run on Runpod`.
 - Terminal nodes: `Run on Runpod`, `Run Local Containers`, `Build Container`, `Compose YAML`, `Startup Script`, and `Logs` end workflow branches by planning, applying, exporting, building, or reading results.
 
+## 7. Example Workflow Policy
+
+**Keep examples focused on graph shape, not duplicated run actions.**
+
+- Do not create separate `*_up.json` and `*_down.json` examples when the only difference is a terminal node's `mode` or `action`.
+- Keep one API workflow per scenario, defaulted to the useful apply/plan action.
+- For teardown, update the terminal node action in memory or in the UI, for example change `Run Local Containers.action` from `apply` to `terminate`.
+- When renaming example workflows, update README, `docs/user_guide.md`, and any e2e tests that submit those examples.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
