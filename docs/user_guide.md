@@ -349,11 +349,11 @@ Harness compatibility:
 
 | Harness | Prompt | Model | System prompt | LLM env | MCP env | Skills symlink | Response capture |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Codex | yes | yes | yes | yes | yes | yes | yes |
+| Codex | yes | yes | no | yes | yes | yes | yes |
 | Claude | yes | yes | yes | yes | yes | yes | yes |
 | OpenCode | yes | yes | no | yes | yes | yes | yes |
 | Hermes | yes | yes | no | yes | yes | yes | yes |
-| Pi | yes | yes | no | yes | yes | yes | yes |
+| Pi | yes | yes | yes | yes | yes | yes | yes |
 
 All harness wrappers use the same CRAG response contract: stdout goes to `.runpod_agentic/response.txt`, stderr goes to `.runpod_agentic/errors.txt`, and successful completion adds a `[crag-agent] complete status=0` marker. Harness-specific scripts only adapt command-line arguments for their CLI.
 

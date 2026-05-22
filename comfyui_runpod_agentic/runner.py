@@ -877,9 +877,6 @@ args=(exec)
 if [ -n "$AGENT_MODEL" ]; then
   args+=(-m "$AGENT_MODEL")
 fi
-if [ -s "$AGENT_SYSTEM_PROMPT_FILE" ]; then
-  args+=(--system-prompt "$(cat "$AGENT_SYSTEM_PROMPT_FILE")")
-fi
 append_keep_alive_args args 0 0
 run_harness_command codex "${args[@]}" "$prompt"
 """
@@ -968,6 +965,9 @@ if [ "${LLM_PROVIDER:-}" = "ollama_cloud" ]; then
   args+=(--provider ollama-cloud)
 elif [ -n "${PI_PROVIDER:-}" ]; then
   args+=(--provider "$PI_PROVIDER")
+fi
+if [ -s "$AGENT_SYSTEM_PROMPT_FILE" ]; then
+  args+=(--system-prompt "$(cat "$AGENT_SYSTEM_PROMPT_FILE")")
 fi
 append_keep_alive_args args 0 0
 run_harness_command pi "${args[@]}" -p "$prompt"

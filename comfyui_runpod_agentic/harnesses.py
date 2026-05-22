@@ -20,11 +20,11 @@ class HarnessSupport:
 
 
 HARNESS_SUPPORT = {
-    "codex": HarnessSupport("codex", "Codex", "codex", True, True, True, True, True, True, True),
+    "codex": HarnessSupport("codex", "Codex", "codex", True, True, False, True, True, True, True),
     "claude": HarnessSupport("claude", "Claude", "claude", True, True, True, True, True, True, True),
     "opencode": HarnessSupport("opencode", "OpenCode", "opencode", True, True, False, True, True, True, True),
     "hermes": HarnessSupport("hermes", "Hermes", "hermes", True, True, False, True, True, True, True),
-    "pi": HarnessSupport("pi", "Pi", "pi", True, True, False, True, True, True, True),
+    "pi": HarnessSupport("pi", "Pi", "pi", True, True, True, True, True, True, True),
 }
 
 

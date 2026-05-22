@@ -207,11 +207,11 @@ Harness support:
 
 | Harness | Prompt | Model | System prompt | LLM env | MCP env | Skills | Response files |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Codex | yes | yes | yes | yes | yes | symlinked | yes |
+| Codex | yes | yes | no | yes | yes | symlinked | yes |
 | Claude | yes | yes | yes | yes | yes | symlinked | yes |
 | OpenCode | yes | yes | no | yes | yes | symlinked | yes |
 | Hermes | yes | yes | no | yes | yes | symlinked | yes |
-| Pi | yes | yes | no | yes | yes | symlinked | yes |
+| Pi | yes | yes | yes | yes | yes | symlinked | yes |
 
 ## Example Workflows
 
@@ -224,7 +224,7 @@ Skill Framework(framework=Superpowers, target_root=/workspace/.runpod_agentic/sk
 Remote SQL Database(engine=Postgres, connection_mode=own_pod, database=app, username=app, secret=pg_password)
 Vector Database(engine=Qdrant, collection=docs)
 Browser(browser=Playwright, placement=same_pod)
-Agent(harness=OpenCode, model=claude-sonnet, system_prompt="Follow repository conventions.", mcp_servers=MCP Server)
+Agent(harness=OpenCode, model=claude-sonnet, mcp_servers=MCP Server)
 SSH Command(phase=before_start, command="pip install -e /workspace/tools")
 Network Storage(volume_id=..., mount=/workspace, retention_policy=preserve)
 Keep Alive(mode=time, value=30 minutes, action=stop)

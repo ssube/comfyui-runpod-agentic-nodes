@@ -790,6 +790,10 @@ def test_harness_scripts_capture_response_files_for_supported_harnesses(tmp_path
         assert result.returncode == 0, result.stderr
         assert f"harness: {harness}" in response
         assert f"{harness} argv:" in response
+        if harness in {"claude", "pi"}:
+            assert "--system-prompt be brief" in response
+        else:
+            assert "--system-prompt" not in response
         assert "[crag-agent] complete status=0" in response
         assert (runtime / "errors.txt").exists()
         (runtime / "response.txt").unlink()
