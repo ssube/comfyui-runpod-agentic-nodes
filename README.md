@@ -178,6 +178,8 @@ Core:
 
 - `Deploy`: creates the portable workload spec around the primary agent.
 - `Run on Runpod`: plan/apply/stop/terminate output node for the Runpod target with the per-run agent prompt and placement settings.
+- `Run Local Containers`: save or plan the same deployment against a local Docker, Podman, or containerd engine, then optionally apply, reuse, stop, or terminate it.
+- `Build Container`: commits a configured container to a tagged image and can push it to Docker Hub for reuse.
 - `Keep Alive`: time, turns, cost, or manual policy with server-side, pod-side, or layered enforcement.
 - `Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
 
@@ -198,10 +200,8 @@ Apps and services:
 - `SSH Command`: declarative command chain executed by `Run on Runpod`.
 - `Package`: installs apt, npm, or pip packages. Apt packages always run `apt-get update` first.
 - `Language Runtime`: installs Node.js with npm from NodeSource, or Python with pip and venv from apt.
-- `Build Container`: commits a configured container to a tagged image and can push it to Docker Hub for reuse.
 - `Startup Script`: ready-to-paste bash startup script for a deployment.
 - `Compose YAML`: exports a local Docker Compose compatible projection.
-- `Run Local Containers`: save or plan the same deployment against a local Docker, Podman, or containerd engine, then optionally apply, reuse, stop, or terminate it.
 
 Harness support:
 
