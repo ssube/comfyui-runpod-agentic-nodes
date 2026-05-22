@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "ssube" }]
 dependencies = [
+  "aiohttp>=3.9",
   "PyYAML>=6.0.2",
 ]
 
