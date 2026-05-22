@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+python_bin="${PYTHON:-$(pwd)/venv/bin/python}"
+exec "$python_bin" tests/e2e/local_keepalive_timeout.py "$@"

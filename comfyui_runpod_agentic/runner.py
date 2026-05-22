@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol
 
+from .keepalive_timer import schedule_runpod_lifecycle
 from .planner import DeploymentPlan, Planner
 from .runpod_client import RunpodClient, RunpodClientProtocol
 from .runtime_contracts import with_env
@@ -95,6 +96,7 @@ class RunpodRunner:
         resolved_contract = resolve_dependency_endpoints(plan, created)
         plan = replace(plan, runtime_contract=resolved_contract)
         agent_pod = created[agent.name]
+        scheduled_time_keep_alive = self._schedule_time_keep_alive(plan, agent_pod)
         self._progress_step("wait ssh")
         host, port = self._wait_ssh_endpoint(agent_pod, plan)
         self._wait_ssh_ready(host, port)
@@ -112,6 +114,8 @@ class RunpodRunner:
                 result["terminal_auth"] = terminal_auth
         if keep_alive_result:
             result["keep_alive"] = keep_alive_result
+        if scheduled_time_keep_alive:
+            result["scheduled_keep_alive"] = scheduled_time_keep_alive
         return result
 
     def _materialize_network_volumes(self, plan: DeploymentPlan) -> DeploymentPlan:
@@ -306,6 +310,16 @@ class RunpodRunner:
                 return {"mode": "cost", "action": policy.action, "estimated_cost_usd": estimated}
             return {"mode": "cost", "estimated_cost_usd": estimated}
         return None
+
+    def _schedule_time_keep_alive(self, plan: DeploymentPlan, agent_pod: dict[str, Any]) -> dict[str, Any] | None:
+        policy = plan.keep_alive
+        if not policy or policy.mode != "time" or not policy.time_seconds or policy.enforcement not in {"server_side", "both"}:
+            return None
+        pod_id = agent_pod.get("id")
+        if not pod_id:
+            return None
+        self._progress_step(f"schedule keep alive {policy.action}")
+        return schedule_runpod_lifecycle(pod_id, policy.action, int(policy.time_seconds))
 
     def _apply_keep_alive_action(self, pod_id: str, policy: KeepAlivePolicy) -> None:
         self._progress_step(f"keep alive {policy.action}")

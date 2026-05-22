@@ -10,8 +10,11 @@ from aiohttp import ClientSession, WSMsgType, web
 from comfyui_runpod_agentic import cleanup, schema_check
 from comfyui_runpod_agentic.routes import (
     RouteHandlers,
+    _decode_terminal_origin,
+    _encode_terminal_origin,
     _inject_terminal_base,
     _json_response,
+    _remote_terminal_proxy,
     _terminal_proxy,
     register_routes,
     route_payload,
@@ -163,9 +166,9 @@ def test_register_routes_binds_expected_handlers():
 def test_terminal_proxy_path_accepts_only_local_terminal_urls():
     assert terminal_proxy_path("http://127.0.0.1:7681/?arg=1") == "/runpod-agentic/terminal/7681/?arg=1"
     assert terminal_proxy_path("http://localhost:8765/term/ws") == "/runpod-agentic/terminal/8765/term/ws"
+    remote_origin = _encode_terminal_origin("https://pod.runpod.net:17681")
+    assert terminal_proxy_path("https://pod.runpod.net:17681/term?arg=1") == f"/runpod-agentic/terminal/remote/{remote_origin}/term?arg=1"
 
-    with pytest.raises(ValueError, match="Only local"):
-        terminal_proxy_path("https://example.com:7681/")
     with pytest.raises(ValueError, match="valid port"):
         terminal_proxy_path("http://127.0.0.1/")
     with pytest.raises(ValueError, match="http or https"):
@@ -188,6 +191,15 @@ def test_websocket_protocols_preserve_ttyd_subprotocol():
 def test_terminal_html_base_injection():
     assert _inject_terminal_base(b"<html><head><title>x</title></head></html>", "/proxy/") == b'<html><head><base href="/proxy/"><title>x</title></head></html>'
     assert _inject_terminal_base(b"<html><body>x</body></html>", "/proxy/") == b"<html><body>x</body></html>"
+
+
+def test_terminal_origin_encoding_round_trips():
+    encoded = _encode_terminal_origin("https://pod.runpod.net:17681")
+
+    assert _decode_terminal_origin(encoded) == "https://pod.runpod.net:17681"
+
+    with pytest.raises(ValueError, match="Invalid remote"):
+        _decode_terminal_origin(_encode_terminal_origin("ws://pod.runpod.net"))
 
 
 def test_json_response_uses_aiohttp_response():
@@ -222,6 +234,35 @@ def test_terminal_proxy_rewrites_html_and_forwards_auth():
 
     assert response.status == 200
     assert b'<base href="/runpod-agentic/terminal/' in response.body
+    assert seen["authorization"] == "Basic Y3JhZzpzZWNyZXQ="
+
+
+def test_remote_terminal_proxy_rewrites_html_and_forwards_auth():
+    async def run_proxy():
+        seen = {}
+
+        async def handler(request):
+            seen["authorization"] = request.headers.get("Authorization")
+            return web.Response(text="<html><head><title>x</title></head></html>", content_type="text/html")
+
+        runner = web.AppRunner(web.Application())
+        runner.app.router.add_get("/term", handler)
+        port = unused_port()
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", port)
+        await site.start()
+        try:
+            origin = _encode_terminal_origin(f"http://127.0.0.1:{port}")
+            request = FakeRemoteProxyRequest(origin, "term", {"__crag_terminal_auth": "Y3JhZzpzZWNyZXQ="})
+            response = await _remote_terminal_proxy(request)
+            return response, seen, origin
+        finally:
+            await runner.cleanup()
+
+    response, seen, origin = asyncio.run(run_proxy())
+
+    assert response.status == 200
+    assert f'/runpod-agentic/terminal/remote/{origin}/'.encode() in response.body
     assert seen["authorization"] == "Basic Y3JhZzpzZWNyZXQ="
 
 
@@ -269,6 +310,51 @@ def test_terminal_proxy_forwards_websocket_messages_and_auth():
     assert seen["authorization"] == "Basic Y3JhZzpzZWNyZXQ="
 
 
+def test_remote_terminal_proxy_forwards_websocket_messages_and_auth():
+    async def run_proxy():
+        seen = {}
+
+        async def upstream_handler(request):
+            seen["authorization"] = request.headers.get("Authorization")
+            ws = web.WebSocketResponse(protocols=websocket_protocols(request.headers.get("Sec-WebSocket-Protocol")))
+            await ws.prepare(request)
+            async for message in ws:
+                if message.type == WSMsgType.TEXT:
+                    await ws.send_str(f"remote:{message.data}")
+                    await ws.close()
+            return ws
+
+        upstream = web.AppRunner(web.Application())
+        upstream.app.router.add_get("/term", upstream_handler)
+        upstream_port = unused_port()
+        await upstream.setup()
+        upstream_site = web.TCPSite(upstream, "127.0.0.1", upstream_port)
+        await upstream_site.start()
+
+        proxy = web.AppRunner(web.Application())
+        proxy.app.router.add_route("*", "/terminal/remote/{origin}/{tail:.*}", _remote_terminal_proxy)
+        proxy_port = unused_port()
+        await proxy.setup()
+        proxy_site = web.TCPSite(proxy, "127.0.0.1", proxy_port)
+        await proxy_site.start()
+        try:
+            origin = _encode_terminal_origin(f"http://127.0.0.1:{upstream_port}")
+            async with ClientSession() as session:
+                url = f"http://127.0.0.1:{proxy_port}/terminal/remote/{origin}/term?__crag_terminal_auth=Y3JhZzpzZWNyZXQ="
+                async with session.ws_connect(url, protocols=("tty",)) as ws:
+                    await ws.send_str("ping")
+                    response = await ws.receive()
+                    return response.data, seen
+        finally:
+            await proxy.cleanup()
+            await upstream.cleanup()
+
+    response, seen = asyncio.run(run_proxy())
+
+    assert response == "remote:ping"
+    assert seen["authorization"] == "Basic Y3JhZzpzZWNyZXQ="
+
+
 def test_terminal_proxy_rejects_invalid_port():
     request = FakeProxyRequest(70000, "", {})
 
@@ -293,6 +379,13 @@ class FakeProxyRequest:
 
     async def read(self):
         return b""
+
+
+class FakeRemoteProxyRequest(FakeProxyRequest):
+    def __init__(self, origin, tail, query, headers=None):
+        super().__init__(7681, tail, query)
+        self.headers = headers or {}
+        self.match_info = {"origin": origin, "tail": tail}
 
 
 def unused_port() -> int:

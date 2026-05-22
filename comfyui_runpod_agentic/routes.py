@@ -124,6 +124,10 @@ def register_routes(server: Any, handlers: RouteHandlers) -> None:
     async def turn(request):
         return _json_response(handlers.turn(request.match_info["run_id"]))
 
+    @routes.route("*", "/runpod-agentic/terminal/remote/{origin}/{tail:.*}")
+    async def remote_terminal_proxy(request):
+        return await _remote_terminal_proxy(request)
+
     @routes.route("*", "/runpod-agentic/terminal/{port}/{tail:.*}")
     async def terminal_proxy(request):
         return await _terminal_proxy(request)
@@ -141,13 +145,20 @@ def terminal_proxy_path(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError("Terminal URL must use http or https.")
-    if parsed.hostname not in {"127.0.0.1", "localhost"}:
-        raise ValueError("Only local terminal URLs can be proxied.")
-    if parsed.port is None or parsed.port < 1 or parsed.port > 65535:
+    if parsed.hostname in {"127.0.0.1", "localhost"} and parsed.port is None:
+        raise ValueError("Terminal URL must include a valid port.")
+    if parsed.hostname in {"127.0.0.1", "localhost"}:
+        if parsed.port < 1 or parsed.port > 65535:
+            raise ValueError("Terminal URL must include a valid port.")
+        path = quote(parsed.path.lstrip("/"), safe="/")
+        query = f"?{parsed.query}" if parsed.query else ""
+        return f"/runpod-agentic/terminal/{parsed.port}/{path}{query}"
+    if not parsed.hostname:
         raise ValueError("Terminal URL must include a valid port.")
     path = quote(parsed.path.lstrip("/"), safe="/")
     query = f"?{parsed.query}" if parsed.query else ""
-    return f"/runpod-agentic/terminal/{parsed.port}/{path}{query}"
+    origin = _encode_terminal_origin(f"{parsed.scheme}://{parsed.netloc}")
+    return f"/runpod-agentic/terminal/remote/{origin}/{path}{query}"
 
 
 async def _terminal_proxy(request):
@@ -188,13 +199,48 @@ async def _terminal_proxy(request):
         raise web.HTTPBadGateway(text=f"Terminal on localhost:{port} is not reachable.") from exc
 
 
+async def _remote_terminal_proxy(request):
+    from aiohttp import ClientError, ClientSession, web
+
+    origin = _decode_terminal_origin(request.match_info["origin"])
+    tail = request.match_info.get("tail", "")
+    query = request.query.copy()
+    auth = query.pop("__crag_terminal_auth", None)
+    query_string = urlencode(list(query.items()))
+    target = f"{origin.rstrip('/')}/{tail}"
+    if query_string:
+        target = f"{target}?{query_string}"
+
+    if request.headers.get("upgrade", "").lower() == "websocket":
+        return await _terminal_websocket_proxy(request, target, auth)
+
+    headers = {key: value for key, value in request.headers.items() if key.lower() not in {"host", "content-length", "connection", "upgrade"}}
+    if auth:
+        headers["Authorization"] = terminal_authorization_header(auth)
+    try:
+        async with ClientSession() as session:
+            async with session.request(request.method, target, headers=headers, data=await request.read(), allow_redirects=False) as response:
+                body = await response.read()
+                proxy_headers = {key: value for key, value in response.headers.items() if key.lower() not in {"content-length", "transfer-encoding", "connection", "content-encoding"}}
+                content_type = response.headers.get("content-type", "")
+                if "text/html" in content_type:
+                    body = _inject_terminal_base(body, f"/runpod-agentic/terminal/remote/{request.match_info['origin']}/")
+                    proxy_headers["content-length"] = str(len(body))
+                return web.Response(status=response.status, headers=proxy_headers, body=body)
+    except ClientError as exc:
+        raise web.HTTPBadGateway(text=f"Remote terminal {origin} is not reachable.") from exc
+
+
 async def _terminal_websocket_proxy(request, target: str, auth: str | None):
     from aiohttp import ClientError, ClientSession, WSMsgType, web
 
     protocols = websocket_protocols(request.headers.get("Sec-WebSocket-Protocol"))
     ws_response = web.WebSocketResponse(protocols=protocols)
     await ws_response.prepare(request)
-    target = "ws://" + target.removeprefix("http://")
+    if target.startswith("https://"):
+        target = "wss://" + target.removeprefix("https://")
+    else:
+        target = "ws://" + target.removeprefix("http://")
 
     try:
         async with ClientSession() as session:
@@ -240,3 +286,18 @@ def _inject_terminal_base(body: bytes, base_path: str) -> bytes:
 def terminal_authorization_header(auth: str) -> str:
     base64.b64decode(auth, validate=True)
     return f"Basic {auth}"
+
+
+def _encode_terminal_origin(origin: str) -> str:
+    return base64.urlsafe_b64encode(origin.encode()).decode().rstrip("=")
+
+
+def _decode_terminal_origin(value: str) -> str:
+    from urllib.parse import urlparse
+
+    padded = value + "=" * (-len(value) % 4)
+    origin = base64.urlsafe_b64decode(padded.encode()).decode()
+    parsed = urlparse(origin)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Invalid remote terminal origin.")
+    return origin

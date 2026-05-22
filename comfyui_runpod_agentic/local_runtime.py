@@ -550,7 +550,7 @@ def apply_local_runtime_plan(
             "\n".join(part for part in (cleanup.stdout, result.stdout) if part),
             "\n".join(part for part in (cleanup.stderr, result.stderr) if part),
         )
-    if action in {"apply", "apply_and_wait"} and result.returncode == 0 and plan_has_web_terminal(plan):
+    if action in {"apply", "apply_and_wait"} and result.returncode == 0 and should_wait_local_startup(plan):
         startup = wait_local_runtime_startup_complete(engine, project_name, "agent", plan, timeout_seconds=timeout_seconds)
         if startup.returncode != 0:
             return LocalApplyResult(result.engine, result.action, result.compose_path, result.command, startup.returncode, result.stdout, "\n".join(part for part in (result.stderr, startup.stderr) if part)), False
@@ -675,6 +675,11 @@ def wait_local_runtime_startup_complete(
         last_stderr = logs_result.stderr
         time.sleep(1)
     return LocalRuntimeReadResult(engine, project_name, role, "<logs>", container_id, command, 1, "", last_stderr or "Timed out waiting for local runtime startup commands to complete.")
+
+
+def should_wait_local_startup(plan: DeploymentPlan) -> bool:
+    policy = plan.keep_alive
+    return plan_has_web_terminal(plan) or bool(policy and policy.mode == "time" and policy.time_seconds and policy.enforcement in {"server_side", "both"})
 
 
 def exec_agent_in_local_container(

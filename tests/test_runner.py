@@ -425,6 +425,26 @@ def test_runner_apply_and_wait_enforces_turn_keep_alive(tmp_path, monkeypatch):
     assert runpod.stopped == ["pod-1"]
 
 
+def test_runner_schedules_time_keep_alive_after_pod_create(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    scheduled = []
+    monkeypatch.setattr(
+        "comfyui_runpod_agentic.runner.schedule_runpod_lifecycle",
+        lambda pod_id, action, delay_seconds: scheduled.append((pod_id, action, delay_seconds)) or {"pod_id": pod_id, "action": action, "delay_seconds": delay_seconds},
+    )
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    keep_alive = KeepAliveNode().build("time", "stop", 7, "seconds", 0, 0.0, 0, "server_side")[0]
+    startup = SSHCommandNode().build("echo startup-command", "before_start", "fail")[0]
+    deployment = DeployNode().build(agent, commands=startup, keep_alive=keep_alive)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply")
+
+    assert scheduled == [("pod-1", "stop", 7)]
+    assert result["scheduled_keep_alive"] == {"pod_id": "pod-1", "action": "stop", "delay_seconds": 7}
+    assert any(command == "echo startup-command" for command in runner.ssh_client.commands)
+
+
 def test_runner_enforces_cost_keep_alive_with_terminate_action(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Pi", "model", "manual")[0]

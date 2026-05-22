@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -f .env.d/runpod.env ]]; then
+  set -a
+  source .env.d/runpod.env
+  set +a
+fi
+
+python_bin="${PYTHON:-$(pwd)/venv/bin/python}"
+exec "$python_bin" tests/e2e/runpod_keepalive_timeout.py "$@"

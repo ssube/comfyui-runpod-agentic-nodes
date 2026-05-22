@@ -44,7 +44,7 @@ addopts = [
   "--cov=comfyui_runpod_agentic",
   "--cov-report=term-missing:skip-covered",
   "--cov-report=xml",
-  "--cov-fail-under=80",
+  "--cov-fail-under=90",
 ]
 
 [tool.coverage.run]

@@ -52,7 +52,7 @@ function sameOriginTerminalUrl(terminal) {
   try {
     const url = typeof terminal === "string" ? terminal : terminal.url;
     const parsed = new URL(url, window.location.href);
-    if (!["127.0.0.1", "localhost"].includes(parsed.hostname) || !parsed.port) {
+    if (!["http:", "https:"].includes(parsed.protocol)) {
       return url;
     }
     const query = new URLSearchParams(parsed.search);
@@ -61,7 +61,11 @@ function sameOriginTerminalUrl(terminal) {
       query.set("__crag_terminal_auth", btoa(`${auth.username}:${auth.password}`));
     }
     const suffix = query.toString() ? `?${query}` : "";
-    return `/runpod-agentic/terminal/${parsed.port}${parsed.pathname}${suffix}`;
+    if (["127.0.0.1", "localhost"].includes(parsed.hostname) && parsed.port) {
+      return `/runpod-agentic/terminal/${parsed.port}${parsed.pathname}${suffix}`;
+    }
+    const origin = btoa(parsed.origin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    return `/runpod-agentic/terminal/remote/${origin}${parsed.pathname}${suffix}`;
   } catch {
     return typeof terminal === "string" ? terminal : terminal.url;
   }
