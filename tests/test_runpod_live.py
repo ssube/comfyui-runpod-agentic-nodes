@@ -1,6 +1,8 @@
 import os
 import time
 
+from comfyui_runpod_agentic.live_smoke import build_smoke_deployment
+from comfyui_runpod_agentic.planner import Planner
 from comfyui_runpod_agentic.runpod_client import REQUIRED_GRAPHQL_TYPES, RunpodClient
 
 
@@ -54,3 +56,25 @@ def test_live_create_test_template_pod_when_explicitly_enabled():
         assert pod["id"]
     finally:
         client.terminate_pod(pod["id"])
+
+
+def test_live_smoke_defaults_to_internal_sshd():
+    deployment = build_smoke_deployment("NVIDIA RTX A4500", 1, 15, "SECURE")
+    plan = Planner().build(deployment, mode="plan", workflow_graph={"live_smoke": True})
+    agent = next(resource for resource in plan.resources if resource.role == "agent")
+
+    assert plan.ssh_access.mode == "internal_sshd"
+    assert plan.ssh_access.install_internal_sshd is True
+    if "RUNPOD_SSH_PUBLIC_KEY" in agent.pod_input["env"]:
+        assert agent.pod_input["env"]["RUNPOD_SSH_PUBLIC_KEY"].startswith("ssh-")
+    assert "sshd" in agent.pod_input["dockerArgs"]
+
+
+def test_live_smoke_can_still_request_runpod_proxy():
+    deployment = build_smoke_deployment("NVIDIA RTX A4500", 1, 15, "SECURE", "runpod_proxy")
+    plan = Planner().build(deployment, mode="plan", workflow_graph={"live_smoke": True})
+    agent = next(resource for resource in plan.resources if resource.role == "agent")
+
+    assert plan.ssh_access.mode == "runpod_proxy"
+    assert plan.ssh_access.install_internal_sshd is False
+    assert "dockerArgs" not in agent.pod_input

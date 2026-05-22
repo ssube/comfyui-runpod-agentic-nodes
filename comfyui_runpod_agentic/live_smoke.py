@@ -9,14 +9,14 @@ from .nodes import AgentNode, DeployNode, KeepAliveNode, SSHAccessNode, SSHComma
 from .runner import RunpodRunner
 
 
-def build_smoke_deployment(gpu_type_id: str, gpu_count: int, keepalive_minutes: int, cloud_type: str):
+def build_smoke_deployment(gpu_type_id: str, gpu_count: int, keepalive_minutes: int, cloud_type: str, ssh_mode: str = "internal_sshd"):
     command = SSHCommandNode().build(
         "echo crag-live-smoke && python --version && pwd",
         "before_start",
         "fail",
     )[0]
     keep_alive = KeepAliveNode().build("time", "stop", keepalive_minutes, "minutes", 0, 0.0, 0)[0]
-    ssh_access = SSHAccessNode().build("runpod_proxy", "root", "~/.ssh/id_ed25519", "", 22, False)[0]
+    ssh_access = SSHAccessNode().build(ssh_mode, "root", "~/.ssh/id_ed25519", "", 22, ssh_mode == "internal_sshd")[0]
     agent = AgentNode().build("Pi", "manual-smoke", "manual", "/workspace", node_id="live-smoke-agent")[0]
     deployment = DeployNode().build(agent, commands=command, keep_alive=keep_alive, node_id="live-smoke-pod")[0]
     return with_terminal_options(deployment, gpu_type_id=gpu_type_id, gpu_count=gpu_count, cloud_type=cloud_type, container_disk_gb=20, volume_gb=0, expose_public_ip=True, reuse_policy="always_create", ssh_access=ssh_access)
@@ -29,11 +29,12 @@ def main() -> int:
     parser.add_argument("--cloud-type", choices=["SECURE", "COMMUNITY"], default="SECURE")
     parser.add_argument("--keepalive-minutes", type=int, default=15)
     parser.add_argument("--mode", choices=["plan", "apply"], default="apply")
+    parser.add_argument("--ssh-mode", choices=["internal_sshd", "runpod_proxy"], default="internal_sshd")
     parser.add_argument("--output", default="user/runpod-agentic/live-smoke-result.json")
     parser.add_argument("--cleanup", choices=["none", "stop", "terminate"], default="terminate")
     args = parser.parse_args()
 
-    deployment = build_smoke_deployment(args.gpu_type_id, args.gpu_count, args.keepalive_minutes, args.cloud_type)
+    deployment = build_smoke_deployment(args.gpu_type_id, args.gpu_count, args.keepalive_minutes, args.cloud_type, args.ssh_mode)
     if args.mode == "plan":
         from .planner import Planner
 
