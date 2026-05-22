@@ -6,6 +6,18 @@ The CRAG node package follows one core rule: all nodes are declarative except `R
 
 At the foundation, nodes contribute one of two effects: a managed Runpod resource with environment values for later agent pods, or a queued runtime command to run over SSH after pods launch. This keeps CRAG close to a Terraform provider model: low-level resources such as pods, volumes, env, and SSH commands are composed into higher-level app and agent nodes.
 
+## Why CRAG
+
+CRAG turns ComfyUI into a visual control plane for agentic runtime experiments. Instead of wiring shell scripts, cloud pods, model endpoints, databases, storage, and cleanup policy by hand, you build a typed workflow that can be planned, exported, run locally, or launched on Runpod.
+
+- Bring your preferred agent harness: Codex, Claude Code, OpenCode, Hermes, and Pi are supported through the same `Agent` node shape, with shared handling for prompts, model names, MCP servers, skills, response capture, and runtime setup.
+- Mix model providers and runtimes: use hosted LLM APIs for Codex/OpenAI, Claude/Anthropic, and Ollama Cloud; run self-hosted Ollama or vLLM services; or use Pi's provider ecosystem for options such as Ollama Cloud, Minimax, Z.ai, and other provider configs supported by Pi.
+- Run the same deployment model locally or remotely: `Run Local Containers` targets Docker, Podman, or containerd, while `Run on Runpod` targets real Runpod pods with GPU/datacenter options, network storage, SSH access, and lifecycle state tracking.
+- Build richer agent workspaces: add Playwright or Neko browsers, Postgres/MySQL/SQLite databases, Chroma or Qdrant vector stores, S3 storage, Runpod network volumes, MCP servers, and GitHub-hosted skills or skill frameworks.
+- Bootstrap containers in the graph: install apt/npm/pip packages, install language runtimes such as Node.js or Python, queue setup commands, export startup scripts, and snapshot configured containers into tagged images for reuse.
+- Keep demos and long-running work under control: time-based keep-alive, turn limits, cost limits, stop/terminate actions, local lifecycle timers, Runpod cleanup scripts, and optional ttyd web terminals are all part of the workflow instead of one-off side scripts.
+- Test against real runtimes: the project includes unit coverage plus live local e2e paths for containerd workloads, keep-alive shutdown, container snapshots, ComfyUI API workflows, and opt-in Runpod pod smoke tests.
+
 ## Workflow Screenshots
 
 <details>
