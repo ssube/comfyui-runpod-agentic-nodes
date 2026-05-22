@@ -131,8 +131,8 @@ Clone this repository into ComfyUI's custom nodes directory:
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone <repo-url> comfyui-runpod-agentic
-cd comfyui-runpod-agentic
+git clone https://github.com/ssube/comfyui-runpod-agentic-nodes comfyui-runpod-agentic-nodes
+cd comfyui-runpod-agentic-nodes
 python -m pip install -r requirements.txt
 ```
 
