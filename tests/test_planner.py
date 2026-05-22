@@ -61,6 +61,21 @@ def test_keep_alive_enforcement_controls_runpod_server_fields():
     assert "stopAfter" not in pod_plan.resources[-1].pod_input
 
 
+def test_keep_alive_limits_are_written_to_agent_env():
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    policy = KeepAliveNode().build("cost", "terminate", 0, "seconds", 3, 0.25, 9, "both")[0]
+
+    plan = Planner().build(DeployNode().build(agent, keep_alive=policy)[0])
+    env = plan.resources[-1].pod_input["env"]
+
+    assert env["CRAG_KEEP_ALIVE_MODE"] == "cost"
+    assert env["CRAG_KEEP_ALIVE_ACTION"] == "terminate"
+    assert env["CRAG_KEEP_ALIVE_ENFORCEMENT"] == "both"
+    assert env["CRAG_KEEP_ALIVE_TURN_LIMIT"] == "3"
+    assert env["CRAG_KEEP_ALIVE_COST_LIMIT_USD"] == "0.25"
+    assert env["CRAG_KEEP_ALIVE_IDLE_GRACE_SECONDS"] == "9"
+
+
 def test_ollama_dependency_binds_to_local_interface_but_agent_gets_placeholder(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_ENV_FILE", str(tmp_path / "missing.env"))
     monkeypatch.delenv("RUNPOD_SSH_PRIVATE_KEY_PATH", raising=False)

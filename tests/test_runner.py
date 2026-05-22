@@ -796,6 +796,59 @@ def test_harness_scripts_capture_response_files_for_supported_harnesses(tmp_path
         (runtime / "errors.txt").unlink()
 
 
+def test_harness_scripts_pass_keep_alive_cli_args(tmp_path):
+    files = launcher_runtime_files()
+    workspace = tmp_path / "workspace"
+    runtime = workspace / ".runpod_agentic"
+    bin_dir = tmp_path / "bin"
+    harness_dir = runtime / "launcher.d" / "harnesses"
+    harness_dir.mkdir(parents=True)
+    bin_dir.mkdir()
+    (runtime / "prompt.txt").write_text("do the task")
+    (runtime / "system_prompt.txt").write_text("be brief")
+
+    for path, content in files.items():
+        target = runtime / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+        target.chmod(0o755)
+
+    for harness in ("codex", "claude", "opencode", "hermes", "pi"):
+        binary = bin_dir / harness
+        binary.write_text("#!/usr/bin/env bash\nprintf '%s argv: %s\\n' \"$(basename \"$0\")\" \"$*\"\n")
+        binary.chmod(0o755)
+        env = {
+            **os.environ,
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "WORKSPACE_DIR": str(workspace),
+            "CRAG_RUNTIME_DIR": str(runtime),
+            "AGENT_HARNESS": harness,
+            "AGENT_MODEL": "model-1",
+            "AGENT_PROMPT_FILE": str(runtime / "prompt.txt"),
+            "AGENT_SYSTEM_PROMPT_FILE": str(runtime / "system_prompt.txt"),
+            "MCP_SERVERS_FILE": str(runtime / "mcp_servers.json"),
+            "CRAG_KEEP_ALIVE_MODE": "cost",
+            "CRAG_KEEP_ALIVE_ACTION": "terminate",
+            "CRAG_KEEP_ALIVE_ENFORCEMENT": "both",
+            "CRAG_KEEP_ALIVE_TURN_LIMIT": "3",
+            "CRAG_KEEP_ALIVE_COST_LIMIT_USD": "0.25",
+            "CRAG_KEEP_ALIVE_IDLE_GRACE_SECONDS": "9",
+        }
+
+        result = subprocess.run(["bash", str(harness_dir / f"{harness}.sh")], env=env, text=True, capture_output=True, check=False)
+        response = (runtime / "response.txt").read_text()
+
+        assert result.returncode == 0, result.stderr
+        assert "--keep-alive-mode cost" in response
+        assert "--keep-alive-action terminate" in response
+        assert "--keep-alive-enforcement both" in response
+        assert "--keep-alive-turn-limit 3" in response
+        assert "--keep-alive-cost-limit-usd 0.25" in response
+        assert "--keep-alive-idle-grace-seconds 9" in response
+        (runtime / "response.txt").unlink()
+        (runtime / "errors.txt").unlink()
+
+
 def test_harness_links_script_projects_central_skills(tmp_path):
     files = launcher_runtime_files()
     workspace = tmp_path / "workspace"

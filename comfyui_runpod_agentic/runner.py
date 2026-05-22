@@ -797,6 +797,29 @@ ln -sfn "$MCP_SERVERS_FILE" "$CRAG_RUNTIME_DIR/agent/mcp_servers.json"
 
 def harness_command_wrapper() -> str:
     return r"""
+append_keep_alive_args() {
+  local array_name="$1"
+  local -n crag_keep_alive_args="$array_name"
+  if [ -n "${CRAG_KEEP_ALIVE_MODE:-}" ]; then
+    crag_keep_alive_args+=(--keep-alive-mode "$CRAG_KEEP_ALIVE_MODE")
+  fi
+  if [ -n "${CRAG_KEEP_ALIVE_ACTION:-}" ]; then
+    crag_keep_alive_args+=(--keep-alive-action "$CRAG_KEEP_ALIVE_ACTION")
+  fi
+  if [ -n "${CRAG_KEEP_ALIVE_ENFORCEMENT:-}" ]; then
+    crag_keep_alive_args+=(--keep-alive-enforcement "$CRAG_KEEP_ALIVE_ENFORCEMENT")
+  fi
+  if [ -n "${CRAG_KEEP_ALIVE_TURN_LIMIT:-}" ]; then
+    crag_keep_alive_args+=(--keep-alive-turn-limit "$CRAG_KEEP_ALIVE_TURN_LIMIT")
+  fi
+  if [ -n "${CRAG_KEEP_ALIVE_COST_LIMIT_USD:-}" ]; then
+    crag_keep_alive_args+=(--keep-alive-cost-limit-usd "$CRAG_KEEP_ALIVE_COST_LIMIT_USD")
+  fi
+  if [ -n "${CRAG_KEEP_ALIVE_IDLE_GRACE_SECONDS:-}" ]; then
+    crag_keep_alive_args+=(--keep-alive-idle-grace-seconds "$CRAG_KEEP_ALIVE_IDLE_GRACE_SECONDS")
+  fi
+}
+
 run_harness_command() {
   local binary="$1"
   shift
@@ -849,6 +872,7 @@ fi
 if [ -s "$AGENT_SYSTEM_PROMPT_FILE" ]; then
   args+=(--system-prompt "$(cat "$AGENT_SYSTEM_PROMPT_FILE")")
 fi
+append_keep_alive_args args
 run_harness_command codex "${args[@]}" "$prompt"
 """
 
@@ -871,6 +895,7 @@ fi
 if [ -s "$AGENT_SYSTEM_PROMPT_FILE" ]; then
   args+=(--system-prompt "$(cat "$AGENT_SYSTEM_PROMPT_FILE")")
 fi
+append_keep_alive_args args
 run_harness_command claude "${args[@]}"
 """
 
@@ -890,6 +915,7 @@ args=(run)
 if [ -n "$AGENT_MODEL" ]; then
   args+=(--model "$AGENT_MODEL")
 fi
+append_keep_alive_args args
 run_harness_command opencode "${args[@]}" "$prompt"
 """
 
@@ -909,6 +935,7 @@ args=(chat -q "$prompt")
 if [ -n "$AGENT_MODEL" ]; then
   args+=(--model "$AGENT_MODEL")
 fi
+append_keep_alive_args args
 run_harness_command hermes "${args[@]}"
 """
 
@@ -934,6 +961,7 @@ if [ "${LLM_PROVIDER:-}" = "ollama_cloud" ]; then
 elif [ -n "${PI_PROVIDER:-}" ]; then
   args+=(--provider "$PI_PROVIDER")
 fi
+append_keep_alive_args args
 run_harness_command pi "${args[@]}" -p "$prompt"
 """
 

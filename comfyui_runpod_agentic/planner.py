@@ -133,6 +133,7 @@ class Planner:
                 "WORKSPACE_DIR": deployment.primary_app.workspace_path,
             },
         )
+        agent_contract = with_env(agent_contract, keep_alive_env(deployment.keep_alive))
 
         agent_selection = self.template_resolver.resolve_agent(
             deployment.primary_app.harness,
@@ -260,6 +261,23 @@ def contract_env_for_creation(contract: RuntimeContract) -> dict[str, str]:
     for secret in contract.env.secrets:
         env[secret.env_var] = secret_placeholder(secret)
     return env
+
+
+def keep_alive_env(policy: KeepAlivePolicy | None) -> dict[str, str]:
+    if not policy or policy.mode == "manual":
+        return {}
+    values = {
+        "CRAG_KEEP_ALIVE_MODE": policy.mode,
+        "CRAG_KEEP_ALIVE_ACTION": policy.action,
+        "CRAG_KEEP_ALIVE_ENFORCEMENT": policy.enforcement,
+    }
+    if policy.turn_limit is not None:
+        values["CRAG_KEEP_ALIVE_TURN_LIMIT"] = str(policy.turn_limit)
+    if policy.cost_limit_usd is not None:
+        values["CRAG_KEEP_ALIVE_COST_LIMIT_USD"] = str(policy.cost_limit_usd)
+    if policy.idle_grace_seconds is not None:
+        values["CRAG_KEEP_ALIVE_IDLE_GRACE_SECONDS"] = str(policy.idle_grace_seconds)
+    return values
 
 
 def dependency_pod_contract(role: str, contract: RuntimeContract) -> RuntimeContract:
