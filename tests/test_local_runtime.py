@@ -14,11 +14,24 @@ from comfyui_runpod_agentic.local_runtime import (
     command_for_engine,
     compose_yaml_for_plan,
     enforce_local_keep_alive,
+    find_local_runtime_container,
+    find_local_runtime_project_container,
+    image_for_resource,
+    inspect_container_labels,
+    inspect_container_role,
     list_local_runtime_project_containers,
+    local_port_mappings,
     local_resource_desired_hash,
+    local_runtime_command,
+    local_runtime_file_writes,
     local_runtime_response_is_ready,
+    parse_container_list,
     read_local_runtime_file,
     resolve_local_secret_placeholder,
+    resource_as_runtime_json,
+    schedule_local_lifecycle,
+    stop_local_runtime_project_containers,
+    volume_mount_for_resource,
 )
 from comfyui_runpod_agentic.nodes import (
     AgentNode,
@@ -26,7 +39,9 @@ from comfyui_runpod_agentic.nodes import (
     DeployNode,
     KeepAliveNode,
     LanguageRuntimeNode,
+    LLMApiNode,
     LLMServerNode,
+    MCPServerNode,
     NetworkStorageNode,
     RunLocalContainersNode,
     SSHCommandNode,
@@ -74,6 +89,73 @@ def test_compose_yaml_preserves_volume_retention_intent():
     compose = yaml.safe_load(compose_yaml_for_plan(plan))
 
     assert compose["volumes"]["vol-workspace"]["labels"]["comfyui-runpod-agentic.retention_policy"] == "delete_when_unused"
+
+
+def test_local_runtime_resource_helpers_cover_roles_and_ports():
+    plan = Planner().build(build_local_runtime_deployment("delete_when_unused"))
+    agent = next(resource for resource in plan.resources if resource.role == "agent")
+    llm = next(resource for resource in plan.resources if resource.role == "llm")
+    storage = volume_mount_for_resource(agent)
+
+    assert image_for_resource(agent) == "ubuntu:24.04"
+    assert image_for_resource(llm).startswith("ollama/ollama")
+    assert storage == ("vol-workspace", "/workspace", "delete_when_unused")
+    assert local_port_mappings(agent) == []
+
+
+def test_local_port_mappings_skip_unpublished_or_dynamic_ports():
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 0, "none", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", terminal=terminal)[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+    resource = next(resource for resource in plan.resources if resource.role == "agent")
+
+    assert local_port_mappings(resource) == []
+
+
+def test_local_runtime_parses_container_lists_and_labels(monkeypatch):
+    assert parse_container_list("") == []
+    assert parse_container_list('[{"ID":"one"}]') == [{"ID": "one"}]
+    assert parse_container_list('{"ID":"one"}\n{"ID":"two"}\n') == [{"ID": "one"}, {"ID": "two"}]
+
+    def fake_run(command, **kwargs):
+        if command == ["docker", "inspect", "one"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"role": "agent"}}}]), stderr="")
+        if command == ["docker", "inspect", "bad"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="missing")
+        return SimpleNamespace(returncode=0, stdout="{}", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    assert inspect_container_labels("docker", "one") == {"role": "agent"}
+    assert inspect_container_labels("docker", "bad") == {}
+    assert inspect_container_role("docker", "one") is None
+
+
+def test_local_runtime_container_queries_handle_empty_and_matching(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command == ["docker", "ps", "--format", "{{json .}}"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n{"ID":"other","Names":"other-agent"}\n', stderr="")
+        if command == ["docker", "ps", "-a", "--format", "{{json .}}"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"Config": {"Labels": {"comfyui-runpod-agentic.role": "agent", "comfyui-runpod-agentic.desired_hash": "hash1"}}}]), stderr="")
+        return SimpleNamespace(returncode=1, stdout="", stderr="missing")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    assert find_local_runtime_container("docker", "crag-node", "agent", "hash1") == "agent1"
+    assert find_local_runtime_container("docker", "crag-node", "agent", "missing") is None
+    assert find_local_runtime_project_container("docker", "crag-node", "agent", "hash1") == "agent1"
+
+
+def test_local_runtime_container_queries_return_empty_on_ps_failure(monkeypatch):
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", lambda *_args, **_kwargs: SimpleNamespace(returncode=1, stdout="", stderr="failed"))
+
+    assert list_local_runtime_project_containers("docker", "crag-node") == []
+    assert find_local_runtime_container("docker", "crag-node", "agent") is None
 
 
 def test_compose_yaml_publishes_web_terminal_only_for_agent():
@@ -124,6 +206,23 @@ def test_agent_compose_command_runs_startup_commands():
     assert "printf startup-ok > /workspace/startup.txt" in agent_service["command"]
     assert "$${label}" in agent_service["command"]
     assert "sleep infinity" in agent_service["command"]
+
+
+def test_local_runtime_file_writes_include_prompt_system_mcp_and_pi_config():
+    llm = LLMApiNode().build("Ollama Cloud", "deepseek-v4-flash", "OLLAMA_API_KEY")[0]
+    mcp = MCPServerNode().build("filesystem", "stdio", "npx", "-y @modelcontextprotocol/server-filesystem /workspace", "", "{}", "")[0]
+    agent = AgentNode().build("Pi", "deepseek-v4-flash", "manual", "/workspace", system_prompt="Be concise.", llm=llm, mcp_servers=mcp)[0]
+    plan = Planner().build(DeployNode().build(agent)[0], prompt="Say hi.")
+
+    script = "\n".join(local_runtime_file_writes(plan))
+    resource_json = resource_as_runtime_json(next(resource for resource in plan.resources if resource.role == "agent"))
+
+    assert "system_prompt.txt" in script
+    assert "prompt.txt" in script
+    assert "mcp_servers.json" in script
+    assert "harness/pi/models.json" in script
+    assert resource_json["role"] == "agent"
+    assert resource_json["materialization"] == "own_pod"
 
 
 def test_agent_compose_command_runs_after_commands_after_launch():
@@ -246,6 +345,38 @@ def test_apply_compose_file_runs_docker_compose(monkeypatch, tmp_path):
     assert result.returncode == 0
     assert calls[0][0] == ["docker", "compose", "-f", str(compose_path), "-p", "crag-test", "up", "-d"]
     assert calls[0][1]["timeout"] == 7
+
+
+def test_apply_compose_file_reports_missing_engine(monkeypatch, tmp_path):
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.shutil.which", lambda _command: None)
+
+    result = apply_compose_file("containerd", compose_path, project_name="crag-test", action="apply")
+
+    assert result.returncode == 127
+    assert "nerdctl" in result.stderr
+
+
+def test_local_runtime_commands_use_available_podman_and_nerdctl(monkeypatch):
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.shutil.which", lambda name: f"/usr/bin/{name}")
+
+    assert command_for_engine("podman", "compose.yaml", "crag-test", "apply") == ["podman", "compose", "-f", "compose.yaml", "-p", "crag-test", "up", "-d"]
+    assert local_runtime_command("podman", ["ps"]) == ["podman", "ps"]
+    assert local_runtime_command("containerd", ["ps"]) == ["nerdctl", "ps"]
+
+
+def test_local_runtime_commands_report_missing_or_unsupported_engines(monkeypatch):
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.shutil.which", lambda _command: None)
+
+    with pytest.raises(RuntimeError, match="Podman"):
+        command_for_engine("podman", "compose.yaml", "crag-node", "apply")
+    with pytest.raises(RuntimeError, match="Podman"):
+        local_runtime_command("podman", ["ps"])
+    with pytest.raises(RuntimeError, match="Containerd"):
+        local_runtime_command("containerd", ["ps"])
+    with pytest.raises(RuntimeError, match="Unsupported"):
+        command_for_engine("missing", "compose.yaml", "crag-node", "apply")
 
 
 def test_apply_local_runtime_reuses_matching_agent_container(monkeypatch, tmp_path):
@@ -410,6 +541,12 @@ def test_stop_local_runtime_stops_project_orphan_containers(monkeypatch, tmp_pat
     assert ["docker", "stop", "orphan1"] in calls
 
 
+def test_stop_local_runtime_project_containers_returns_none_without_running_containers(monkeypatch):
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""))
+
+    assert stop_local_runtime_project_containers("docker", "crag-node") is None
+
+
 def test_list_local_runtime_project_containers_includes_stopped(monkeypatch):
     calls = []
 
@@ -513,6 +650,13 @@ def test_enforce_local_keep_alive_skips_server_timer_for_pod_side(monkeypatch, t
 
     assert result is None
     assert calls == []
+
+
+def test_schedule_local_lifecycle_reports_unsupported_engine(tmp_path):
+    result = schedule_local_lifecycle("missing", tmp_path / "compose.yaml", "crag-node", "stop", 1)
+
+    assert result.returncode == 127
+    assert "Unsupported local runtime engine" in result.stderr
 
 
 def test_containerd_uses_nerdctl_compose(monkeypatch):

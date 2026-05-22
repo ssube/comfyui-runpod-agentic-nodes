@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from comfyui_runpod_agentic import NODE_DISPLAY_NAME_MAPPINGS
 from comfyui_runpod_agentic.harnesses import CENTRAL_SKILLS_PATH, harness_matrix_rows
 from comfyui_runpod_agentic.local_runtime import LocalApplyResult
@@ -9,6 +11,7 @@ from comfyui_runpod_agentic.nodes import (
     BrowserNode,
     BuildContainerNode,
     DeployNode,
+    KeepAliveNode,
     LanguageRuntimeNode,
     LLMApiNode,
     LLMServerNode,
@@ -26,11 +29,13 @@ from comfyui_runpod_agentic.nodes import (
     StartupScriptNode,
     VectorDatabaseNode,
     WebTerminalNode,
+    local_terminal_auth,
+    local_terminal_urls,
     with_terminal_options,
 )
 from comfyui_runpod_agentic.planner import Planner
 from comfyui_runpod_agentic.setup_commands import container_snapshot_command, harness_install_command
-from comfyui_runpod_agentic.validation import ValidationError
+from comfyui_runpod_agentic.validation import ValidationError, validate_keep_alive
 
 
 def test_user_facing_core_node_names():
@@ -122,6 +127,15 @@ def test_web_terminal_password_mode_requires_password():
         raise AssertionError("expected ValidationError")
 
 
+def test_app_nodes_reject_unsupported_modes():
+    with pytest.raises(ValidationError, match="Neko browser"):
+        BrowserNode().build("Neko", "same_pod", "chromium")
+    with pytest.raises(ValidationError, match="LLM Server only supports own_pod"):
+        LLMServerNode().build("Ollama", "llama3.2", "same_pod", "none")
+    with pytest.raises(ValidationError, match="Local SQL Database only supports SQLite"):
+        LocalSQLDatabaseNode().build("Postgres", "app", "/workspace/db/app.sqlite")
+
+
 def test_run_nodes_emit_comfy_ui_text_when_called_by_graph(tmp_path):
     terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
     agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
@@ -135,6 +149,54 @@ def test_run_nodes_emit_comfy_ui_text_when_called_by_graph(tmp_path):
     assert "terminal_auth" not in payload
 
 
+def test_runpod_node_plan_and_apply_outputs(monkeypatch):
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent)[0]
+
+    plan_output = RunOnRunpodNode().run(deployment, mode="plan", prompt="hello", workflow_graph={})
+    plan_payload = json.loads(plan_output["result"][0])
+
+    assert plan_output["ui"]["response"] == [""]
+    assert plan_payload["mode"] == "plan"
+
+    class FakeRunpodRunner:
+        def __init__(self, progress=None):
+            self.progress = progress
+
+        def run(self, deployment, *, mode, prompt, workflow_graph, on_error):
+            assert mode == "apply"
+            assert prompt == "hello"
+            assert workflow_graph == {}
+            assert on_error == "terminate_created"
+            return {"status": "completed", "response": "agent reply", "errors": ""}
+
+    monkeypatch.setattr("comfyui_runpod_agentic.runner.RunpodRunner", FakeRunpodRunner)
+
+    apply_output = RunOnRunpodNode().run(deployment, mode="apply", prompt="hello", on_error="terminate_created", workflow_graph={})
+
+    assert apply_output["ui"]["response"] == ["agent reply"]
+    assert json.loads(apply_output["result"][0])["status"] == "completed"
+
+
+def test_runpod_node_reports_runner_errors(monkeypatch):
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent)[0]
+
+    class FailingRunpodRunner:
+        def __init__(self, progress=None):
+            pass
+
+        def run(self, deployment, *, mode, prompt, workflow_graph, on_error):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.runner.RunpodRunner", FailingRunpodRunner)
+
+    output = RunOnRunpodNode().run(deployment, mode="apply", workflow_graph={})
+
+    assert output["ui"]["errors"] == ["boom"]
+    assert json.loads(output["result"][0])["status"] == "failed"
+
+
 def test_stop_and_terminate_do_not_emit_terminal_urls(tmp_path):
     terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
     agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
@@ -145,6 +207,15 @@ def test_stop_and_terminate_do_not_emit_terminal_urls(tmp_path):
     payload = json.loads(result["result"][0])
     assert "terminal_urls" not in payload
     assert "terminal_auth" not in payload
+
+
+def test_local_terminal_helpers_return_proxy_ready_urls_and_auth():
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+
+    assert local_terminal_urls(plan) == {"agent": "http://127.0.0.1:8765"}
+    assert local_terminal_auth(plan) == {"agent": {"username": "crag", "password": "secret"}}
 
 
 def test_run_nodes_are_not_cached_by_comfy():
@@ -445,6 +516,17 @@ def test_browser_same_pod_adds_agent_capability():
     assert agent.system_prompt == "Use the browser only when needed."
 
 
+def test_browser_own_pod_playwright_exposes_remote_endpoint():
+    browser = BrowserNode().build("Playwright", "own_pod", "firefox", node_id="browser-1")[0]
+
+    assert browser.materialization == "own_pod"
+    assert browser.template_key == "rp-browser-playwright"
+    assert browser.runtime_contract.env.values["PLAYWRIGHT_MODE"] == "remote"
+    assert browser.runtime_contract.env.values["PLAYWRIGHT_WS_ENDPOINT"] == "crag://browser/playwright"
+    assert browser.runtime_contract.ports[0].container_port == 3000
+    assert browser.meta.node_id == "browser-1"
+
+
 def test_service_nodes_accept_network_storage():
     storage = NetworkStorageNode().build("vol-123", "/data")[0]
     browser = BrowserNode().build("Neko", "own_pod", "chromium", network_storage=storage)[0]
@@ -455,6 +537,26 @@ def test_service_nodes_accept_network_storage():
     assert llm.network_storage == storage
     assert sql.network_storage == storage
     assert storage.retention_policy == "preserve"
+
+
+def test_vllm_server_uses_openai_contract_and_optional_secrets():
+    llm = LLMServerNode().build("vLLM", "Qwen/Qwen3", "own_pod", "secret", "OPENAI_KEY", "HF_TOKEN", node_id="llm-1")[0]
+
+    assert llm.engine == "vllm"
+    assert llm.api_format == "openai"
+    assert llm.runtime_contract.env.values["OPENAI_BASE_URL"] == "crag://llm/vllm/v1"
+    assert llm.runtime_contract.env.values["OPENAI_MODEL"] == "Qwen/Qwen3"
+    assert [secret.env_var for secret in llm.runtime_contract.env.secrets] == ["OPENAI_API_KEY", "HF_TOKEN"]
+    assert [secret.name for secret in llm.runtime_contract.env.secrets] == ["OPENAI_KEY", "HF_TOKEN"]
+    assert llm.runtime_contract.ports[0].container_port == 8000
+    assert llm.meta.node_id == "llm-1"
+
+
+def test_ollama_server_generated_token_sets_openai_key_placeholder():
+    llm = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "generated_token")[0]
+
+    assert llm.runtime_contract.env.values["OPENAI_API_KEY"] == "crag-generated-at-apply"
+    assert llm.runtime_contract.env.secrets == []
 
 
 def test_vector_database_contract_includes_persistence_path():
@@ -508,6 +610,17 @@ def test_agent_accepts_mcp_servers():
     assert agent.runtime_contract.env.secrets[0].env_var == "GITHUB_TOKEN"
 
 
+def test_mcp_node_rejects_invalid_transport_inputs():
+    with pytest.raises(ValidationError, match="name is required"):
+        MCPServerNode().build("", "stdio", "npx", "", "", "{}")
+    with pytest.raises(ValidationError, match="JSON object"):
+        MCPServerNode().build("bad", "stdio", "npx", "", "", "[]")
+    with pytest.raises(ValidationError, match="stdio transport requires"):
+        MCPServerNode().build("bad", "stdio", "", "", "", "{}")
+    with pytest.raises(ValidationError, match="http/sse transport requires"):
+        MCPServerNode().build("bad", "http", "", "", "", "{}")
+
+
 def test_agent_accepts_chainable_skills():
     skill = SkillNode().build("frontend-design", "https://github.com/example/skills.git", "frontend-design", "", "main")[0]
     framework = SkillFrameworkNode().build("Superpowers", "", "", previous=skill)[0]
@@ -519,6 +632,15 @@ def test_agent_accepts_chainable_skills():
     assert agent.skills.skills[1].kind == "framework"
     assert "RUNPOD_AGENT_SKILLS_JSON" in agent.runtime_contract.env.values
     assert [command.source for command in agent.runtime_contract.commands] == ["harness:pi", "skill:frontend-design", "skill:superpowers"]
+
+
+def test_skill_nodes_reject_invalid_repositories():
+    with pytest.raises(ValidationError, match="Skill name is required"):
+        SkillNode().build("", "https://github.com/example/skills.git", ".")
+    with pytest.raises(ValidationError, match="Skill GitHub repo URL"):
+        SkillNode().build("skill", "https://example.com/skills.git", ".")
+    with pytest.raises(ValidationError, match="Skill framework GitHub repo URL"):
+        SkillFrameworkNode().build("Custom GitHub Repo", "https://example.com/skills.git", ".")
 
 
 def test_harness_compatibility_matrix_covers_agent_choices():
@@ -540,6 +662,63 @@ def test_pod_validation_rejects_sqlite_outside_workspace():
         assert "SQLite path" in str(exc)
     else:
         raise AssertionError("expected ValidationError")
+
+
+def test_validation_rejects_invalid_graph_combinations():
+    llm_api = LLMApiNode().build("Codex", "gpt-test", "OPENAI_KEY")[0]
+    llm_server = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
+    agent = AgentNode().build("Pi", "model", "manual", llm=llm_api)[0]
+    bad_agent = agent.__class__(**{**agent.__dict__, "llm_server": llm_server})
+
+    try:
+        DeployNode().build(bad_agent)
+    except ValidationError as exc:
+        assert "either llm_api or llm_server" in str(exc)
+    else:
+        raise AssertionError("expected ValidationError")
+
+
+def test_validation_warns_for_ephemeral_sqlite_and_dependency_installs():
+    sqlite = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
+    agent = AgentNode().build("Pi", "model", "manual", sql_database=sqlite)[0]
+    command = SSHCommandNode().build("apt-get install -y jq", "before_start", "fail")[0]
+    deployment = DeployNode().build(agent, commands=command)[0]
+
+    plan = Planner().build(deployment)
+
+    assert "SQLite without network storage may be ephemeral." in plan.warnings
+    assert "Startup command appears to install dependencies" in "\n".join(plan.warnings)
+
+
+def test_validation_rejects_bad_storage_and_s3_secret_contracts():
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    bad_storage = NetworkStorageNode().build("", "/workspace", "preserve", 10, "")[0]
+
+    with pytest.raises(ValidationError, match="Network storage requires"):
+        Planner().build(DeployNode().build(agent, network_storage=bad_storage)[0])
+
+    s3 = S3StorageNode().build("https://s3.example.test", "bucket", "us-east-1", "", "")[0]
+    with pytest.raises(ValidationError, match="S3 storage requires"):
+        Planner().build(DeployNode().build(agent, s3_storage=s3)[0])
+
+
+def test_keep_alive_validation_rejects_incomplete_limits():
+    for policy in (
+        KeepAliveNode().build("time", "stop", 0, "seconds", 0, 0.0, 0)[0],
+        KeepAliveNode().build("turns", "stop", 0, "seconds", 0, 0.0, 0)[0],
+        KeepAliveNode().build("cost", "stop", 0, "seconds", 0, 0.0, 0)[0],
+    ):
+        try:
+            validate_keep_alive(policy)
+        except ValidationError as exc:
+            assert "requires" in str(exc)
+        else:
+            raise AssertionError("expected ValidationError")
+
+    invalid = KeepAliveNode().build("manual", "stop", 0, "seconds", 0, 0.0, 0)[0]
+    invalid = invalid.__class__(**{**invalid.__dict__, "enforcement": "invalid"})
+    with pytest.raises(ValidationError, match="Keep-alive enforcement"):
+        validate_keep_alive(invalid)
 
 
 def test_remote_sql_env_only_injects_database_url_from_server_env():

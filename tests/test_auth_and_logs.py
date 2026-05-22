@@ -66,6 +66,18 @@ def test_collect_run_logs_reads_command_log_files(tmp_path):
     assert "warning" in text
 
 
+def test_collect_run_logs_truncates_to_tail(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite")
+    stdout = tmp_path / "stdout.log"
+    stdout.write_text("prefix\n" + "x" * 80 + "\ntail\n")
+    command_id = store.start_command("run1", "resource1", "before_start", 1, "hash", str(stdout), "")
+    store.finish_command(command_id, "completed", 0)
+
+    text = collect_run_logs(store, "run1", stream="stdout", max_chars=20)
+
+    assert text == ("x" * 14 + "\ntail\n")
+
+
 def test_collect_run_logs_reads_remote_agent_log(tmp_path):
     store = StateStore(tmp_path / "state.sqlite")
     pod = {
@@ -92,6 +104,31 @@ def test_collect_run_logs_reads_remote_agent_log(tmp_path):
 
     assert "remote agent log" in text
     assert "agent output" in text
+
+
+def test_collect_run_logs_reports_unavailable_remote_agent_log(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite")
+    pod = {
+        "id": "pod-1",
+        "name": "crag-workflow-agent-node-deadbeef",
+        "desiredStatus": "RUNNING",
+        "env": [{"key": "CRAG_RUN_ID", "value": "run1"}, {"key": "CRAG_ROLE", "value": "agent"}],
+        "runtime": {"ports": []},
+    }
+    store.record_remote_resource(pod)
+
+    class FakeRunpod:
+        def get_pod(self, pod_id):
+            assert pod_id == "pod-1"
+            return pod
+
+    class FakeSSH:
+        def run(self, host, port, command, *, timeout_seconds=None):
+            raise AssertionError("unreachable without an SSH endpoint")
+
+    text = collect_run_logs(store, "run1", stream="both", max_chars=20000, runpod_client=FakeRunpod(), ssh_client=FakeSSH())
+
+    assert "remote agent logs unavailable (pod-1)" in text
 
 
 def test_logs_node_returns_empty_for_missing_run(monkeypatch, tmp_path):

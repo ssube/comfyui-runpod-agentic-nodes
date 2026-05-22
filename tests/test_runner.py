@@ -28,8 +28,13 @@ from comfyui_runpod_agentic.runner import (
     keep_alive_pod_timer_script,
     launcher_runtime_files,
     pi_runtime_files,
+    public_http_endpoint,
+    public_http_endpoint_for_private_port,
     readiness_probe_paths,
+    sanitize_pod_input,
     startup_script_for_plan,
+    terminal_auth_for_plan,
+    terminal_urls_for_pods,
 )
 from comfyui_runpod_agentic.ssh_client import CommandResult
 from comfyui_runpod_agentic.state_store import StateStore
@@ -287,6 +292,49 @@ def test_runner_executes_command_phases_around_launch(tmp_path, monkeypatch):
     assert before_index < launch_index < after_start_index < after_ready_index
 
 
+def test_runner_returns_launch_stdout_and_stderr_when_not_waiting(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setenv("CRAG_AGENT_LAUNCH_COMMAND", "echo launch-agent")
+
+    class LaunchOutputSSH(FakeSSHClient):
+        def run(self, host, port, command, *, timeout_seconds=None):
+            self.commands.append(command)
+            if "echo launch-agent" in command:
+                return CommandResult(0, "launch stdout\n", "launch stderr\n")
+            return CommandResult(0, "", "")
+
+    agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = DeployNode().build(agent)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=LaunchOutputSSH(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply")
+
+    assert result["response"] == "launch stdout\n"
+    assert result["errors"] == "launch stderr\n"
+
+
+def test_runner_fails_when_launch_command_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setenv("CRAG_AGENT_LAUNCH_COMMAND", "echo launch-agent")
+
+    class FailingLaunchSSH(FakeSSHClient):
+        def run(self, host, port, command, *, timeout_seconds=None):
+            self.commands.append(command)
+            if "echo launch-agent" in command:
+                return CommandResult(2, "", "launch failed\n")
+            return CommandResult(0, "", "")
+
+    agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = DeployNode().build(agent)[0]
+    runpod = FakeRunpodClient()
+    runner = RunpodRunner(runpod_client=runpod, ssh_client=FailingLaunchSSH(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    with pytest.raises(RuntimeError, match="Agent launch failed"):
+        runner.run(deployment, mode="apply")
+
+    assert runpod.stopped == ["pod-1"]
+
+
 def test_runner_retries_retry_commands(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     command = "echo maybe"
@@ -377,6 +425,45 @@ def test_runner_apply_and_wait_enforces_turn_keep_alive(tmp_path, monkeypatch):
     assert runpod.stopped == ["pod-1"]
 
 
+def test_runner_enforces_cost_keep_alive_with_terminate_action(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    keep_alive = KeepAliveNode().build("cost", "terminate", 0, "seconds", 0, 0.1, 0, "server_side")[0]
+    deployment = DeployNode().build(agent, keep_alive=keep_alive)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+    plan = runner.planner.build(deployment, mode="apply")
+
+    result = runner._enforce_response_keep_alive(plan, {"id": "pod-1", "costPerHr": 1.0, "runtime": {"uptimeInSeconds": 3600}}, response_collected=False)
+
+    assert result == {"mode": "cost", "action": "terminate", "estimated_cost_usd": 1.0}
+    assert runner.runpod_client.terminated == ["pod-1"]
+
+
+def test_runner_cost_keep_alive_reports_estimate_below_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    keep_alive = KeepAliveNode().build("cost", "stop", 0, "seconds", 0, 10.0, 0, "server_side")[0]
+    deployment = DeployNode().build(agent, keep_alive=keep_alive)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+    plan = runner.planner.build(deployment, mode="apply")
+
+    result = runner._enforce_response_keep_alive(plan, {"id": "pod-1", "costPerHr": 1.0, "runtime": {"uptimeInSeconds": 3600}}, response_collected=False)
+
+    assert result == {"mode": "cost", "estimated_cost_usd": 1.0}
+    assert runner.runpod_client.stopped == []
+
+
+def test_runner_skips_keep_alive_without_pod_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    keep_alive = KeepAliveNode().build("turns", "stop", 0, "seconds", 1, 0.0, 0, "server_side")[0]
+    deployment = DeployNode().build(agent, keep_alive=keep_alive)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+    plan = runner.planner.build(deployment, mode="apply")
+
+    assert runner._enforce_response_keep_alive(plan, {}, response_collected=True) is None
+
+
 def test_run_node_plan_exposes_response_and_errors_slots():
     agent = AgentNode().build("Pi", "model", "manual")[0]
     deployment = DeployNode().build(agent)[0]
@@ -421,6 +508,50 @@ def test_runner_apply_waits_for_dependency_endpoint(tmp_path, monkeypatch):
     assert result["plan"]["runtime_contract"]["env"]["values"]["PLAYWRIGHT_WS_ENDPOINT"] == "http://127.0.0.1:3000"
 
 
+def test_runner_dependency_ready_timeout_reports_last_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    browser = BrowserNode().build("Playwright", "own_pod", "chromium")[0]
+    agent = AgentNode().build("Pi", "model", "manual", browser=browser)[0]
+    deployment = DeployNode().build(agent)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+    plan = runner.planner.build(deployment, mode="apply")
+    resource = next(resource for resource in plan.resources if resource.role == "browser")
+    pod = {"id": "pod-browser", "desiredStatus": "STARTING", "runtime": {"ports": []}}
+
+    with pytest.raises(RuntimeError, match="last status"):
+        runner._wait_dependency_ready(resource, pod, plan.run_id, "resource-1", timeout_seconds=0.01, interval_seconds=0)
+
+
+def test_runner_wait_ssh_ready_reports_last_stderr(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    ssh = FakeSSHClient(outputs={"true": ("", "not ready", 1)})
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+
+    with pytest.raises(RuntimeError, match="not ready"):
+        runner._wait_ssh_ready("127.0.0.1", 2222, timeout_seconds=0.01, interval_seconds=0)
+
+
+def test_runner_wait_agent_response_times_out_with_last_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = DeployNode().build(agent)[0]
+    ssh = FakeSSHClient(
+        outputs={
+            "test -s '/workspace/.runpod_agentic/response.txt' && cat '/workspace/.runpod_agentic/response.txt'": ("", "", 1),
+            "test -s '/workspace/.runpod_agentic/errors.txt' && cat '/workspace/.runpod_agentic/errors.txt'": ("partial error", "", 0),
+            "test -s '/workspace/.runpod_agentic/agent.log' && cat '/workspace/.runpod_agentic/agent.log'": ("", "", 1),
+        }
+    )
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+    plan = runner.planner.build(deployment, mode="apply")
+
+    response, errors = runner._wait_agent_response(plan, "127.0.0.1", 2222, timeout_seconds=0.01, interval_seconds=0)
+
+    assert response == ""
+    assert errors == "partial error"
+    assert any(event["event_type"] == "agent_response_timeout" for event in runner.state_store.list_events(plan.run_id))
+
+
 def test_runner_logs_sanitized_pod_create_failure(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     agent = AgentNode().build("Pi", "model", "manual")[0]
@@ -434,6 +565,32 @@ def test_runner_logs_sanitized_pod_create_failure(tmp_path, monkeypatch):
     assert any(event["event_type"] == "pod_create_request" for event in events)
     failed = next(event for event in events if event["event_type"] == "pod_create_failed")
     assert "create failed" in failed["message"]
+
+
+def test_runner_cleanup_records_stop_and_terminate_failures(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+
+    class FailingCleanupClient(FakeRunpodClient):
+        def stop_pod(self, pod_id):
+            raise RuntimeError("stop failed")
+
+        def terminate_pod(self, pod_id):
+            raise RuntimeError("terminate failed")
+
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent)[0]
+    runner = RunpodRunner(runpod_client=FailingCleanupClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+    plan = runner.planner.build(deployment, mode="apply")
+    resource = plan.resources[0]
+    runner.state_store.record_run(plan.run_id, plan.workflow_hash, plan.deployment_hash, "apply", "started")
+    runner.state_store.record_resource(plan.run_id, resource, {"id": "pod-1"}, status="RUNNING")
+
+    runner._cleanup_created(plan, terminate=False)
+    runner._cleanup_created(plan, terminate=True)
+
+    event_types = [event["event_type"] for event in runner.state_store.list_events(plan.run_id)]
+    assert "cleanup_stop_failed" in event_types
+    assert "cleanup_terminate_failed" in event_types
 
 
 def test_runner_writes_mcp_runtime_file(tmp_path, monkeypatch):
@@ -469,9 +626,38 @@ def test_runner_installs_skills_before_user_commands(tmp_path, monkeypatch):
 
 def test_readiness_probe_paths_use_service_health_endpoints():
     assert readiness_probe_paths("llm", {"LLM_PROVIDER": "ollama"}) == ["/api/tags"]
+    assert readiness_probe_paths("llm", {"LLM_PROVIDER": "vllm"}) == ["/health", "/v1/models"]
     assert readiness_probe_paths("vector", {"VECTOR_KIND": "qdrant"}) == ["/readyz", "/collections"]
     assert readiness_probe_paths("vector", {"VECTOR_KIND": "chroma"}) == ["/api/v2/heartbeat", "/api/v1/heartbeat"]
     assert readiness_probe_paths("browser", {"BROWSER_KIND": "playwright"}) == ["/json/version", "/"]
+    assert readiness_probe_paths("browser", {"BROWSER_KIND": "neko"}) == ["/", "/api/health"]
+
+
+def test_endpoint_and_terminal_helpers_handle_common_port_shapes():
+    pod = {
+        "ports": [
+            {"host": "ssh.example", "containerPort": 22, "public_port": 2222, "protocol": "tcp"},
+            {"hostname": "svc.example", "container_port": 8000, "public_port": 18000, "protocol": "https"},
+        ]
+    }
+    terminal = WebTerminalNode().build("/bin/bash", 7681, 8765, "password", "crag", "secret")[0]
+    agent = AgentNode().build("Pi", "model", "manual", terminal=terminal)[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+    pods = {plan.resources[0].name: {"runtime": {"ports": [{"ip": "127.0.0.1", "privatePort": 7681, "publicPort": 17681, "type": "https"}]}}}
+
+    assert public_http_endpoint(pod) == "https://svc.example:18000"
+    assert public_http_endpoint_for_private_port(pod, 8000) == "https://svc.example:18000"
+    assert terminal_urls_for_pods(plan, pods) == {"agent": "https://127.0.0.1:17681"}
+    assert terminal_auth_for_plan(plan) == {"agent": {"username": "crag", "password": "secret"}}
+
+
+def test_sanitize_pod_input_redacts_dict_and_list_env_secrets():
+    dict_env = sanitize_pod_input({"env": {"OPENAI_API_KEY": "secret", "MODEL": "qwen"}})
+    list_env = sanitize_pod_input({"env": [{"key": "TOKEN", "value": "secret"}, {"key": "MODEL", "value": "qwen"}]})
+
+    assert dict_env["env"] == {"OPENAI_API_KEY": "<redacted>", "MODEL": "qwen"}
+    assert list_env["env"][0]["value"] == "<redacted>"
+    assert list_env["env"][1]["value"] == "qwen"
 
 
 def test_first_ready_probe_accepts_successful_http_status(monkeypatch):
