@@ -13,7 +13,7 @@ def save_templates(spec_path: Path, map_path: Path, *, client: RunpodClient | No
     specs = json.loads(spec_path.read_text())
     existing = load_id_map(map_path)
     result = dict(existing)
-    templates = specs.get("templates", specs if isinstance(specs, list) else [])
+    templates = specs if isinstance(specs, list) else specs.get("templates", [])
     if not isinstance(templates, list):
         raise ValueError("Template spec JSON must be a list or an object with a templates list.")
 
