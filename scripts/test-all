@@ -9,6 +9,7 @@ python_bin="${PYTHON:-$(pwd)/venv/bin/python}"
 
 scripts/e2e-local-runtime
 scripts/e2e-local-keepalive-timeout
+scripts/e2e-local-container-snapshot-live
 
 if [[ "${CRAG_RUN_COMFY_E2E:-0}" == "1" ]]; then
   scripts/e2e-comfy-cpu --skip-clone
