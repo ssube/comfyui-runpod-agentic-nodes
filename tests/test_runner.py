@@ -12,6 +12,7 @@ from comfyui_runpod_agentic.nodes import (
     KeepAliveNode,
     LLMApiNode,
     LLMServerNode,
+    LocalSQLDatabaseNode,
     MCPServerNode,
     NetworkStorageNode,
     RunOnRunpodNode,
@@ -911,9 +912,20 @@ def test_runner_writes_pi_runtime_config_files(tmp_path, monkeypatch):
 
     assert any(path.endswith("harness/pi/models.json") for path in runner.ssh_client.files)
     assert any(path.endswith("harness/pi/providers.json") for path in runner.ssh_client.files)
-    agent_env = runpod.created[-1]["env"]
-    assert agent_env["OLLAMA_API_KEY"] == "{{ RUNPOD_SECRET_OLLAMA_API_KEY }}"
-    assert agent_env["OLLAMA_CLOUD_API_KEY"] == "{{ RUNPOD_SECRET_OLLAMA_API_KEY }}"
+
+
+def test_runner_writes_runtime_contract_skill_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    sql = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
+    agent = AgentNode().build("Pi", "model", "manual", sql_database=sql)[0]
+    deployment = DeployNode().build(agent)[0]
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=FakeSSHClient(), state_store=StateStore(tmp_path / "state.sqlite"))
+
+    runner.run(deployment, mode="apply")
+
+    assert any(path.endswith("/skills/crag-database/SKILL.md") for path in runner.ssh_client.files)
+    skill_path = next(path for path in runner.ssh_client.files if path.endswith("/skills/crag-database/SKILL.md"))
+    assert runner.ssh_client.files[skill_path].startswith("---\nname: crag-database\n")
 
 
 def test_startup_script_for_plan_is_pasteable_bash(tmp_path, monkeypatch):

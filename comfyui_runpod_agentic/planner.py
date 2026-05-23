@@ -111,7 +111,7 @@ class Planner:
             dependency_contracts.append(spec.runtime_contract)
 
         local_contracts = [deployment.primary_app.runtime_contract]
-        for spec in (deployment.primary_app.browser, deployment.primary_app.sql_database, deployment.primary_app.vector_database):
+        for spec in (deployment.primary_app.browser, deployment.primary_app.llm_server, deployment.primary_app.sql_database, deployment.primary_app.vector_database):
             if spec and spec.materialization in {"same_pod", "file_only", "env_only", "config_only"}:
                 local_contracts.append(spec.runtime_contract)
         if deployment.primary_app.llm_api:

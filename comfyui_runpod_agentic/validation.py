@@ -19,8 +19,6 @@ def validate_deployment(deployment: DeploymentSpec, *, mode: str = "plan", requi
         raise ValidationError("Agent accepts either llm_api or llm_server, not both.")
     if app.browser and app.browser.engine == "neko" and app.browser.materialization == "same_pod":
         raise ValidationError("Neko browser supports only own_pod materialization in the MVP.")
-    if app.llm_server and app.llm_server.materialization == "same_pod":
-        raise ValidationError("LLM Server same_pod materialization is not supported in the MVP.")
     if app.sql_database and app.sql_database.engine == "sqlite":
         path = app.sql_database.runtime_contract.env.values.get("DATABASE_PATH", "")
         if not path:

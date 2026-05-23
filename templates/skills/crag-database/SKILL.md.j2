@@ -1,0 +1,14 @@
+---
+name: crag-database
+description: Inspect CRAG-provided SQL and vector databases. Use when a workflow exposes DATABASE_* or VECTOR_* environment variables and the agent needs to list tables, list collections, or verify database connectivity.
+compatibility: Requires CRAG database environment variables plus sqlite3, psql, mysql, or chromadb depending on the connected database.
+---
+
+# CRAG Database Skill
+
+Use the CRAG database environment variables to inspect available databases before making changes.
+
+- SQL databases expose `DATABASE_KIND`, `DATABASE_URL`, `DATABASE_NAME`, `DATABASE_USER`, and when available `DATABASE_HOST`, `DATABASE_PORT`, and `DATABASE_PASSWORD`.
+- SQLite exposes `DATABASE_PATH`.
+- Vector stores expose `VECTOR_KIND`, `VECTOR_COLLECTION`, `VECTOR_PERSISTENCE_PATH`, and optionally `VECTOR_URL`.
+- Run `python3 $CRAG_RUNTIME_DIR/skills/{{ skill_name }}/list_resources.py` to list SQL tables or vector collections.

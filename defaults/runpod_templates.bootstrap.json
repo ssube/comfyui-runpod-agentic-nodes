@@ -189,6 +189,116 @@
       "readme": "CRAG MySQL template. Provide MYSQL_PASSWORD and MYSQL_ROOT_PASSWORD via Runpod secret/env at deploy time.",
       "volumeInGb": 10,
       "volumeMountPath": "/var/lib/mysql"
+    },
+    {
+      "containerDiskInGb": 30,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-codex-ollama",
+      "name": "crag-agent-codex-ollama",
+      "ports": "11434/http,22/tcp",
+      "readme": "CRAG Codex same-pod Ollama placeholder. Bake Codex, Ollama, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 40,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-codex-vllm",
+      "name": "crag-agent-codex-vllm",
+      "ports": "8000/http,22/tcp",
+      "readme": "CRAG Codex same-pod vLLM placeholder. Bake Codex, vLLM, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 30,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-claude-ollama",
+      "name": "crag-agent-claude-ollama",
+      "ports": "11434/http,22/tcp",
+      "readme": "CRAG Claude same-pod Ollama placeholder. Bake Claude, Ollama, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 40,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-claude-vllm",
+      "name": "crag-agent-claude-vllm",
+      "ports": "8000/http,22/tcp",
+      "readme": "CRAG Claude same-pod vLLM placeholder. Bake Claude, vLLM, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 30,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-opencode-ollama",
+      "name": "crag-agent-opencode-ollama",
+      "ports": "11434/http,22/tcp",
+      "readme": "CRAG OpenCode same-pod Ollama placeholder. Bake OpenCode, Ollama, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 40,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-opencode-vllm",
+      "name": "crag-agent-opencode-vllm",
+      "ports": "8000/http,22/tcp",
+      "readme": "CRAG OpenCode same-pod vLLM placeholder. Bake OpenCode, vLLM, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 30,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-hermes-ollama",
+      "name": "crag-agent-hermes-ollama",
+      "ports": "11434/http,22/tcp",
+      "readme": "CRAG Hermes same-pod Ollama placeholder. Bake Hermes, Ollama, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 40,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-hermes-vllm",
+      "name": "crag-agent-hermes-vllm",
+      "ports": "8000/http,22/tcp",
+      "readme": "CRAG Hermes same-pod vLLM placeholder. Bake Hermes, vLLM, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 30,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-pi-ollama",
+      "name": "crag-agent-pi-ollama",
+      "ports": "11434/http,22/tcp",
+      "readme": "CRAG Pi same-pod Ollama placeholder. Bake Pi, Ollama, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
+    },
+    {
+      "containerDiskInGb": 40,
+      "dockerArgs": "sleep infinity",
+      "imageName": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+      "key": "rp-agent-pi-vllm",
+      "name": "crag-agent-pi-vllm",
+      "ports": "8000/http,22/tcp",
+      "readme": "CRAG Pi same-pod vLLM placeholder. Bake Pi, vLLM, and runpod-agent-launch before production use.",
+      "volumeInGb": 20,
+      "volumeMountPath": "/workspace"
     }
   ]
 }

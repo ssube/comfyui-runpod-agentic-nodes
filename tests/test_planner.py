@@ -21,7 +21,7 @@ from comfyui_runpod_agentic.planner import Planner
 def build_deployment():
     llm = LLMApiNode().build("Claude", "claude-sonnet", "anthropic_key")[0]
     sql = RemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app", "pg_password")[0]
-    vector = VectorDatabaseNode().build("Qdrant", "docs")[0]
+    vector = VectorDatabaseNode().build("Qdrant", "own_pod", "docs")[0]
     browser = BrowserNode().build("Playwright", "same_pod", "chromium")[0]
     agent = AgentNode().build("OpenCode", "claude-sonnet", "wait_for_commands", browser=browser, llm=llm, sql_database=sql, vector_database=vector, node_id="agent1")[0]
     commands = SSHCommandNode().build("echo setup", "before_start", "fail")[0]

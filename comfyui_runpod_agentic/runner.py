@@ -375,6 +375,8 @@ class RunpodRunner:
             self.ssh_client.write_file(host, port, f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"])
         if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
             self.ssh_client.write_file(host, port, f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"])
+        for relative_path, content in plan.runtime_contract.files.items():
+            self.ssh_client.write_file(host, port, f"/{relative_path.strip('/')}", content)
         for relative_path, content in pi_runtime_files(plan.runtime_contract.env.values).items():
             self.ssh_client.write_file(host, port, f"{base}/{relative_path}", content)
         for relative_path, content in launcher_runtime_files().items():
@@ -572,6 +574,8 @@ def startup_script_for_plan(plan: DeploymentPlan) -> str:
         lines.extend(file_write_lines(f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"]))
     if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
         lines.extend(file_write_lines(f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"]))
+    for relative_path, content in plan.runtime_contract.files.items():
+        lines.extend(file_write_lines(f"/{relative_path.strip('/')}", content))
     for relative_path, content in pi_runtime_files(plan.runtime_contract.env.values).items():
         lines.extend(file_write_lines(f"{base}/{relative_path}", content))
     for relative_path, content in launcher_runtime_files().items():

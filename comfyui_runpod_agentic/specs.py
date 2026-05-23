@@ -97,7 +97,7 @@ class LLMServerSpec:
     api_format: Literal["openai", "ollama", "anthropic"]
     runtime_contract: RuntimeContract
     required_image_capabilities: list[str]
-    template_key: str
+    template_key: str | None
     hf_token_secret: SecretRef | None = None
     api_key_secret: SecretRef | None = None
     network_storage: NetworkStorageSpec | None = None
@@ -138,7 +138,7 @@ class VectorDatabaseSpec:
     collection_name: str
     persistence_path: str
     runtime_contract: RuntimeContract
-    template_key: str
+    template_key: str | None
     network_storage: NetworkStorageSpec | None = None
     meta: SpecMeta = field(default_factory=SpecMeta)
 

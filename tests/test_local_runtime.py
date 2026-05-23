@@ -41,10 +41,13 @@ from comfyui_runpod_agentic.nodes import (
     LanguageRuntimeNode,
     LLMApiNode,
     LLMServerNode,
+    LocalSQLDatabaseNode,
     MCPServerNode,
     NetworkStorageNode,
+    RemoteSQLDatabaseNode,
     RunLocalContainersNode,
     SSHCommandNode,
+    VectorDatabaseNode,
     WebTerminalNode,
     populate_local_volume_ids,
 )
@@ -83,6 +86,35 @@ def test_compose_yaml_resolves_dependency_env_and_volumes():
     assert compose["volumes"]["vol-workspace"]["labels"]["comfyui-runpod-agentic.retention_policy"] == "preserve"
 
 
+def test_compose_yaml_resolves_database_host_placeholders():
+    sql = RemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app")[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", sql_database=sql)[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+
+    compose = yaml.safe_load(compose_yaml_for_plan(plan, project_name="crag-db"))
+    agent_env = next(service["environment"] for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
+
+    assert agent_env["DATABASE_HOST"].startswith("crag-")
+    assert agent_env["DATABASE_URL"].startswith("postgresql://app:app@crag-")
+    assert ":5432/app" in agent_env["DATABASE_URL"]
+
+
+def test_same_pod_llm_and_embedded_chroma_stay_in_agent_service():
+    llm = LLMServerNode().build("Ollama", "llama3.2", "same_pod", "none")[0]
+    vector = VectorDatabaseNode().build("Chroma", "embedded", "docs", "/workspace/vector")[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", llm=llm, vector_database=vector)[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+
+    compose = yaml.safe_load(compose_yaml_for_plan(plan, project_name="crag-same-pod"))
+    services = list(compose["services"].values())
+    agent_env = services[0]["environment"]
+
+    assert len(services) == 1
+    assert agent_env["OLLAMA_HOST"] == "http://127.0.0.1:11434"
+    assert agent_env["VECTOR_MODE"] == "embedded"
+    assert "crag-database/SKILL.md" in "\n".join(local_runtime_file_writes(plan))
+
+
 def test_compose_yaml_preserves_volume_retention_intent():
     plan = Planner().build(build_local_runtime_deployment("delete_when_unused"))
 
@@ -101,6 +133,17 @@ def test_local_runtime_resource_helpers_cover_roles_and_ports():
     assert image_for_resource(llm).startswith("ollama/ollama")
     assert storage == ("vol-workspace", "/workspace", "delete_when_unused")
     assert local_port_mappings(agent) == []
+
+
+def test_database_skill_files_are_written_by_local_runtime():
+    sql = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", sql_database=sql)[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+
+    writes = "\n".join(local_runtime_file_writes(plan))
+
+    assert "/workspace/.runpod_agentic/skills/crag-database/SKILL.md" in writes
+    assert "name: crag-database" in writes
 
 
 def test_local_port_mappings_skip_unpublished_or_dynamic_ports():

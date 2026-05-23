@@ -34,7 +34,7 @@ from comfyui_runpod_agentic.nodes import (
     with_terminal_options,
 )
 from comfyui_runpod_agentic.planner import Planner
-from comfyui_runpod_agentic.setup_commands import container_snapshot_command, harness_install_command
+from comfyui_runpod_agentic.setup_commands import builtin_database_skill_files, container_snapshot_command, harness_install_command
 from comfyui_runpod_agentic.validation import ValidationError, validate_keep_alive
 
 
@@ -142,8 +142,6 @@ def test_web_terminal_password_mode_requires_password():
 def test_app_nodes_reject_unsupported_modes():
     with pytest.raises(ValidationError, match="Neko browser"):
         BrowserNode().build("Neko", "same_pod", "chromium")
-    with pytest.raises(ValidationError, match="LLM Server only supports own_pod"):
-        LLMServerNode().build("Ollama", "llama3.2", "same_pod", "none")
     with pytest.raises(ValidationError, match="Local SQL Database only supports SQLite"):
         LocalSQLDatabaseNode().build("Postgres", "app", "/workspace/db/app.sqlite")
 
@@ -528,6 +526,21 @@ def test_browser_same_pod_adds_agent_capability():
     assert agent.system_prompt == "Use the browser only when needed."
 
 
+def test_llm_server_same_pod_adds_agent_capability_and_runtime_contract():
+    llm = LLMServerNode().build("Ollama", "llama3.2", "same_pod", "none")[0]
+    agent = AgentNode().build("Pi", "llama3.2", "manual", llm=llm)[0]
+    deployment = DeployNode().build(agent)[0]
+
+    plan = Planner().build(deployment)
+
+    assert llm.materialization == "same_pod"
+    assert llm.template_key is None
+    assert agent.required_image_capabilities == ["ollama"]
+    assert [resource.role for resource in plan.resources] == ["agent"]
+    assert plan.resources[0].pod_input["env"]["OLLAMA_HOST"] == "http://127.0.0.1:11434"
+    assert any(action.detail.get("source") == "llm:ollama:same_pod" for action in plan.actions if action.action == "RUN_SSH_COMMAND")
+
+
 def test_browser_own_pod_playwright_exposes_remote_endpoint():
     browser = BrowserNode().build("Playwright", "own_pod", "firefox", node_id="browser-1")[0]
 
@@ -576,8 +589,32 @@ def test_vector_database_contract_includes_persistence_path():
 
     assert vector.engine == "chroma"
     assert vector.runtime_contract.env.values["VECTOR_URL"] == "crag://vector/chroma"
+    assert vector.runtime_contract.env.values["VECTOR_MODE"] == "remote"
     assert vector.runtime_contract.env.values["VECTOR_PERSISTENCE_PATH"] == "/data/chroma"
     assert vector.runtime_contract.ports[0].container_port == 8000
+
+
+def test_embedded_chroma_is_file_only_and_installs_skill():
+    vector = VectorDatabaseNode().build("Chroma", "embedded", "docs", "/workspace/vector")[0]
+    agent = AgentNode().build("Pi", "model", "manual", vector_database=vector)[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+
+    assert vector.materialization == "file_only"
+    assert vector.template_key is None
+    assert vector.runtime_contract.env.values["VECTOR_MODE"] == "embedded"
+    assert "chromadb" in vector.runtime_contract.commands[0].command
+    assert [resource.role for resource in plan.resources] == ["agent"]
+    assert plan.resources[0].pod_input["env"]["VECTOR_URL"] == "local://chroma"
+
+
+def test_builtin_database_skill_files_use_agent_skills_frontmatter():
+    files = builtin_database_skill_files()
+    skill = files[f"{CENTRAL_SKILLS_PATH}/crag-database/SKILL.md"]
+
+    assert skill.startswith("---\nname: crag-database\n")
+    assert "description:" in skill
+    assert "python3 $CRAG_RUNTIME_DIR/skills/crag-database/list_resources.py" in skill
+    assert f"{CENTRAL_SKILLS_PATH}/crag-database/list_resources.py" in files
 
 
 def test_network_storage_retention_policy_warns_for_destructive_intent():
@@ -741,3 +778,13 @@ def test_remote_sql_env_only_injects_database_url_from_server_env():
     assert spec.runtime_contract.env.secrets[0].name == "APP_DATABASE_URL"
     assert spec.runtime_contract.env.secrets[0].env_var == "DATABASE_URL"
     assert spec.runtime_contract.env.secrets[0].provider == "server_env"
+
+
+def test_remote_sql_own_pod_adds_client_command_and_database_skill():
+    spec = RemoteSQLDatabaseNode().build("MySQL", "own_pod", "app", "app")[0]
+
+    assert spec.runtime_contract.env.values["DATABASE_HOST"] == "crag://sql/mysql/host"
+    assert spec.runtime_contract.env.values["DATABASE_URL"].startswith("mysql://app:app@crag://sql/mysql/hostport/app")
+    assert spec.runtime_contract.commands[0].source == "database-client:mysql"
+    assert "default-mysql-client" in spec.runtime_contract.commands[0].command
+    assert f"{CENTRAL_SKILLS_PATH}/crag-database/SKILL.md" in spec.runtime_contract.files

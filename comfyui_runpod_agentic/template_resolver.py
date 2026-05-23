@@ -17,11 +17,11 @@ class TemplateResolutionError(ValueError):
 
 DEFAULT_TEMPLATE_CONFIG: dict[str, Any] = {
     "agent_templates": {
-        "codex": {"default": "rp-agent-codex", "capabilities": {"playwright": "rp-agent-codex-playwright"}},
-        "claude": {"default": "rp-agent-claude", "capabilities": {"playwright": "rp-agent-claude-playwright"}},
-        "opencode": {"default": "rp-agent-opencode", "capabilities": {"playwright": "rp-agent-opencode-playwright"}},
-        "hermes": {"default": "rp-agent-hermes", "capabilities": {}},
-        "pi": {"default": "rp-agent-pi", "capabilities": {}},
+        "codex": {"default": "rp-agent-codex", "capabilities": {"playwright": "rp-agent-codex-playwright", "ollama": "rp-agent-codex-ollama", "vllm": "rp-agent-codex-vllm"}},
+        "claude": {"default": "rp-agent-claude", "capabilities": {"playwright": "rp-agent-claude-playwright", "ollama": "rp-agent-claude-ollama", "vllm": "rp-agent-claude-vllm"}},
+        "opencode": {"default": "rp-agent-opencode", "capabilities": {"playwright": "rp-agent-opencode-playwright", "ollama": "rp-agent-opencode-ollama", "vllm": "rp-agent-opencode-vllm"}},
+        "hermes": {"default": "rp-agent-hermes", "capabilities": {"ollama": "rp-agent-hermes-ollama", "vllm": "rp-agent-hermes-vllm"}},
+        "pi": {"default": "rp-agent-pi", "capabilities": {"ollama": "rp-agent-pi-ollama", "vllm": "rp-agent-pi-vllm"}},
     },
     "app_templates": {
         "browser": {"playwright": "rp-browser-playwright", "neko": "rp-browser-neko"},

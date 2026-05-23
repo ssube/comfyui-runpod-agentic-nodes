@@ -139,6 +139,11 @@ def compose_env(resource: ResourcePlan, service_names: dict[str, str]) -> dict[s
         env.setdefault("POSTGRES_DB", env.get("DATABASE_NAME", "app"))
         env.setdefault("POSTGRES_USER", env.get("DATABASE_USER", "app"))
         env.setdefault("POSTGRES_PASSWORD", env.get("DATABASE_PASSWORD", "app"))
+    if resource.role == "sql" and env.get("DATABASE_KIND") == "mysql":
+        env.setdefault("MYSQL_DATABASE", env.get("DATABASE_NAME", "app"))
+        env.setdefault("MYSQL_USER", env.get("DATABASE_USER", "app"))
+        env.setdefault("MYSQL_PASSWORD", env.get("DATABASE_PASSWORD", "app"))
+        env.setdefault("MYSQL_ROOT_PASSWORD", env.get("DATABASE_PASSWORD", "app"))
     return env
 
 
@@ -167,6 +172,10 @@ def local_secret_values() -> dict[str, str]:
 
 def resolve_crag_placeholders(value: str, service_names: dict[str, str]) -> str:
     replacements = {
+        "crag://sql/postgres/hostport": ("sql", "", 5432, ""),
+        "crag://sql/postgres/host": ("sql", "", 0, ""),
+        "crag://sql/mysql/hostport": ("sql", "", 3306, ""),
+        "crag://sql/mysql/host": ("sql", "", 0, ""),
         "crag://browser/neko": ("browser", "http", 8080, ""),
         "crag://browser/playwright": ("browser", "http", 3000, ""),
         "crag://llm/ollama/v1": ("llm", "http", 11434, "/v1"),
@@ -183,7 +192,13 @@ def resolve_crag_placeholders(value: str, service_names: dict[str, str]) -> str:
         service = first_service_for_role(service_names, role)
         if not service:
             continue
-        value = value.replace(placeholder, f"{scheme}://{service}:{port}{suffix}")
+        if scheme:
+            replacement = f"{scheme}://{service}:{port}{suffix}"
+        elif port:
+            replacement = f"{service}:{port}{suffix}"
+        else:
+            replacement = f"{service}{suffix}"
+        value = value.replace(placeholder, replacement)
     return value
 
 
@@ -356,6 +371,8 @@ def local_runtime_file_writes(plan: DeploymentPlan) -> list[str]:
         lines.extend(shell_write_file_lines(f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"]))
     if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
         lines.extend(shell_write_file_lines(f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"]))
+    for relative_path, content in plan.runtime_contract.files.items():
+        lines.extend(shell_write_file_lines(f"/{relative_path.strip('/')}", content))
     for relative_path, content in pi_runtime_files(plan.runtime_contract.env.values).items():
         lines.extend(shell_write_file_lines(f"{base}/{relative_path}", content))
     for relative_path, content in launcher_runtime_files().items():

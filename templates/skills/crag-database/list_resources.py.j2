@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+from pathlib import Path
+
+
+def run(args: list[str], *, env: dict[str, str] | None = None) -> list[str]:
+    proc = subprocess.run(args, env=env, text=True, capture_output=True, check=True)
+    return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+
+
+def list_sql() -> dict[str, object]:
+    kind = os.environ.get("DATABASE_KIND", "").lower()
+    if kind == "sqlite":
+        path = os.environ.get("DATABASE_PATH") or os.environ.get("DATABASE_URL", "").removeprefix("sqlite:///")
+        tables = run(["sqlite3", path, "select name from sqlite_master where type='table' order by name;"])
+        return {"kind": kind, "tables": tables}
+    if kind == "postgres":
+        env = os.environ.copy()
+        if os.environ.get("DATABASE_PASSWORD"):
+            env["PGPASSWORD"] = os.environ["DATABASE_PASSWORD"]
+        if os.environ.get("DATABASE_URL"):
+            args = ["psql", os.environ["DATABASE_URL"], "-Atc", "select tablename from pg_tables where schemaname='public' order by tablename;"]
+        else:
+            args = [
+                "psql",
+                "-h",
+                os.environ.get("DATABASE_HOST", "localhost"),
+                "-p",
+                os.environ.get("DATABASE_PORT", "5432"),
+                "-U",
+                os.environ.get("DATABASE_USER", "postgres"),
+                "-d",
+                os.environ.get("DATABASE_NAME", "postgres"),
+                "-Atc",
+                "select tablename from pg_tables where schemaname='public' order by tablename;",
+            ]
+        return {"kind": kind, "tables": run(args, env=env)}
+    if kind == "mysql":
+        args = [
+            "mysql",
+            "--batch",
+            "--skip-column-names",
+            "-h",
+            os.environ.get("DATABASE_HOST", "localhost"),
+            "-P",
+            os.environ.get("DATABASE_PORT", "3306"),
+            "-u",
+            os.environ.get("DATABASE_USER", "root"),
+            f"-p{os.environ.get('DATABASE_PASSWORD', '')}",
+            os.environ.get("DATABASE_NAME", "mysql"),
+            "-e",
+            "show tables;",
+        ]
+        return {"kind": kind, "tables": run(args)}
+    return {"kind": kind or None, "tables": []}
+
+
+def list_vector() -> dict[str, object]:
+    kind = os.environ.get("VECTOR_KIND", "").lower()
+    if kind == "chroma" and os.environ.get("VECTOR_MODE") == "embedded":
+        import chromadb
+
+        client = chromadb.PersistentClient(path=os.environ.get("VECTOR_PERSISTENCE_PATH", "/workspace/vector"))
+        collections = sorted(collection.name for collection in client.list_collections())
+        return {"kind": kind, "collections": collections}
+    return {"kind": kind or None, "collections": []}
+
+
+def main() -> int:
+    result = {"sql": list_sql(), "vector": list_vector(), "skill_path": str(Path(__file__).resolve().parent)}
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

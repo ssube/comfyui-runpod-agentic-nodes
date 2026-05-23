@@ -23,11 +23,16 @@ from .harnesses import CENTRAL_SKILLS_PATH, HARNESS_SUPPORT
 from .planner import Planner
 from .runner import default_state_path
 from .runpod_options import optional_combo_or_string, runpod_dropdown_options
+from .runtime_contracts import secret_placeholder
 from .setup_commands import (
+    builtin_database_skill_files,
+    database_client_setup_command,
+    embedded_chroma_setup_command,
     harness_install_command,
     language_runtime_install_command,
     local_sql_setup_command,
     package_install_command,
+    same_pod_llm_start_command,
     skill_install_command,
 )
 from .specs import (
@@ -263,7 +268,7 @@ class LLMServerNode:
             "required": {
                 "engine": (["Ollama", "vLLM"],),
                 "model": ("STRING", {"default": ""}),
-                "placement": (["own_pod"],),
+                "placement": (["own_pod", "same_pod"],),
                 "api_auth_mode": (["none", "generated_token", "secret"],),
                 "api_key_secret_name": ("STRING", {"default": ""}),
                 "hf_token_secret_name": ("STRING", {"default": ""}),
@@ -274,16 +279,19 @@ class LLMServerNode:
 
     def build(self, engine: str, model: str, placement: str, api_auth_mode: str, api_key_secret_name: str = "", hf_token_secret_name: str = "", network_storage=None, node_id: str | None = None):
         llm_engine = "vllm" if norm(engine) == "vllm" else "ollama"
-        if placement != "own_pod":
-            raise ValidationError("LLM Server only supports own_pod placement in the MVP.")
+        materialization = norm(placement)
+        if materialization not in {"own_pod", "same_pod"}:
+            raise ValidationError("LLM Server placement must be own_pod or same_pod.")
         api_format = "openai" if llm_engine == "vllm" else "ollama"
-        values = {"LLM_PROVIDER": llm_engine, "LLM_API_FORMAT": api_format, "LLM_MODEL": model}
+        values = {"LLM_PROVIDER": llm_engine, "LLM_API_FORMAT": api_format, "LLM_MODEL": model, "LLM_SERVER_PLACEMENT": materialization}
         secrets = []
         if llm_engine == "ollama":
-            values.update({"OLLAMA_HOST": "crag://llm/ollama", "OLLAMA_MODEL": model, "OPENAI_BASE_URL": "crag://llm/ollama/v1"})
+            host = "crag://llm/ollama" if materialization == "own_pod" else "http://127.0.0.1:11434"
+            values.update({"OLLAMA_HOST": host, "OLLAMA_MODEL": model, "OPENAI_BASE_URL": f"{host}/v1"})
             ports = [PortSpec("ollama", 11434, "http", True)]
         else:
-            values.update({"OPENAI_BASE_URL": "crag://llm/vllm/v1", "OPENAI_MODEL": model})
+            base_url = "crag://llm/vllm/v1" if materialization == "own_pod" else "http://127.0.0.1:8000/v1"
+            values.update({"OPENAI_BASE_URL": base_url, "OPENAI_MODEL": model})
             ports = [PortSpec("vllm", 8000, "http", True)]
         api_secret = None
         if api_auth_mode == "secret" and api_key_secret_name:
@@ -294,19 +302,26 @@ class LLMServerNode:
         hf_secret = SecretRef(hf_token_secret_name, "HF_TOKEN") if hf_token_secret_name else None
         if hf_secret:
             secrets.append(hf_secret)
+        commands = []
+        capabilities = []
+        template_key = f"rp-llm-{llm_engine}"
+        if materialization == "same_pod":
+            commands.append(RuntimeCommand(same_pod_llm_start_command(llm_engine, model), "before_start", -25000, "fail", 0, f"llm:{llm_engine}:same_pod"))
+            capabilities.append(llm_engine)
+            template_key = None
         return (
             LLMServerSpec(
                 "llm_server",
                 llm_engine,
                 model,
-                "own_pod",
+                materialization,
                 api_format,
-                RuntimeContract(EnvPatch(values, secrets), ports),
-                [],
-                f"rp-llm-{llm_engine}",
+                RuntimeContract(EnvPatch(values, secrets), ports, commands=commands),
+                capabilities,
+                template_key,
                 hf_secret,
                 api_secret,
-                network_storage,
+                network_storage if materialization == "own_pod" else None,
                 meta(node_id, engine),
             ),
         )
@@ -392,12 +407,27 @@ class RemoteSQLDatabaseNode:
                 "DATABASE_NAME": database_name,
                 "DATABASE_USER": username,
             }
-            contract = RuntimeContract(EnvPatch(values, [url_secret]))
+            contract = RuntimeContract(EnvPatch(values, [url_secret]), files=builtin_database_skill_files(), commands=[RuntimeCommand(database_client_setup_command(db_engine), "before_start", -21000, "fail", 0, f"database-client:{db_engine}")])
             return (SQLDatabaseSpec("sql_database", db_engine, "env_only", database_name, username, url_secret, contract, None, None, meta(node_id, f"{engine} Env")),)
         secret = SecretRef(password_secret_name, "DATABASE_PASSWORD") if password_secret_name else None
+        password_value = secret_placeholder(secret) if secret else "app"
+        scheme = "postgresql" if db_engine == "postgres" else "mysql"
         contract = RuntimeContract(
-            EnvPatch({"DATABASE_KIND": db_engine, "DATABASE_URL": f"crag://sql/{db_engine}/{database_name}", "DATABASE_NAME": database_name, "DATABASE_USER": username}, [secret] if secret else []),
+            EnvPatch(
+                {
+                    "DATABASE_KIND": db_engine,
+                    "DATABASE_URL": f"{scheme}://{username}:{password_value}@crag://sql/{db_engine}/hostport/{database_name}",
+                    "DATABASE_HOST": f"crag://sql/{db_engine}/host",
+                    "DATABASE_PORT": "5432" if db_engine == "postgres" else "3306",
+                    "DATABASE_NAME": database_name,
+                    "DATABASE_USER": username,
+                    "DATABASE_PASSWORD": password_value,
+                },
+                [secret] if secret else [],
+            ),
             [PortSpec(db_engine, 5432 if db_engine == "postgres" else 3306, "tcp", False)],
+            builtin_database_skill_files(),
+            [RuntimeCommand(database_client_setup_command(db_engine), "before_start", -21000, "fail", 0, f"database-client:{db_engine}")],
         )
         return (SQLDatabaseSpec("sql_database", db_engine, "own_pod", database_name, username, secret, contract, f"rp-db-{db_engine}", network_storage, meta(node_id, engine)),)
 
@@ -426,6 +456,7 @@ class LocalSQLDatabaseNode:
         path = database_path.strip() or "/workspace/db/app.sqlite"
         contract = RuntimeContract(
             EnvPatch({"DATABASE_KIND": "sqlite", "DATABASE_URL": f"sqlite:///{path}", "DATABASE_PATH": path, "DATABASE_NAME": database_name}),
+            files=builtin_database_skill_files(),
             commands=[RuntimeCommand(local_sql_setup_command(path, database_name), "before_start", -20000, "fail", 0, "local_sql")],
         )
         return (SQLDatabaseSpec("sql_database", "sqlite", "file_only", database_name, None, None, contract, None, None, meta(node_id, "SQLite")),)
@@ -440,15 +471,27 @@ class VectorDatabaseNode:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {"engine": (["Chroma", "Qdrant"],), "collection_name": ("STRING", {"default": "default"}), "persistence_path": ("STRING", {"default": "/workspace/vector"})},
+            "required": {"engine": (["Chroma", "Qdrant"],), "placement": (["own_pod", "embedded"],), "collection_name": ("STRING", {"default": "default"}), "persistence_path": ("STRING", {"default": "/workspace/vector"})},
             "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, engine: str, collection_name: str, persistence_path: str = "/workspace/vector", network_storage=None, node_id: str | None = None):
+    def build(self, engine: str, placement: str = "own_pod", collection_name: str = "default", persistence_path: str = "/workspace/vector", network_storage=None, node_id: str | None = None):
         vector_engine = norm(engine)
+        materialization = norm(placement)
+        if materialization not in {"own_pod", "embedded"}:
+            collection_name, persistence_path, materialization = placement, collection_name, "own_pod"
+        if materialization == "embedded" and vector_engine != "chroma":
+            raise ValidationError("Only Chroma supports embedded vector database placement.")
+        if materialization == "embedded":
+            contract = RuntimeContract(
+                EnvPatch({"VECTOR_KIND": "chroma", "VECTOR_MODE": "embedded", "VECTOR_URL": "local://chroma", "VECTOR_COLLECTION": collection_name, "VECTOR_PERSISTENCE_PATH": persistence_path}),
+                files=builtin_database_skill_files(),
+                commands=[RuntimeCommand(embedded_chroma_setup_command(persistence_path), "before_start", -19000, "fail", 0, "vector:chroma:embedded")],
+            )
+            return (VectorDatabaseSpec("vector_database", "chroma", "file_only", collection_name, persistence_path, contract, None, None, meta(node_id, engine)),)
         port = 6333 if vector_engine == "qdrant" else 8000
-        contract = RuntimeContract(EnvPatch({"VECTOR_KIND": vector_engine, "VECTOR_URL": f"crag://vector/{vector_engine}", "VECTOR_COLLECTION": collection_name, "VECTOR_PERSISTENCE_PATH": persistence_path}), [PortSpec(vector_engine, port, "http", True)])
+        contract = RuntimeContract(EnvPatch({"VECTOR_KIND": vector_engine, "VECTOR_MODE": "remote", "VECTOR_URL": f"crag://vector/{vector_engine}", "VECTOR_COLLECTION": collection_name, "VECTOR_PERSISTENCE_PATH": persistence_path}), [PortSpec(vector_engine, port, "http", True)], builtin_database_skill_files())
         return (VectorDatabaseSpec("vector_database", vector_engine, "own_pod", collection_name, persistence_path, contract, f"rp-vector-{vector_engine}", network_storage, meta(node_id, engine)),)
 
 
@@ -636,8 +679,6 @@ class AgentNode:
         capabilities = []
         for spec in (browser, llm_server):
             if spec and spec.materialization == "same_pod":
-                if spec.kind == "llm_server":
-                    raise ValidationError("LLM Server same_pod materialization is not supported in the MVP.")
                 capabilities.extend(spec.required_image_capabilities)
         harness_id = norm(harness)
         install_commands = []

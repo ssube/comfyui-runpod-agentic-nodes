@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import shlex
+from pathlib import Path
 
+from .harnesses import CENTRAL_SKILLS_PATH
 from .specs import SkillSource
 
 HARNESS_INSTALLS = {
@@ -106,6 +108,115 @@ def local_sql_setup_command(database_path: str, database_name: str) -> str:
             f"sqlite3 {shlex.quote(path)} 'PRAGMA user_version;'",
         ]
     )
+
+
+def database_client_setup_command(engine: str) -> str:
+    engine_id = engine.strip().lower()
+    if engine_id == "postgres":
+        return "\n".join(
+            [
+                "set -e",
+                "if ! command -v psql >/dev/null 2>&1; then",
+                "  if command -v apt-get >/dev/null 2>&1; then",
+                "    apt-get update",
+                "    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends postgresql-client",
+                "  elif command -v apk >/dev/null 2>&1; then",
+                "    apk add --no-cache postgresql-client",
+                "  else",
+                "    echo 'psql is required for Postgres access but no supported package manager was found' >&2",
+                "    exit 1",
+                "  fi",
+                "fi",
+            ]
+        )
+    if engine_id == "mysql":
+        return "\n".join(
+            [
+                "set -e",
+                "if ! command -v mysql >/dev/null 2>&1; then",
+                "  if command -v apt-get >/dev/null 2>&1; then",
+                "    apt-get update",
+                "    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends default-mysql-client",
+                "  elif command -v apk >/dev/null 2>&1; then",
+                "    apk add --no-cache mysql-client",
+                "  else",
+                "    echo 'mysql client is required for MySQL access but no supported package manager was found' >&2",
+                "    exit 1",
+                "  fi",
+                "fi",
+            ]
+        )
+    raise ValueError(f"Unsupported database client: {engine}")
+
+
+def embedded_chroma_setup_command(persistence_path: str) -> str:
+    path = persistence_path.strip() or "/workspace/vector"
+    return "\n".join(
+        [
+            "set -e",
+            *python_runtime_install_lines(),
+            "if ! python3 -c 'import importlib.util; raise SystemExit(0 if importlib.util.find_spec(\"chromadb\") else 1)' >/dev/null 2>&1; then",
+            "  python3 -m pip install --break-system-packages chromadb",
+            "fi",
+            f"mkdir -p {shlex.quote(path)}",
+        ]
+    )
+
+
+def same_pod_llm_start_command(engine: str, model: str) -> str:
+    engine_id = engine.strip().lower()
+    if engine_id == "ollama":
+        return "\n".join(
+            [
+                "set -e",
+                "if ! command -v ollama >/dev/null 2>&1; then",
+                "  echo 'Ollama same_pod placement requires an agent image with the ollama CLI installed.' >&2",
+                "  exit 1",
+                "fi",
+                "if ! pgrep -x ollama >/dev/null 2>&1; then",
+                "  nohup ollama serve > \"${WORKSPACE_DIR:-/workspace}/.runpod_agentic/ollama.log\" 2>&1 &",
+                "fi",
+                "for _ in $(seq 1 60); do",
+                "  if ollama list >/dev/null 2>&1; then break; fi",
+                "  sleep 2",
+                "done",
+                f"if [ -n {shlex.quote(model)} ]; then ollama pull {shlex.quote(model)} || true; fi",
+            ]
+        )
+    if engine_id == "vllm":
+        if not model.strip():
+            raise ValueError("vLLM same_pod placement requires a model.")
+        return "\n".join(
+            [
+                "set -e",
+                "if ! python3 -c 'import vllm' >/dev/null 2>&1; then",
+                "  echo 'vLLM same_pod placement requires an agent image with vLLM installed.' >&2",
+                "  exit 1",
+                "fi",
+                "if ! pgrep -f 'vllm.entrypoints.openai.api_server' >/dev/null 2>&1; then",
+                f"  nohup python3 -m vllm.entrypoints.openai.api_server --host 0.0.0.0 --model {shlex.quote(model)} > \"${{WORKSPACE_DIR:-/workspace}}/.runpod_agentic/vllm.log\" 2>&1 &",
+                "fi",
+            ]
+        )
+    raise ValueError(f"Unsupported same-pod LLM engine: {engine}")
+
+
+def builtin_database_skill_files() -> dict[str, str]:
+    skill_name = "crag-database"
+    base = f"{CENTRAL_SKILLS_PATH.rstrip('/')}/{skill_name}"
+    context = {"skill_name": skill_name}
+    return {
+        f"{base}/SKILL.md": render_template("skills/crag-database/SKILL.md.j2", context),
+        f"{base}/list_resources.py": render_template("skills/crag-database/list_resources.py.j2", context),
+    }
+
+
+def render_template(relative_path: str, context: dict[str, str]) -> str:
+    text = (Path(__file__).resolve().parents[1] / "templates" / relative_path).read_text()
+    for key, value in context.items():
+        text = text.replace("{{ " + key + " }}", value)
+        text = text.replace("{{" + key + "}}", value)
+    return text
 
 
 def harness_install_command(harness: str) -> str:
