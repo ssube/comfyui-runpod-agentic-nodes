@@ -30,12 +30,14 @@ packages = ["comfyui_runpod_agentic"]
 include = [
   "__init__.py",
   "defaults/*.yaml",
+  "templates/**/*.j2",
   "web/*.js",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
 "__init__.py" = "__init__.py"
 "defaults" = "defaults"
+"templates" = "templates"
 "web" = "web"
 
 [tool.pytest.ini_options]

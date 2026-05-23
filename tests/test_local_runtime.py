@@ -99,6 +99,17 @@ def test_compose_yaml_resolves_database_host_placeholders():
     assert ":5432/app" in agent_env["DATABASE_URL"]
 
 
+def test_local_runtime_session_env_resolves_database_host_placeholders():
+    sql = RemoteSQLDatabaseNode().build("Postgres", "own_pod", "app", "app")[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", sql_database=sql)[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+    writes = "\n".join(local_runtime_file_writes(plan))
+
+    assert "DATABASE_HOST=crag-" in writes
+    assert "DATABASE_URL=postgresql://app:app@crag-" in writes
+    assert "crag://sql/postgres" not in writes
+
+
 def test_same_pod_llm_and_embedded_chroma_stay_in_agent_service():
     llm = LLMServerNode().build("Ollama", "llama3.2", "same_pod", "none")[0]
     vector = VectorDatabaseNode().build("Chroma", "embedded", "docs", "/workspace/vector")[0]

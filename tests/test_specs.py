@@ -786,5 +786,6 @@ def test_remote_sql_own_pod_adds_client_command_and_database_skill():
     assert spec.runtime_contract.env.values["DATABASE_HOST"] == "crag://sql/mysql/host"
     assert spec.runtime_contract.env.values["DATABASE_URL"].startswith("mysql://app:app@crag://sql/mysql/hostport/app")
     assert spec.runtime_contract.commands[0].source == "database-client:mysql"
+    assert "python3" in spec.runtime_contract.commands[0].command
     assert "default-mysql-client" in spec.runtime_contract.commands[0].command
     assert f"{CENTRAL_SKILLS_PATH}/crag-database/SKILL.md" in spec.runtime_contract.files

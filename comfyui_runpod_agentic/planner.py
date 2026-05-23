@@ -129,6 +129,7 @@ class Planner:
                 "CRAG_WORKFLOW_HASH": workflow_hash,
                 "CRAG_NODE_ID": deployment.primary_app.meta.node_id or "",
                 "CRAG_ROLE": "agent",
+                "CRAG_RUNTIME_DIR": f"{deployment.primary_app.workspace_path.rstrip('/')}/.runpod_agentic",
                 "AGENT_PROMPT": prompt,
                 "WORKSPACE_DIR": deployment.primary_app.workspace_path,
             },

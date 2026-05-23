@@ -90,6 +90,7 @@ def local_sql_setup_command(database_path: str, database_name: str) -> str:
     return "\n".join(
         [
             "set -e",
+            *python3_client_install_lines(),
             "if ! command -v sqlite3 >/dev/null 2>&1; then",
             "  if command -v apt-get >/dev/null 2>&1; then",
             "    apt-get update",
@@ -116,6 +117,7 @@ def database_client_setup_command(engine: str) -> str:
         return "\n".join(
             [
                 "set -e",
+                *python3_client_install_lines(),
                 "if ! command -v psql >/dev/null 2>&1; then",
                 "  if command -v apt-get >/dev/null 2>&1; then",
                 "    apt-get update",
@@ -133,6 +135,7 @@ def database_client_setup_command(engine: str) -> str:
         return "\n".join(
             [
                 "set -e",
+                *python3_client_install_lines(),
                 "if ! command -v mysql >/dev/null 2>&1; then",
                 "  if command -v apt-get >/dev/null 2>&1; then",
                 "    apt-get update",
@@ -147,6 +150,24 @@ def database_client_setup_command(engine: str) -> str:
             ]
         )
     raise ValueError(f"Unsupported database client: {engine}")
+
+
+def python3_client_install_lines() -> list[str]:
+    return [
+        "if ! command -v python3 >/dev/null 2>&1; then",
+        "  if command -v apt-get >/dev/null 2>&1; then",
+        "    apt-get update",
+        "    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3",
+        "  elif command -v apk >/dev/null 2>&1; then",
+        "    apk add --no-cache python3",
+        "  elif command -v dnf >/dev/null 2>&1; then",
+        "    dnf install -y python3",
+        "  else",
+        "    echo 'python3 is required for CRAG database skills but no supported package manager was found' >&2",
+        "    exit 1",
+        "  fi",
+        "fi",
+    ]
 
 
 def embedded_chroma_setup_command(persistence_path: str) -> str:

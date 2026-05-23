@@ -356,24 +356,29 @@ def local_runtime_self_shutdown_lines(plan: DeploymentPlan) -> list[str]:
     return [f"bash -lc {shell_env(script)}"]
 
 
-def local_runtime_file_writes(plan: DeploymentPlan) -> list[str]:
+def local_runtime_file_writes(plan: DeploymentPlan, service_names: dict[str, str] | None = None) -> list[str]:
+    service_names = service_names or {resource.name: compose_service_name(resource) for resource in plan.resources}
     agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
     workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
     base = workspace.rstrip("/") + "/.runpod_agentic"
     commands = [action.detail for action in plan.actions if action.action == "RUN_SSH_COMMAND"]
+    resolved_env = {
+        key: resolve_local_secret_placeholder(resolve_crag_placeholders(str(value), service_names))
+        for key, value in sorted(plan.runtime_contract.env.values.items())
+    }
     lines: list[str] = []
     lines.extend(shell_write_file_lines(f"{base}/resources.json", json.dumps([resource_as_runtime_json(resource) for resource in plan.resources if resource.role != "agent"], indent=2, sort_keys=True)))
-    lines.extend(shell_write_file_lines(f"{base}/session.env", "\n".join(f"export {key}={shlex.quote(str(value))}" for key, value in sorted(plan.runtime_contract.env.values.items())) + "\n"))
+    lines.extend(shell_write_file_lines(f"{base}/session.env", "\n".join(f"export {key}={shlex.quote(str(value))}" for key, value in resolved_env.items()) + "\n"))
     lines.extend(shell_write_file_lines(f"{base}/commands.json", json.dumps(commands, indent=2, sort_keys=True)))
-    if plan.runtime_contract.env.values.get("AGENT_SYSTEM_PROMPT"):
-        lines.extend(shell_write_file_lines(f"{base}/system_prompt.txt", plan.runtime_contract.env.values["AGENT_SYSTEM_PROMPT"]))
-    if plan.runtime_contract.env.values.get("AGENT_PROMPT"):
-        lines.extend(shell_write_file_lines(f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"]))
-    if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
-        lines.extend(shell_write_file_lines(f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"]))
+    if resolved_env.get("AGENT_SYSTEM_PROMPT"):
+        lines.extend(shell_write_file_lines(f"{base}/system_prompt.txt", resolved_env["AGENT_SYSTEM_PROMPT"]))
+    if resolved_env.get("AGENT_PROMPT"):
+        lines.extend(shell_write_file_lines(f"{base}/prompt.txt", resolved_env["AGENT_PROMPT"]))
+    if resolved_env.get("MCP_SERVERS_JSON"):
+        lines.extend(shell_write_file_lines(f"{base}/mcp_servers.json", resolved_env["MCP_SERVERS_JSON"]))
     for relative_path, content in plan.runtime_contract.files.items():
         lines.extend(shell_write_file_lines(f"/{relative_path.strip('/')}", content))
-    for relative_path, content in pi_runtime_files(plan.runtime_contract.env.values).items():
+    for relative_path, content in pi_runtime_files(resolved_env).items():
         lines.extend(shell_write_file_lines(f"{base}/{relative_path}", content))
     for relative_path, content in launcher_runtime_files().items():
         lines.extend(shell_write_file_lines(f"{base}/{relative_path}", content))
