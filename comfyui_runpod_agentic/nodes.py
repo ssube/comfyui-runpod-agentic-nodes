@@ -390,12 +390,13 @@ class RemoteSQLDatabaseNode:
                 "username": ("STRING", {"default": "app"}),
                 "password_secret_name": ("STRING", {"default": ""}),
                 "database_url_env_var": ("STRING", {"default": "DATABASE_URL"}),
+                "install_python_for_skills": ("BOOLEAN", {"default": True}),
             },
             "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, engine: str, connection_mode: str, database_name: str, username: str, password_secret_name: str = "", database_url_env_var: str = "DATABASE_URL", network_storage=None, node_id: str | None = None):
+    def build(self, engine: str, connection_mode: str, database_name: str, username: str, password_secret_name: str = "", database_url_env_var: str = "DATABASE_URL", install_python_for_skills: bool = True, network_storage=None, node_id: str | None = None):
         db_engine = norm(engine)
         if db_engine not in {"postgres", "mysql"}:
             raise ValidationError("Remote SQL Database supports Postgres and MySQL. Use Local SQL Database for SQLite.")
@@ -407,7 +408,7 @@ class RemoteSQLDatabaseNode:
                 "DATABASE_NAME": database_name,
                 "DATABASE_USER": username,
             }
-            contract = RuntimeContract(EnvPatch(values, [url_secret]), files=builtin_database_skill_files(), commands=[RuntimeCommand(database_client_setup_command(db_engine), "before_start", -21000, "fail", 0, f"database-client:{db_engine}")])
+            contract = RuntimeContract(EnvPatch(values, [url_secret]), files=builtin_database_skill_files(), commands=[RuntimeCommand(database_client_setup_command(db_engine, bool(install_python_for_skills)), "before_start", -21000, "fail", 0, f"database-client:{db_engine}")])
             return (SQLDatabaseSpec("sql_database", db_engine, "env_only", database_name, username, url_secret, contract, None, None, meta(node_id, f"{engine} Env")),)
         secret = SecretRef(password_secret_name, "DATABASE_PASSWORD") if password_secret_name else None
         password_value = secret_placeholder(secret) if secret else "app"
@@ -427,7 +428,7 @@ class RemoteSQLDatabaseNode:
             ),
             [PortSpec(db_engine, 5432 if db_engine == "postgres" else 3306, "tcp", False)],
             builtin_database_skill_files(),
-            [RuntimeCommand(database_client_setup_command(db_engine), "before_start", -21000, "fail", 0, f"database-client:{db_engine}")],
+            [RuntimeCommand(database_client_setup_command(db_engine, bool(install_python_for_skills)), "before_start", -21000, "fail", 0, f"database-client:{db_engine}")],
         )
         return (SQLDatabaseSpec("sql_database", db_engine, "own_pod", database_name, username, secret, contract, f"rp-db-{db_engine}", network_storage, meta(node_id, engine)),)
 
@@ -445,11 +446,12 @@ class LocalSQLDatabaseNode:
                 "engine": (["SQLite"],),
                 "database_name": ("STRING", {"default": "app"}),
                 "database_path": ("STRING", {"default": "/workspace/db/app.sqlite"}),
+                "install_python_for_skills": ("BOOLEAN", {"default": True}),
             },
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, engine: str, database_name: str, database_path: str = "/workspace/db/app.sqlite", node_id: str | None = None):
+    def build(self, engine: str, database_name: str, database_path: str = "/workspace/db/app.sqlite", install_python_for_skills: bool = True, node_id: str | None = None):
         db_engine = norm(engine)
         if db_engine != "sqlite":
             raise ValidationError("Local SQL Database only supports SQLite.")
@@ -457,7 +459,7 @@ class LocalSQLDatabaseNode:
         contract = RuntimeContract(
             EnvPatch({"DATABASE_KIND": "sqlite", "DATABASE_URL": f"sqlite:///{path}", "DATABASE_PATH": path, "DATABASE_NAME": database_name}),
             files=builtin_database_skill_files(),
-            commands=[RuntimeCommand(local_sql_setup_command(path, database_name), "before_start", -20000, "fail", 0, "local_sql")],
+            commands=[RuntimeCommand(local_sql_setup_command(path, database_name, bool(install_python_for_skills)), "before_start", -20000, "fail", 0, "local_sql")],
         )
         return (SQLDatabaseSpec("sql_database", "sqlite", "file_only", database_name, None, None, contract, None, None, meta(node_id, "SQLite")),)
 
@@ -471,12 +473,12 @@ class VectorDatabaseNode:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {"engine": (["Chroma", "Qdrant"],), "placement": (["own_pod", "embedded"],), "collection_name": ("STRING", {"default": "default"}), "persistence_path": ("STRING", {"default": "/workspace/vector"})},
+            "required": {"engine": (["Chroma", "Qdrant"],), "placement": (["own_pod", "embedded"],), "collection_name": ("STRING", {"default": "default"}), "persistence_path": ("STRING", {"default": "/workspace/vector"}), "install_python_for_skills": ("BOOLEAN", {"default": True})},
             "optional": {"network_storage": (RUNPOD_STORAGE_NETWORK,)},
             "hidden": {"node_id": "UNIQUE_ID"},
         }
 
-    def build(self, engine: str, placement: str = "own_pod", collection_name: str = "default", persistence_path: str = "/workspace/vector", network_storage=None, node_id: str | None = None):
+    def build(self, engine: str, placement: str = "own_pod", collection_name: str = "default", persistence_path: str = "/workspace/vector", install_python_for_skills: bool = True, network_storage=None, node_id: str | None = None):
         vector_engine = norm(engine)
         materialization = norm(placement)
         if materialization not in {"own_pod", "embedded"}:
@@ -487,7 +489,7 @@ class VectorDatabaseNode:
             contract = RuntimeContract(
                 EnvPatch({"VECTOR_KIND": "chroma", "VECTOR_MODE": "embedded", "VECTOR_URL": "local://chroma", "VECTOR_COLLECTION": collection_name, "VECTOR_PERSISTENCE_PATH": persistence_path}),
                 files=builtin_database_skill_files(),
-                commands=[RuntimeCommand(embedded_chroma_setup_command(persistence_path), "before_start", -19000, "fail", 0, "vector:chroma:embedded")],
+                commands=[RuntimeCommand(embedded_chroma_setup_command(persistence_path, bool(install_python_for_skills)), "before_start", -19000, "fail", 0, "vector:chroma:embedded")],
             )
             return (VectorDatabaseSpec("vector_database", "chroma", "file_only", collection_name, persistence_path, contract, None, None, meta(node_id, engine)),)
         port = 6333 if vector_engine == "qdrant" else 8000

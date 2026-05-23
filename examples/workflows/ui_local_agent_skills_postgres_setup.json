@@ -188,7 +188,8 @@
         "agent",
         "agent",
         "pg_password",
-        "DATABASE_URL"
+        "DATABASE_URL",
+        true
       ]
     },
     {

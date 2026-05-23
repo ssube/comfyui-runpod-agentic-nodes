@@ -451,6 +451,7 @@ def test_sqlite_contract_is_file_only():
     assert spec.runtime_contract.env.values["DATABASE_PATH"] == "/workspace/db/app.sqlite"
     assert spec.runtime_contract.env.values["DATABASE_URL"] == "sqlite:////workspace/db/app.sqlite"
     assert spec.runtime_contract.commands[0].source == "local_sql"
+    assert "python3" in spec.runtime_contract.commands[0].command
     assert "sqlite3" in spec.runtime_contract.commands[0].command
 
 
@@ -603,8 +604,22 @@ def test_embedded_chroma_is_file_only_and_installs_skill():
     assert vector.template_key is None
     assert vector.runtime_contract.env.values["VECTOR_MODE"] == "embedded"
     assert "chromadb" in vector.runtime_contract.commands[0].command
+    assert "python3-pip python3-venv pipx" in vector.runtime_contract.commands[0].command
     assert [resource.role for resource in plan.resources] == ["agent"]
     assert plan.resources[0].pod_input["env"]["VECTOR_URL"] == "local://chroma"
+
+
+def test_database_skill_python_install_can_be_disabled_for_language_runtime():
+    sqlite = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite", False)[0]
+    mysql = RemoteSQLDatabaseNode().build("MySQL", "own_pod", "app", "app", install_python_for_skills=False)[0]
+    chroma = VectorDatabaseNode().build("Chroma", "embedded", "docs", "/workspace/vector", False)[0]
+
+    assert "sqlite3" in sqlite.runtime_contract.commands[0].command
+    assert "python3 is required for CRAG database skills" not in sqlite.runtime_contract.commands[0].command
+    assert "default-mysql-client" in mysql.runtime_contract.commands[0].command
+    assert "python3 is required for CRAG database skills" not in mysql.runtime_contract.commands[0].command
+    assert "chromadb" in chroma.runtime_contract.commands[0].command
+    assert "python3-pip python3-venv pipx" not in chroma.runtime_contract.commands[0].command
 
 
 def test_builtin_database_skill_files_use_agent_skills_frontmatter():
@@ -786,6 +801,6 @@ def test_remote_sql_own_pod_adds_client_command_and_database_skill():
     assert spec.runtime_contract.env.values["DATABASE_HOST"] == "crag://sql/mysql/host"
     assert spec.runtime_contract.env.values["DATABASE_URL"].startswith("mysql://app:app@crag://sql/mysql/hostport/app")
     assert spec.runtime_contract.commands[0].source == "database-client:mysql"
-    assert "python3" in spec.runtime_contract.commands[0].command
+    assert "python3 is required for CRAG database skills" in spec.runtime_contract.commands[0].command
     assert "default-mysql-client" in spec.runtime_contract.commands[0].command
     assert f"{CENTRAL_SKILLS_PATH}/crag-database/SKILL.md" in spec.runtime_contract.files

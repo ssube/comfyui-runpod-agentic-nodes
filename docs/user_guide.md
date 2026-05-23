@@ -473,6 +473,7 @@ Inputs:
 | `username` | string | Database username. |
 | `password_secret_name` | string | Runpod secret name for own-pod DB password. |
 | `database_url_env_var` | string | Server env var to map into pod `DATABASE_URL` when `connection_mode=env_only`. |
+| `install_python_for_skills` | boolean | Install Python for the built-in `crag-database` skill. Disable when a `Language Runtime` node installs the desired Python version. |
 | `network_storage` | `RUNPOD_STORAGE_NETWORK` | Optional storage for own-pod DB engines. |
 
 Output:
@@ -494,6 +495,7 @@ Inputs:
 | `engine` | `SQLite` | Local database engine. |
 | `database_name` | string | Logical database name. |
 | `database_path` | string | SQLite DB path inside the agent pod. |
+| `install_python_for_skills` | boolean | Install Python for the built-in `crag-database` skill. Disable when a `Language Runtime` node installs the desired Python version. |
 
 Output:
 
@@ -512,8 +514,10 @@ Inputs:
 | Input | Choices / Type | Use |
 | --- | --- | --- |
 | `engine` | `Chroma`, `Qdrant` | Vector DB engine. |
+| `placement` | `own_pod`, `embedded` | Create a vector DB pod or run embedded Chroma in the agent pod. |
 | `collection_name` | string | Collection/index name. |
 | `persistence_path` | string | Persistence path inside the vector service. |
+| `install_python_for_skills` | boolean | Install Python for embedded Chroma and the built-in database skill. Disable when a `Language Runtime` node installs the desired Python version. |
 | `network_storage` | `RUNPOD_STORAGE_NETWORK` | Optional storage for vector data. |
 
 Output:
@@ -522,7 +526,7 @@ Output:
 | --- | --- |
 | `vector_database` | `RUNPOD_APP_VECTOR_DATABASE` |
 
-Qdrant uses an HTTP service contract on port 6333. Chroma uses an HTTP service contract on port 8000. The persistence path is exposed to the runtime as `VECTOR_PERSISTENCE_PATH`.
+Qdrant uses an HTTP service contract on port 6333. Chroma uses an HTTP service contract on port 8000 when `placement=own_pod`. Embedded Chroma runs in the agent pod and installs the `chromadb` package into the available `python3` runtime.
 
 ## Skills And MCP Nodes
 

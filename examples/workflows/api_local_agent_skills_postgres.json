@@ -48,7 +48,8 @@
       "database_name": "agent",
       "username": "agent",
       "password_secret_name": "pg_password",
-      "database_url_env_var": "DATABASE_URL"
+      "database_url_env_var": "DATABASE_URL",
+      "install_python_for_skills": true
     }
   },
   "6": {

@@ -263,7 +263,8 @@
         "app",
         "app",
         "pg_password",
-        "DATABASE_URL"
+        "DATABASE_URL",
+        true
       ]
     },
     {
@@ -302,8 +303,10 @@
       },
       "widgets_values": [
         "Qdrant",
+        "own_pod",
         "docs",
-        "/workspace/vector"
+        "/workspace/vector",
+        true
       ]
     },
     {
