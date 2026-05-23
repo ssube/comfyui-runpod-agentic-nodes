@@ -19,3 +19,4 @@ artifacts/comfy-local-server/comfyui.pid
 user/
 logs/
 state.sqlite
+intro-video/
