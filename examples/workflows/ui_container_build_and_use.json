@@ -1,0 +1,734 @@
+{
+  "id": "a7b83a48-7f0a-40f4-a2b1-8fd2f34d6019",
+  "revision": 0,
+  "last_node_id": 11,
+  "last_link_id": 9,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "SSHCommand",
+      "pos": [
+        120,
+        210
+      ],
+      "size": [
+        420,
+        240
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "commands",
+          "type": "RUNPOD_COMMAND_SSH",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SSHCommand"
+      },
+      "widgets_values": [
+        "printf '%s\\n' crag-built-image-marker > /crag-built-image-marker",
+        "before_start",
+        "fail",
+        0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Agent",
+      "pos": [
+        640,
+        150
+      ],
+      "size": [
+        380,
+        430
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "browser",
+          "shape": 7,
+          "type": "RUNPOD_APP_BROWSER",
+          "link": null
+        },
+        {
+          "name": "llm",
+          "shape": 7,
+          "type": "RUNPOD_LLM",
+          "link": null
+        },
+        {
+          "name": "sql_database",
+          "shape": 7,
+          "type": "RUNPOD_APP_SQL_DATABASE",
+          "link": null
+        },
+        {
+          "name": "vector_database",
+          "shape": 7,
+          "type": "RUNPOD_APP_VECTOR_DATABASE",
+          "link": null
+        },
+        {
+          "name": "mcp_servers",
+          "shape": 7,
+          "type": "RUNPOD_MCP_SERVERS",
+          "link": null
+        },
+        {
+          "name": "skills",
+          "shape": 7,
+          "type": "RUNPOD_AGENT_SKILLS",
+          "link": null
+        },
+        {
+          "name": "terminal",
+          "shape": 7,
+          "type": "RUNPOD_APP_TERMINAL",
+          "link": null
+        },
+        {
+          "name": "image_name",
+          "shape": 7,
+          "type": "RUNPOD_CONTAINER_IMAGE",
+          "link": null
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "system_prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "Agent Harness",
+          "name": "harness",
+          "type": "COMBO",
+          "widget": {
+            "name": "harness"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "agent",
+          "type": "RUNPOD_APP_AGENT",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Agent"
+      },
+      "widgets_values": [
+        "Pi",
+        "manual-build",
+        "manual",
+        "/workspace",
+        "Build a reusable CRAG agent image with a marker file."
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Deploy",
+      "pos": [
+        1120,
+        180
+      ],
+      "size": [
+        320,
+        390
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "app",
+          "type": "RUNPOD_APP_AGENT",
+          "link": 2
+        },
+        {
+          "name": "network_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "link": null
+        },
+        {
+          "name": "s3_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_S3",
+          "link": null
+        },
+        {
+          "name": "commands",
+          "shape": 7,
+          "type": "RUNPOD_COMMAND_SSH",
+          "link": 1
+        },
+        {
+          "name": "keep_alive",
+          "shape": 7,
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Deploy"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 4,
+      "type": "BuildContainer",
+      "pos": [
+        1540,
+        130
+      ],
+      "size": [
+        430,
+        450
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "response",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "errors",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "compose_yaml",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "saved_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "image_name",
+          "type": "RUNPOD_CONTAINER_IMAGE",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BuildContainer"
+      },
+      "widgets_values": [
+        "localhost/crag-build-and-use:demo",
+        "nerdctl",
+        false,
+        "DOCKERHUB_USERNAME",
+        "DOCKERHUB_TOKEN",
+        "fail",
+        0,
+        "crag-build-and-use-image",
+        "artifacts/local-runtime/build-and-use-image.yaml",
+        true,
+        600
+      ]
+    },
+    {
+      "id": 5,
+      "type": "SSHCommand",
+      "pos": [
+        2140,
+        210
+      ],
+      "size": [
+        470,
+        260
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "commands",
+          "type": "RUNPOD_COMMAND_SSH",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SSHCommand"
+      },
+      "widgets_values": [
+        "set -e\nmkdir -p /workspace/e2e\ntest \"$(cat /crag-built-image-marker)\" = crag-built-image-marker\ncat /crag-built-image-marker > /workspace/e2e/build-and-use.txt",
+        "before_start",
+        "fail",
+        0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Agent",
+      "pos": [
+        2740,
+        120
+      ],
+      "size": [
+        390,
+        460
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "browser",
+          "shape": 7,
+          "type": "RUNPOD_APP_BROWSER",
+          "link": null
+        },
+        {
+          "name": "llm",
+          "shape": 7,
+          "type": "RUNPOD_LLM",
+          "link": null
+        },
+        {
+          "name": "sql_database",
+          "shape": 7,
+          "type": "RUNPOD_APP_SQL_DATABASE",
+          "link": null
+        },
+        {
+          "name": "vector_database",
+          "shape": 7,
+          "type": "RUNPOD_APP_VECTOR_DATABASE",
+          "link": null
+        },
+        {
+          "name": "mcp_servers",
+          "shape": 7,
+          "type": "RUNPOD_MCP_SERVERS",
+          "link": null
+        },
+        {
+          "name": "skills",
+          "shape": 7,
+          "type": "RUNPOD_AGENT_SKILLS",
+          "link": null
+        },
+        {
+          "name": "terminal",
+          "shape": 7,
+          "type": "RUNPOD_APP_TERMINAL",
+          "link": null
+        },
+        {
+          "name": "image_name",
+          "shape": 7,
+          "type": "RUNPOD_CONTAINER_IMAGE",
+          "link": 4
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "system_prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "Agent Harness",
+          "name": "harness",
+          "type": "COMBO",
+          "widget": {
+            "name": "harness"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "agent",
+          "type": "RUNPOD_APP_AGENT",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Agent"
+      },
+      "widgets_values": [
+        "Pi",
+        "manual-run",
+        "manual",
+        "/workspace",
+        "Run from the image emitted by Build Container."
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Deploy",
+      "pos": [
+        3260,
+        180
+      ],
+      "size": [
+        330,
+        390
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "app",
+          "type": "RUNPOD_APP_AGENT",
+          "link": 6
+        },
+        {
+          "name": "network_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_NETWORK",
+          "link": null
+        },
+        {
+          "name": "s3_storage",
+          "shape": 7,
+          "type": "RUNPOD_STORAGE_S3",
+          "link": null
+        },
+        {
+          "name": "commands",
+          "shape": 7,
+          "type": "RUNPOD_COMMAND_SSH",
+          "link": 5
+        },
+        {
+          "name": "keep_alive",
+          "shape": 7,
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Deploy"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 8,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        3260,
+        650
+      ],
+      "size": [
+        330,
+        120
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "Prompt",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "title": "Prompt",
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "Run from the image that the build branch just produced."
+      ]
+    },
+    {
+      "id": 9,
+      "type": "RunLocalContainers",
+      "pos": [
+        3740,
+        120
+      ],
+      "size": [
+        430,
+        610
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 8
+        },
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "STRING",
+          "links": [
+            9
+          ]
+        },
+        {
+          "name": "response",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "errors",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "compose_yaml",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "saved_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunLocalContainers"
+      },
+      "widgets_values": [
+        "Run from the image that the build branch just produced.",
+        "containerd",
+        "crag-build-and-use-run",
+        "artifacts/local-runtime/build-and-use-run.yaml",
+        "apply_and_wait",
+        true,
+        600,
+        "agent",
+        "/workspace/e2e/build-and-use.txt",
+        90,
+        "always_create"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "PreviewAny",
+      "pos": [
+        4300,
+        180
+      ],
+      "size": [
+        260,
+        170
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [
+        null,
+        null,
+        false
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      3,
+      "RUNPOD_COMMAND_SSH"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "RUNPOD_APP_AGENT"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "RUNPOD_DEPLOYMENT_SPEC"
+    ],
+    [
+      4,
+      4,
+      5,
+      6,
+      7,
+      "RUNPOD_CONTAINER_IMAGE"
+    ],
+    [
+      5,
+      5,
+      0,
+      7,
+      3,
+      "RUNPOD_COMMAND_SSH"
+    ],
+    [
+      6,
+      6,
+      0,
+      7,
+      0,
+      "RUNPOD_APP_AGENT"
+    ],
+    [
+      7,
+      7,
+      0,
+      9,
+      1,
+      "RUNPOD_DEPLOYMENT_SPEC"
+    ],
+    [
+      8,
+      8,
+      0,
+      9,
+      0,
+      "STRING"
+    ],
+    [
+      9,
+      9,
+      0,
+      10,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Build Image",
+      "bounding": [
+        80,
+        80,
+        1920,
+        560
+      ],
+      "color": "#8a6f38",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Run From Built Image",
+      "bounding": [
+        2100,
+        80,
+        2520,
+        720
+      ],
+      "color": "#3f7f5f",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.55,
+      "offset": [
+        -80,
+        110
+      ]
+    },
+    "frontendVersion": "1.43.18"
+  },
+  "version": 0.4
+}

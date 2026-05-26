@@ -832,6 +832,7 @@ UI-format examples for loading into ComfyUI:
 | --- | --- |
 | `examples/workflows/ui_agent_skills_mcp_plan.json` | Agent with MCP servers and skills. |
 | `examples/workflows/ui_claude_data_agent_plan.json` | Claude API, Playwright, Postgres, Qdrant, and prompts. |
+| `examples/workflows/ui_container_build_and_use.json` | Builds a local agent image, emits `Build Container.image_name`, and runs a second local deployment from that image. |
 | `examples/workflows/ui_container_snapshot_plan.json` | Local build workflow that installs setup packages and ends at `Build Container`. |
 | `examples/workflows/ui_local_agent_skills_postgres_setup.json` | Local runtime preflight with Superpowers skills, Postgres, Ollama Cloud env, startup commands, and response previews. |
 | `examples/workflows/ui_local_ollama_deepseek_setup.json` | Local Ollama Cloud DeepSeek workflow with language runtime, apt/npm packages, skills, and grouped layout. |

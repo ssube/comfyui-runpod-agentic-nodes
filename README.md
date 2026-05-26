@@ -47,6 +47,19 @@ App mode:
 </details>
 
 <details>
+<summary>Container Build and Use</summary>
+
+Graph mode:
+
+![Container build and use workflow](docs/assets/workflows/ui_container_build_and_use.png)
+
+App mode:
+
+![Container build and use app mode](docs/assets/workflows/ui_container_build_and_use_app.png)
+
+</details>
+
+<details>
 <summary>Container Snapshot Plan</summary>
 
 Graph mode:
