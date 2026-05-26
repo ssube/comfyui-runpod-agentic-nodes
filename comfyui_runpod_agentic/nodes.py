@@ -110,7 +110,16 @@ def generated_volume_id(node_id: str | None, volume_name: str | None) -> str:
 
 
 def default_resource_hints() -> PodResourceHints:
-    return PodResourceHints(None, 1, None, 40, None, True, False, None)
+    return PodResourceHints(
+        gpu_type_id=None,
+        gpu_count=1,
+        cloud_type=None,
+        container_disk_gb=40,
+        volume_gb=None,
+        expose_public_ip=True,
+        cpu_only=False,
+        vcpu_count=None,
+    )
 
 
 def with_terminal_options(
@@ -129,14 +138,14 @@ def with_terminal_options(
     gpu_count_int = int(gpu_count)
     cpu_only = gpu_count_int == 0
     hints = PodResourceHints(
-        None if cpu_only else gpu_type_id or None,
-        gpu_count_int,
-        None if cloud_type == "auto" else cloud_type,
-        int(container_disk_gb),
-        int(volume_gb) or None,
-        bool(expose_public_ip),
-        cpu_only,
-        int(vcpu_count) if cpu_only else None,
+        gpu_type_id=None if cpu_only else gpu_type_id or None,
+        gpu_count=gpu_count_int,
+        cloud_type=None if cloud_type == "auto" else cloud_type,
+        container_disk_gb=int(container_disk_gb),
+        volume_gb=int(volume_gb) or None,
+        expose_public_ip=bool(expose_public_ip),
+        cpu_only=cpu_only,
+        vcpu_count=int(vcpu_count) if cpu_only else None,
     )
     return replace(deployment, resource_hints=hints, reuse_policy=reuse_policy, ssh_access=ssh_access or deployment.ssh_access)
 
@@ -171,23 +180,23 @@ class BrowserNode:
             values["PLAYWRIGHT_MODE"] = "local" if placement == "same_pod" else "remote"
             if placement == "own_pod":
                 values["PLAYWRIGHT_WS_ENDPOINT"] = "crag://browser/playwright"
-                ports.append(PortSpec("playwright", 3000, "http", True))
+                ports.append(PortSpec(name="playwright", container_port=3000, protocol="http", public=True))
             else:
                 capabilities.append("playwright")
         else:
             values["NEKO_URL"] = "crag://browser/neko"
-            ports.append(PortSpec("neko", 8080, "http", True))
+            ports.append(PortSpec(name="neko", container_port=8080, protocol="http", public=True))
         return (
             BrowserSpec(
-                "browser",
-                engine,
-                placement,
-                norm(browser_engine),
-                RuntimeContract(EnvPatch(values), ports),
-                capabilities,
-                template_key,
-                network_storage,
-                meta(node_id, browser),
+                kind="browser",
+                engine=engine,
+                materialization=placement,
+                browser_engine=norm(browser_engine),
+                runtime_contract=RuntimeContract(env=EnvPatch(values=values), ports=ports),
+                required_image_capabilities=capabilities,
+                template_key=template_key,
+                network_storage=network_storage,
+                meta=meta(node_id, browser),
             ),
         )
 
@@ -233,10 +242,31 @@ class WebTerminalNode:
                     "CRAG_WEB_TERMINAL_SHELL": terminal_shell,
                 }
             ),
-            ports=[PortSpec("terminal", terminal_port, "http", True)],
-            commands=[RuntimeCommand(web_terminal_command(terminal_port, terminal_shell, terminal_auth, terminal_user, terminal_password), "before_start", -40000, "continue", 0, "web_terminal")],
+            ports=[PortSpec(name="terminal", container_port=terminal_port, protocol="http", public=True)],
+            commands=[
+                RuntimeCommand(
+                    command=web_terminal_command(terminal_port, terminal_shell, terminal_auth, terminal_user, terminal_password),
+                    phase="before_start",
+                    order=-40000,
+                    failure_policy="continue",
+                    retry_count=0,
+                    source="web_terminal",
+                )
+            ],
         )
-        return (WebTerminalSpec("web_terminal", terminal_shell, terminal_port, local_host_port, terminal_auth, terminal_user, terminal_password, contract, meta(node_id, "Web Terminal")),)
+        return (
+            WebTerminalSpec(
+                kind="web_terminal",
+                shell=terminal_shell,
+                port=terminal_port,
+                host_port=local_host_port,
+                auth_mode=terminal_auth,
+                username=terminal_user,
+                password=terminal_password,
+                runtime_contract=contract,
+                meta=meta(node_id, "Web Terminal"),
+            ),
+        )
 
 
 def web_terminal_command(port: int, shell: str, auth_mode: str, username: str, password: str) -> str:
@@ -294,41 +324,50 @@ class LLMServerNode:
         if llm_engine == "ollama":
             host = "crag://llm/ollama" if materialization == "own_pod" else "http://127.0.0.1:11434"
             values.update({"OLLAMA_HOST": host, "OLLAMA_MODEL": model, "OPENAI_BASE_URL": f"{host}/v1"})
-            ports = [PortSpec("ollama", 11434, "http", True)]
+            ports = [PortSpec(name="ollama", container_port=11434, protocol="http", public=True)]
         else:
             base_url = "crag://llm/vllm/v1" if materialization == "own_pod" else "http://127.0.0.1:8000/v1"
             values.update({"OPENAI_BASE_URL": base_url, "OPENAI_MODEL": model})
-            ports = [PortSpec("vllm", 8000, "http", True)]
+            ports = [PortSpec(name="vllm", container_port=8000, protocol="http", public=True)]
         api_secret = None
         if api_auth_mode == "secret" and api_key_secret_name:
-            api_secret = SecretRef(api_key_secret_name, "OPENAI_API_KEY")
+            api_secret = SecretRef(name=api_key_secret_name, env_var="OPENAI_API_KEY")
             secrets.append(api_secret)
         elif api_auth_mode == "generated_token":
             values["OPENAI_API_KEY"] = "crag-generated-at-apply"
-        hf_secret = SecretRef(hf_token_secret_name, "HF_TOKEN") if hf_token_secret_name else None
+        hf_secret = SecretRef(name=hf_token_secret_name, env_var="HF_TOKEN") if hf_token_secret_name else None
         if hf_secret:
             secrets.append(hf_secret)
         commands = []
         capabilities = []
         template_key = f"rp-llm-{llm_engine}"
         if materialization == "same_pod":
-            commands.append(RuntimeCommand(same_pod_llm_start_command(llm_engine, model), "before_start", -25000, "fail", 0, f"llm:{llm_engine}:same_pod"))
+            commands.append(
+                RuntimeCommand(
+                    command=same_pod_llm_start_command(llm_engine, model),
+                    phase="before_start",
+                    order=-25000,
+                    failure_policy="fail",
+                    retry_count=0,
+                    source=f"llm:{llm_engine}:same_pod",
+                )
+            )
             capabilities.append(llm_engine)
             template_key = None
         return (
             LLMServerSpec(
-                "llm_server",
-                llm_engine,
-                model,
-                materialization,
-                api_format,
-                RuntimeContract(EnvPatch(values, secrets), ports, commands=commands),
-                capabilities,
-                template_key,
-                hf_secret,
-                api_secret,
-                network_storage if materialization == "own_pod" else None,
-                meta(node_id, engine),
+                kind="llm_server",
+                engine=llm_engine,
+                model=model,
+                materialization=materialization,
+                api_format=api_format,
+                runtime_contract=RuntimeContract(env=EnvPatch(values=values, secrets=secrets), ports=ports, commands=commands),
+                required_image_capabilities=capabilities,
+                template_key=template_key,
+                hf_token_secret=hf_secret,
+                api_key_secret=api_secret,
+                network_storage=network_storage if materialization == "own_pod" else None,
+                meta=meta(node_id, engine),
             ),
         )
 
@@ -358,26 +397,37 @@ class LLMApiNode:
             base_url = base_url_override or "https://ollama.com"
             env_var = "OLLAMA_API_KEY"
             values = {"LLM_PROVIDER": "ollama_cloud", "LLM_API_FORMAT": api_format, "OLLAMA_HOST": base_url, "OLLAMA_MODEL": model, "LLM_MODEL": model, "LLM_API_BASE_URL": base_url}
-            secrets = [SecretRef(api_key_secret_name, "OLLAMA_API_KEY"), SecretRef(api_key_secret_name, "OLLAMA_CLOUD_API_KEY")] if api_key_secret_name else []
+            secrets = [SecretRef(name=api_key_secret_name, env_var="OLLAMA_API_KEY"), SecretRef(name=api_key_secret_name, env_var="OLLAMA_CLOUD_API_KEY")] if api_key_secret_name else []
         elif provider_id == "claude":
             api_format = "anthropic"
             base_url = base_url_override or None
             env_var = "ANTHROPIC_API_KEY"
             values = {"LLM_PROVIDER": "claude", "LLM_API_FORMAT": api_format, "ANTHROPIC_MODEL": model, "LLM_MODEL": model}
-            secrets = [SecretRef(api_key_secret_name, env_var)] if api_key_secret_name else []
+            secrets = [SecretRef(name=api_key_secret_name, env_var=env_var)] if api_key_secret_name else []
         else:
             provider_id = "codex"
             api_format = "openai"
             base_url = base_url_override or None
             env_var = "OPENAI_API_KEY"
             values = {"LLM_PROVIDER": "codex", "LLM_API_FORMAT": api_format, "OPENAI_MODEL": model, "LLM_MODEL": model}
-            secrets = [SecretRef(api_key_secret_name, env_var)] if api_key_secret_name else []
+            secrets = [SecretRef(name=api_key_secret_name, env_var=env_var)] if api_key_secret_name else []
         if base_url:
             values["LLM_API_BASE_URL"] = base_url
             if api_format == "openai":
                 values["OPENAI_BASE_URL"] = base_url
-        secret = SecretRef(api_key_secret_name, env_var) if api_key_secret_name else None
-        return (LLMApiSpec("llm_api", provider_id, model, api_format, base_url, RuntimeContract(EnvPatch(values, secrets)), secret, meta(node_id, provider)),)
+        secret = SecretRef(name=api_key_secret_name, env_var=env_var) if api_key_secret_name else None
+        return (
+            LLMApiSpec(
+                kind="llm_api",
+                provider=provider_id,
+                model=model,
+                api_format=api_format,
+                base_url=base_url,
+                runtime_contract=RuntimeContract(env=EnvPatch(values=values, secrets=secrets)),
+                api_key_secret=secret,
+                meta=meta(node_id, provider),
+            ),
+        )
 
 
 class RemoteSQLDatabaseNode:
@@ -408,15 +458,41 @@ class RemoteSQLDatabaseNode:
             raise ValidationError("Remote SQL Database supports Postgres and MySQL. Use Local SQL Database for SQLite.")
         mode = norm(connection_mode)
         if mode == "env_only":
-            url_secret = SecretRef(database_url_env_var.strip() or "DATABASE_URL", "DATABASE_URL", "server_env")
+            url_secret = SecretRef(name=database_url_env_var.strip() or "DATABASE_URL", env_var="DATABASE_URL", provider="server_env")
             values = {
                 "DATABASE_KIND": db_engine,
                 "DATABASE_NAME": database_name,
                 "DATABASE_USER": username,
             }
-            contract = RuntimeContract(EnvPatch(values, [url_secret]), files=builtin_database_skill_files(), commands=[RuntimeCommand(database_client_setup_command(db_engine, bool(install_python_for_skills)), "before_start", -21000, "fail", 0, f"database-client:{db_engine}")])
-            return (SQLDatabaseSpec("sql_database", db_engine, "env_only", database_name, username, url_secret, contract, None, None, meta(node_id, f"{engine} Env")),)
-        secret = SecretRef(password_secret_name, "DATABASE_PASSWORD") if password_secret_name else None
+            contract = RuntimeContract(
+                env=EnvPatch(values=values, secrets=[url_secret]),
+                files=builtin_database_skill_files(),
+                commands=[
+                    RuntimeCommand(
+                        command=database_client_setup_command(db_engine, install_python_for_skills=bool(install_python_for_skills)),
+                        phase="before_start",
+                        order=-21000,
+                        failure_policy="fail",
+                        retry_count=0,
+                        source=f"database-client:{db_engine}",
+                    )
+                ],
+            )
+            return (
+                SQLDatabaseSpec(
+                    kind="sql_database",
+                    engine=db_engine,
+                    materialization="env_only",
+                    database_name=database_name,
+                    username=username,
+                    password_secret=url_secret,
+                    runtime_contract=contract,
+                    template_key=None,
+                    network_storage=None,
+                    meta=meta(node_id, f"{engine} Env"),
+                ),
+            )
+        secret = SecretRef(name=password_secret_name, env_var="DATABASE_PASSWORD") if password_secret_name else None
         password_value = secret_placeholder(secret) if secret else "app"
         scheme = "postgresql" if db_engine == "postgres" else "mysql"
         contract = RuntimeContract(
@@ -430,13 +506,35 @@ class RemoteSQLDatabaseNode:
                     "DATABASE_USER": username,
                     "DATABASE_PASSWORD": password_value,
                 },
-                [secret] if secret else [],
+                secrets=[secret] if secret else [],
             ),
-            [PortSpec(db_engine, 5432 if db_engine == "postgres" else 3306, "tcp", False)],
-            builtin_database_skill_files(),
-            [RuntimeCommand(database_client_setup_command(db_engine, bool(install_python_for_skills)), "before_start", -21000, "fail", 0, f"database-client:{db_engine}")],
+            ports=[PortSpec(name=db_engine, container_port=5432 if db_engine == "postgres" else 3306, protocol="tcp", public=False)],
+            files=builtin_database_skill_files(),
+            commands=[
+                RuntimeCommand(
+                    command=database_client_setup_command(db_engine, install_python_for_skills=bool(install_python_for_skills)),
+                    phase="before_start",
+                    order=-21000,
+                    failure_policy="fail",
+                    retry_count=0,
+                    source=f"database-client:{db_engine}",
+                )
+            ],
         )
-        return (SQLDatabaseSpec("sql_database", db_engine, "own_pod", database_name, username, secret, contract, f"rp-db-{db_engine}", network_storage, meta(node_id, engine)),)
+        return (
+            SQLDatabaseSpec(
+                kind="sql_database",
+                engine=db_engine,
+                materialization="own_pod",
+                database_name=database_name,
+                username=username,
+                password_secret=secret,
+                runtime_contract=contract,
+                template_key=f"rp-db-{db_engine}",
+                network_storage=network_storage,
+                meta=meta(node_id, engine),
+            ),
+        )
 
 
 class LocalSQLDatabaseNode:
@@ -465,9 +563,31 @@ class LocalSQLDatabaseNode:
         contract = RuntimeContract(
             EnvPatch({"DATABASE_KIND": "sqlite", "DATABASE_URL": f"sqlite:///{path}", "DATABASE_PATH": path, "DATABASE_NAME": database_name}),
             files=builtin_database_skill_files(),
-            commands=[RuntimeCommand(local_sql_setup_command(path, database_name, bool(install_python_for_skills)), "before_start", -20000, "fail", 0, "local_sql")],
+            commands=[
+                RuntimeCommand(
+                    command=local_sql_setup_command(path, database_name, install_python_for_skills=bool(install_python_for_skills)),
+                    phase="before_start",
+                    order=-20000,
+                    failure_policy="fail",
+                    retry_count=0,
+                    source="local_sql",
+                )
+            ],
         )
-        return (SQLDatabaseSpec("sql_database", "sqlite", "file_only", database_name, None, None, contract, None, None, meta(node_id, "SQLite")),)
+        return (
+            SQLDatabaseSpec(
+                kind="sql_database",
+                engine="sqlite",
+                materialization="file_only",
+                database_name=database_name,
+                username=None,
+                password_secret=None,
+                runtime_contract=contract,
+                template_key=None,
+                network_storage=None,
+                meta=meta(node_id, "SQLite"),
+            ),
+        )
 
 
 class VectorDatabaseNode:
@@ -495,12 +615,49 @@ class VectorDatabaseNode:
             contract = RuntimeContract(
                 EnvPatch({"VECTOR_KIND": "chroma", "VECTOR_MODE": "embedded", "VECTOR_URL": "local://chroma", "VECTOR_COLLECTION": collection_name, "VECTOR_PERSISTENCE_PATH": persistence_path}),
                 files=builtin_database_skill_files(),
-                commands=[RuntimeCommand(embedded_chroma_setup_command(persistence_path, bool(install_python_for_skills)), "before_start", -19000, "fail", 0, "vector:chroma:embedded")],
+                commands=[
+                    RuntimeCommand(
+                        command=embedded_chroma_setup_command(persistence_path, install_python_for_skills=bool(install_python_for_skills)),
+                        phase="before_start",
+                        order=-19000,
+                        failure_policy="fail",
+                        retry_count=0,
+                        source="vector:chroma:embedded",
+                    )
+                ],
             )
-            return (VectorDatabaseSpec("vector_database", "chroma", "file_only", collection_name, persistence_path, contract, None, None, meta(node_id, engine)),)
+            return (
+                VectorDatabaseSpec(
+                    kind="vector_database",
+                    engine="chroma",
+                    materialization="file_only",
+                    collection_name=collection_name,
+                    persistence_path=persistence_path,
+                    runtime_contract=contract,
+                    template_key=None,
+                    network_storage=None,
+                    meta=meta(node_id, engine),
+                ),
+            )
         port = 6333 if vector_engine == "qdrant" else 8000
-        contract = RuntimeContract(EnvPatch({"VECTOR_KIND": vector_engine, "VECTOR_MODE": "remote", "VECTOR_URL": f"crag://vector/{vector_engine}", "VECTOR_COLLECTION": collection_name, "VECTOR_PERSISTENCE_PATH": persistence_path}), [PortSpec(vector_engine, port, "http", True)], builtin_database_skill_files())
-        return (VectorDatabaseSpec("vector_database", vector_engine, "own_pod", collection_name, persistence_path, contract, f"rp-vector-{vector_engine}", network_storage, meta(node_id, engine)),)
+        contract = RuntimeContract(
+            env=EnvPatch(values={"VECTOR_KIND": vector_engine, "VECTOR_MODE": "remote", "VECTOR_URL": f"crag://vector/{vector_engine}", "VECTOR_COLLECTION": collection_name, "VECTOR_PERSISTENCE_PATH": persistence_path}),
+            ports=[PortSpec(name=vector_engine, container_port=port, protocol="http", public=True)],
+            files=builtin_database_skill_files(),
+        )
+        return (
+            VectorDatabaseSpec(
+                kind="vector_database",
+                engine=vector_engine,
+                materialization="own_pod",
+                collection_name=collection_name,
+                persistence_path=persistence_path,
+                runtime_contract=contract,
+                template_key=f"rp-vector-{vector_engine}",
+                network_storage=network_storage,
+                meta=meta(node_id, engine),
+            ),
+        )
 
 
 class MCPServerNode:
@@ -531,18 +688,18 @@ class MCPServerNode:
             raise ValidationError("MCP server name is required.")
         transport_id = norm(transport)
         env = parse_json_object(env_json, "env_json")
-        secrets = [SecretRef(secret_name.strip(), secret_name.strip(), "server_env") for secret_name in secret_env_names.split(",") if secret_name.strip()]
+        secrets = [SecretRef(name=secret_name.strip(), env_var=secret_name.strip(), provider="server_env") for secret_name in secret_env_names.split(",") if secret_name.strip()]
         if transport_id == "stdio":
             if not command.strip():
                 raise ValidationError("MCP stdio transport requires a command.")
-            server = MCPServer(server_name, "stdio", command.strip(), shlex.split(args or ""), None, env, secrets)
+            server = MCPServer(name=server_name, transport="stdio", command=command.strip(), args=shlex.split(args or ""), url=None, env=env, secret_refs=secrets)
         else:
             if not url.strip():
                 raise ValidationError("MCP http/sse transport requires a URL.")
-            server = MCPServer(server_name, transport_id, None, [], url.strip(), env, secrets)
+            server = MCPServer(name=server_name, transport=transport_id, command=None, args=[], url=url.strip(), env=env, secret_refs=secrets)
         servers = [*(previous.servers if previous else []), server]
         contract = mcp_runtime_contract(servers)
-        return (MCPServerSpec(servers, contract, meta(node_id, "MCP Server")),)
+        return (MCPServerSpec(servers=servers, runtime_contract=contract, meta=meta(node_id, "MCP Server")),)
 
 
 def parse_json_object(raw: str, label: str) -> dict[str, str]:
@@ -617,12 +774,12 @@ class SubagentNode:
         subagent_model = model.strip()
         if not subagent_model:
             raise ValidationError("Subagent model is required.")
-        subagent = Subagent(subagent_name, subagent_model, system_prompt.strip())
+        subagent = Subagent(name=subagent_name, model=subagent_model, system_prompt=system_prompt.strip())
         subagents = [*(previous.subagents if previous else []), subagent]
         names = [item.name for item in subagents]
         if len(names) != len(set(names)):
             raise ValidationError(f"Duplicate subagent name: {subagent_name}.")
-        return (SubagentSpec(subagents, subagent_runtime_contract(subagents), meta(node_id, "Subagent")),)
+        return (SubagentSpec(subagents=subagents, runtime_contract=subagent_runtime_contract(subagents), meta=meta(node_id, "Subagent")),)
 
 
 def inferred_command_order(previous: SSHCommandSpec | None) -> int:
@@ -659,11 +816,14 @@ class SkillNode:
         if not repo_url.startswith(("https://github.com/", "git@github.com:")):
             raise ValidationError("Skill GitHub repo URL must start with https://github.com/ or git@github.com:.")
         destination = target_path.strip() or f"{CENTRAL_SKILLS_PATH}/{skill_name}"
-        skill = SkillSource("skill", skill_name, repo_url, repo_path.strip() or ".", destination, git_ref.strip() or None)
+        skill = SkillSource(kind="skill", name=skill_name, repo_url=repo_url, repo_path=repo_path.strip() or ".", target_path=destination, git_ref=git_ref.strip() or None)
         skills = [*(previous.skills if previous else []), skill]
         payload = {"skills": [skill_payload(item) for item in skills]}
-        commands = [RuntimeCommand(skill_install_command(item), "before_start", -10000 + index, "fail", 0, f"skill:{item.name}") for index, item in enumerate(skills)]
-        return (SkillSpec(skills, RuntimeContract(EnvPatch({"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)}), commands=commands), meta(node_id, "Skill")),)
+        commands = [
+            RuntimeCommand(command=skill_install_command(item), phase="before_start", order=-10000 + index, failure_policy="fail", retry_count=0, source=f"skill:{item.name}")
+            for index, item in enumerate(skills)
+        ]
+        return (SkillSpec(skills=skills, runtime_contract=RuntimeContract(env=EnvPatch(values={"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)}), commands=commands), meta=meta(node_id, "Skill")),)
 
 
 class SkillFrameworkNode:
@@ -694,11 +854,14 @@ class SkillFrameworkNode:
         if not repo_url.startswith(("https://github.com/", "git@github.com:")):
             raise ValidationError("Skill framework GitHub repo URL must start with https://github.com/ or git@github.com:.")
         framework_name = norm(framework)
-        skill = SkillSource("framework", framework_name, repo_url, repo_path, target_root.strip() or CENTRAL_SKILLS_PATH, git_ref.strip() or None)
+        skill = SkillSource(kind="framework", name=framework_name, repo_url=repo_url, repo_path=repo_path, target_path=target_root.strip() or CENTRAL_SKILLS_PATH, git_ref=git_ref.strip() or None)
         skills = [*(previous.skills if previous else []), skill]
         payload = {"skills": [skill_payload(item) for item in skills]}
-        commands = [RuntimeCommand(skill_install_command(item), "before_start", -10000 + index, "fail", 0, f"skill:{item.name}") for index, item in enumerate(skills)]
-        return (SkillSpec(skills, RuntimeContract(EnvPatch({"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)}), commands=commands), meta(node_id, "Skill Framework")),)
+        commands = [
+            RuntimeCommand(command=skill_install_command(item), phase="before_start", order=-10000 + index, failure_policy="fail", retry_count=0, source=f"skill:{item.name}")
+            for index, item in enumerate(skills)
+        ]
+        return (SkillSpec(skills=skills, runtime_contract=RuntimeContract(env=EnvPatch(values={"RUNPOD_AGENT_SKILLS_JSON": json.dumps(payload, sort_keys=True)}), commands=commands), meta=meta(node_id, "Skill Framework")),)
 
 
 def skill_payload(skill: SkillSource) -> dict[str, str]:
@@ -739,7 +902,16 @@ class AgentNode:
         install_commands = []
         skip_terminal_only_manual = startup_mode == "manual" and terminal and not any((browser, llm, sql_database, vector_database, mcp_servers, skills))
         if not skip_terminal_only_manual and harness_id in {"codex", "claude", "opencode", "hermes", "pi"} and os.environ.get("CRAG_SKIP_HARNESS_INSTALL") != "1":
-            install_commands.append(RuntimeCommand(harness_install_command(harness_id), "before_start", -30000, "continue" if terminal else "fail", 0, f"harness:{harness_id}"))
+            install_commands.append(
+                RuntimeCommand(
+                    command=harness_install_command(harness_id),
+                    phase="before_start",
+                    order=-30000,
+                    failure_policy="continue" if terminal else "fail",
+                    retry_count=0,
+                    source=f"harness:{harness_id}",
+                )
+            )
         env = {"AGENT_HARNESS": harness_id, "AGENT_MODEL": model, "AGENT_STARTUP_MODE": startup_mode, "AGENT_SYSTEM_PROMPT": system_prompt, "WORKSPACE_DIR": workspace_path}
         harness_warning = harness_capability_warning(harness_id, system_prompt)
         if harness_warning:
@@ -773,7 +945,30 @@ class AgentNode:
                 files={**contract.files, **terminal.runtime_contract.files},
                 commands=[*contract.commands, *terminal.runtime_contract.commands],
             )
-        return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, subagents, terminal, image_name.strip() if image_name else None, contract, capabilities, None, meta(node_id, harness)),)
+        return (
+            AgentSpec(
+                kind="agent",
+                harness=harness_id,
+                model=model,
+                startup_mode=startup_mode,
+                workspace_path=workspace_path,
+                system_prompt=system_prompt,
+                browser=browser,
+                llm_api=llm_api,
+                llm_server=llm_server,
+                sql_database=sql_database,
+                vector_database=vector_database,
+                mcp_servers=mcp_servers,
+                skills=skills,
+                subagents=subagents,
+                terminal=terminal,
+                image_name=image_name.strip() if image_name else None,
+                runtime_contract=contract,
+                required_image_capabilities=capabilities,
+                template_key=None,
+                meta=meta(node_id, harness),
+            ),
+        )
 
 
 def harness_capability_warning(harness_id: str, system_prompt: str) -> str:
@@ -809,7 +1004,17 @@ class NetworkStorageNode:
         size_gb = int(create_size_gb) or None
         if not volume_id and not size_gb:
             volume_id = generated_volume_id(node_id, volume_name)
-        return (NetworkStorageSpec(volume_id, mount_path, retention_policy, size_gb, data_center_id.strip() or None, volume_name.strip() or None, meta(node_id, "Network Storage")),)
+        return (
+            NetworkStorageSpec(
+                network_volume_id=volume_id,
+                mount_path=mount_path,
+                retention_policy=retention_policy,
+                size_gb=size_gb,
+                data_center_id=data_center_id.strip() or None,
+                name=volume_name.strip() or None,
+                meta=meta(node_id, "Network Storage"),
+            ),
+        )
 
 
 class S3StorageNode:
@@ -823,10 +1028,21 @@ class S3StorageNode:
         return {"required": {"endpoint": ("STRING", {"default": ""}), "bucket": ("STRING", {"default": ""}), "region": ("STRING", {"default": ""}), "access_key_secret_name": ("STRING", {"default": ""}), "secret_key_secret_name": ("STRING", {"default": ""})}, "hidden": {"node_id": "UNIQUE_ID"}}
 
     def build(self, endpoint: str, bucket: str, region: str, access_key_secret_name: str, secret_key_secret_name: str, node_id: str | None = None):
-        access = SecretRef(access_key_secret_name, "AWS_ACCESS_KEY_ID")
-        secret = SecretRef(secret_key_secret_name, "AWS_SECRET_ACCESS_KEY")
-        contract = RuntimeContract(EnvPatch({"S3_ENDPOINT": endpoint, "S3_BUCKET": bucket, "S3_REGION": region}, [access, secret]))
-        return (S3StorageSpec(endpoint, bucket, region or None, access, secret, "S3", contract, meta(node_id, "S3 Storage")),)
+        access = SecretRef(name=access_key_secret_name, env_var="AWS_ACCESS_KEY_ID")
+        secret = SecretRef(name=secret_key_secret_name, env_var="AWS_SECRET_ACCESS_KEY")
+        contract = RuntimeContract(env=EnvPatch(values={"S3_ENDPOINT": endpoint, "S3_BUCKET": bucket, "S3_REGION": region}, secrets=[access, secret]))
+        return (
+            S3StorageSpec(
+                endpoint=endpoint,
+                bucket=bucket,
+                region=region or None,
+                access_key_secret=access,
+                secret_key_secret=secret,
+                env_prefix="S3",
+                runtime_contract=contract,
+                meta=meta(node_id, "S3 Storage"),
+            ),
+        )
 
 
 class SSHCommandNode:
@@ -841,8 +1057,8 @@ class SSHCommandNode:
 
     def build(self, command: str, phase: str, failure_policy: str, retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
         commands = list(previous.commands) if previous else []
-        commands.append(SSHCommand(command, phase, inferred_command_order(previous), failure_policy, int(retry_count)))
-        return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "SSH Command")),)
+        commands.append(SSHCommand(command=command, phase=phase, order=inferred_command_order(previous), failure_policy=failure_policy, retry_count=int(retry_count)))
+        return (SSHCommandSpec(commands=sorted(commands, key=lambda item: item.order), meta=meta(node_id, "SSH Command")),)
 
 
 class PackageNode:
@@ -866,8 +1082,8 @@ class PackageNode:
 
     def build(self, package_manager: str, packages: str, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
         commands = list(previous.commands) if previous else []
-        commands.append(SSHCommand(package_install_command(package_manager, packages), "before_start", inferred_command_order(previous), failure_policy, int(retry_count)))
-        return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Package")),)
+        commands.append(SSHCommand(command=package_install_command(package_manager, packages), phase="before_start", order=inferred_command_order(previous), failure_policy=failure_policy, retry_count=int(retry_count)))
+        return (SSHCommandSpec(commands=sorted(commands, key=lambda item: item.order), meta=meta(node_id, "Package")),)
 
 
 class GitRepositoryNode:
@@ -892,8 +1108,8 @@ class GitRepositoryNode:
 
     def build(self, repo_url: str, target_path: str, git_ref: str = "main", failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
         commands = list(previous.commands) if previous else []
-        commands.append(SSHCommand(git_repository_command(repo_url, target_path, git_ref), "before_start", inferred_command_order(previous), failure_policy, int(retry_count)))
-        return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Git Repository")),)
+        commands.append(SSHCommand(command=git_repository_command(repo_url, target_path, git_ref), phase="before_start", order=inferred_command_order(previous), failure_policy=failure_policy, retry_count=int(retry_count)))
+        return (SSHCommandSpec(commands=sorted(commands, key=lambda item: item.order), meta=meta(node_id, "Git Repository")),)
 
 
 class LanguageRuntimeNode:
@@ -917,8 +1133,8 @@ class LanguageRuntimeNode:
 
     def build(self, runtime: str, node_major_version: int = 22, failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
         commands = list(previous.commands) if previous else []
-        commands.append(SSHCommand(language_runtime_install_command(runtime, int(node_major_version)), "before_start", inferred_command_order(previous), failure_policy, int(retry_count)))
-        return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Language Runtime")),)
+        commands.append(SSHCommand(command=language_runtime_install_command(runtime, int(node_major_version)), phase="before_start", order=inferred_command_order(previous), failure_policy=failure_policy, retry_count=int(retry_count)))
+        return (SSHCommandSpec(commands=sorted(commands, key=lambda item: item.order), meta=meta(node_id, "Language Runtime")),)
 
 
 class BuildContainerNode:
@@ -998,7 +1214,18 @@ class KeepAliveNode:
 
     def build(self, mode: str, action: str, time_value: int, time_unit: str, turn_limit: int, cost_limit_usd: float, idle_grace_seconds: int, enforcement: str = "both", node_id: str | None = None):
         multiplier = {"seconds": 1, "minutes": 60, "hours": 3600}[time_unit]
-        return (KeepAlivePolicy(mode, action, int(time_value) * multiplier if mode == "time" else None, int(turn_limit) or None, float(cost_limit_usd) or None, int(idle_grace_seconds) or None, enforcement, meta(node_id, "Keep Alive")),)
+        return (
+            KeepAlivePolicy(
+                mode=mode,
+                action=action,
+                time_seconds=int(time_value) * multiplier if mode == "time" else None,
+                turn_limit=int(turn_limit) or None,
+                cost_limit_usd=float(cost_limit_usd) or None,
+                idle_grace_seconds=int(idle_grace_seconds) or None,
+                enforcement=enforcement,
+                meta=meta(node_id, "Keep Alive"),
+            ),
+        )
 
 
 class SSHAccessNode:
@@ -1025,13 +1252,13 @@ class SSHAccessNode:
         env_config = get_ssh_env_config()
         return (
             SSHAccessPolicy(
-                mode,
-                username,
-                env_config.get("private_key_path") or private_key_path,
-                proxy_key_suffix or env_config.get("proxy_suffix"),
-                int(internal_port),
-                bool(install_internal_sshd),
-                meta(node_id, "SSH Access"),
+                mode=mode,
+                username=username,
+                private_key_path=env_config.get("private_key_path") or private_key_path,
+                proxy_key_suffix=proxy_key_suffix or env_config.get("proxy_suffix"),
+                internal_port=int(internal_port),
+                install_internal_sshd=bool(install_internal_sshd),
+                meta=meta(node_id, "SSH Access"),
             ),
         )
 
@@ -1051,7 +1278,17 @@ class DeployNode:
         }
 
     def build(self, app: AgentSpec, network_storage=None, s3_storage=None, commands=None, keep_alive=None, node_id: str | None = None):
-        deployment = DeploymentSpec(app, network_storage, s3_storage, commands, keep_alive, SSHAccessPolicy(), default_resource_hints(), "reuse_matching", meta(node_id, "Deploy"))
+        deployment = DeploymentSpec(
+            primary_app=app,
+            network_storage=network_storage,
+            s3_storage=s3_storage,
+            ssh_commands=commands,
+            keep_alive=keep_alive,
+            ssh_access=SSHAccessPolicy(),
+            resource_hints=default_resource_hints(),
+            reuse_policy="reuse_matching",
+            meta=meta(node_id, "Deploy"),
+        )
         validate_deployment(deployment, mode="plan", require_api_key=False)
         return (deployment,)
 

@@ -134,7 +134,7 @@ def test_collect_run_logs_reports_unavailable_remote_agent_log(tmp_path):
 def test_logs_node_returns_empty_for_missing_run(monkeypatch, tmp_path):
     monkeypatch.setenv("COMFYUI_USER_DIR", str(tmp_path))
 
-    logs, saved_path = LogsNode().collect("missing", "stdout", 20000, False)
+    logs, saved_path = LogsNode().collect("missing", "stdout", 20000, save_copy=False)
 
     assert logs == ""
     assert saved_path == ""

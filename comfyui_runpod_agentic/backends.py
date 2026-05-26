@@ -189,13 +189,13 @@ class ContainerBuildBackend:
                     result_returncode = build_result.returncode
                 if result_returncode != 0:
                     result = local_runtime.LocalApplyResult(
-                        result.engine,
-                        result.action,
-                        result.compose_path,
-                        result.command,
-                        result_returncode,
-                        result.stdout,
-                        "\n".join(part for part in (result.stderr, build_stderr) if part),
+                        engine=result.engine,
+                        action=result.action,
+                        compose_path=result.compose_path,
+                        command=result.command,
+                        returncode=result_returncode,
+                        stdout=result.stdout,
+                        stderr="\n".join(part for part in (result.stderr, build_stderr) if part),
                     )
         finally:
             if old_sudo is None:

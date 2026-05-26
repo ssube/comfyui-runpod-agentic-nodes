@@ -20,11 +20,11 @@ class HarnessSupport:
 
 
 HARNESS_SUPPORT = {
-    "codex": HarnessSupport("codex", "Codex", "codex", True, True, False, True, True, True, True),
-    "claude": HarnessSupport("claude", "Claude", "claude", True, True, True, True, True, True, True),
-    "opencode": HarnessSupport("opencode", "OpenCode", "opencode", True, True, False, True, True, True, True),
-    "hermes": HarnessSupport("hermes", "Hermes", "hermes", True, True, False, True, True, True, True),
-    "pi": HarnessSupport("pi", "Pi", "pi", True, True, True, True, True, True, True),
+    "codex": HarnessSupport(harness="codex", display_name="Codex", binary="codex", prompt=True, model=True, system_prompt=False, llm_env=True, mcp_env=True, skills_symlink=True, response_capture=True),
+    "claude": HarnessSupport(harness="claude", display_name="Claude", binary="claude", prompt=True, model=True, system_prompt=True, llm_env=True, mcp_env=True, skills_symlink=True, response_capture=True),
+    "opencode": HarnessSupport(harness="opencode", display_name="OpenCode", binary="opencode", prompt=True, model=True, system_prompt=False, llm_env=True, mcp_env=True, skills_symlink=True, response_capture=True),
+    "hermes": HarnessSupport(harness="hermes", display_name="Hermes", binary="hermes", prompt=True, model=True, system_prompt=False, llm_env=True, mcp_env=True, skills_symlink=True, response_capture=True),
+    "pi": HarnessSupport(harness="pi", display_name="Pi", binary="pi", prompt=True, model=True, system_prompt=True, llm_env=True, mcp_env=True, skills_symlink=True, response_capture=True),
 }
 
 

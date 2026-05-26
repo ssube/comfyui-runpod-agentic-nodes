@@ -575,7 +575,7 @@ def test_language_runtime_node_installs_node_from_nodesource_and_python_from_apt
 
 def test_build_container_node_commits_and_pushes_with_dockerhub_env():
     inputs = BuildContainerNode.INPUT_TYPES()["required"]
-    command = container_snapshot_command("docker.io/example/crag:latest", "nerdctl", True, "DOCKERHUB_USERNAME", "DOCKERHUB_TOKEN")
+    command = container_snapshot_command("docker.io/example/crag:latest", "nerdctl", push=True, username_env="DOCKERHUB_USERNAME", password_env="DOCKERHUB_TOKEN")
 
     assert "deployment" in inputs
     assert "container_runtime" in inputs
@@ -716,9 +716,9 @@ def test_embedded_chroma_is_file_only_and_installs_skill():
 
 
 def test_database_skill_python_install_can_be_disabled_for_language_runtime():
-    sqlite = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite", False)[0]
+    sqlite = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite", install_python_for_skills=False)[0]
     mysql = RemoteSQLDatabaseNode().build("MySQL", "own_pod", "app", "app", install_python_for_skills=False)[0]
-    chroma = VectorDatabaseNode().build("Chroma", "embedded", "docs", "/workspace/vector", False)[0]
+    chroma = VectorDatabaseNode().build("Chroma", "embedded", "docs", "/workspace/vector", install_python_for_skills=False)[0]
 
     assert "sqlite3" in sqlite.runtime_contract.commands[0].command
     assert "python3 is required for CRAG database skills" not in sqlite.runtime_contract.commands[0].command

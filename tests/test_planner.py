@@ -86,7 +86,7 @@ def test_ollama_dependency_binds_to_local_interface_but_agent_gets_placeholder(t
     browser = BrowserNode().build("Neko", "own_pod", "chromium")[0]
     llm = LLMServerNode().build("Ollama", "llama3.2", "own_pod", "none")[0]
     agent = AgentNode().build("Pi", "model", "manual", browser=browser, llm=llm)[0]
-    ssh_access = SSHAccessNode().build("runpod_proxy", "root", str(key_path), "suffix", 22, True)[0]
+    ssh_access = SSHAccessNode().build("runpod_proxy", "root", str(key_path), "suffix", 22, install_internal_sshd=True)[0]
     deployment = replace(DeployNode().build(agent)[0], ssh_access=ssh_access)
 
     plan = Planner().build(deployment)
@@ -110,7 +110,7 @@ def test_internal_sshd_access_injects_public_key_and_command(tmp_path, monkeypat
     private_key.write_text("private")
     public_key.write_text("ssh-ed25519 AAAATEST crag-test")
     agent = AgentNode().build("Pi", "model", "manual")[0]
-    ssh_access = SSHAccessNode().build("internal_sshd", "root", str(private_key), "", 22, True)[0]
+    ssh_access = SSHAccessNode().build("internal_sshd", "root", str(private_key), "", 22, install_internal_sshd=True)[0]
     deployment = replace(DeployNode().build(agent)[0], ssh_access=ssh_access)
 
     plan = Planner().build(deployment, mode="plan")

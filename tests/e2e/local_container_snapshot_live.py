@@ -31,7 +31,7 @@ def main() -> int:
         source_container = run_runtime(["nerdctl", "run", "-d", "--name", f"crag-snapshot-src-{os.getpid()}", args.image, "sleep", "300"], args.sudo_runtime).stdout.strip()
         run_runtime(["nerdctl", "exec", source_container, "sh", "-lc", f"printf '%s' {shell_quote(args.marker)} > /crag-snapshot-marker"], args.sudo_runtime)
 
-        snapshot_script = container_snapshot_command(args.tag, "nerdctl", False, "DOCKERHUB_USERNAME", "DOCKERHUB_TOKEN")
+        snapshot_script = container_snapshot_command(args.tag, "nerdctl", push=False, username_env="DOCKERHUB_USERNAME", password_env="DOCKERHUB_TOKEN")
         run_snapshot_script(snapshot_script, source_container, args.sudo_runtime)
         run_runtime(["nerdctl", "image", "inspect", args.tag], args.sudo_runtime)
 

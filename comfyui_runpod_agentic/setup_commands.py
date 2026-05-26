@@ -85,12 +85,12 @@ def skill_install_command(skill: SkillSource) -> str:
     return "\n".join(lines)
 
 
-def local_sql_setup_command(database_path: str, database_name: str, install_python_for_skills: bool = True) -> str:
+def local_sql_setup_command(database_path: str, database_name: str, *, install_python_for_skills: bool = True) -> str:
     path = database_path or f"/workspace/db/{database_name}.sqlite"
     return "\n".join(
         [
             "set -e",
-            *python3_client_install_lines(install_python_for_skills),
+            *python3_client_install_lines(enabled=install_python_for_skills),
             "if ! command -v sqlite3 >/dev/null 2>&1; then",
             "  if command -v apt-get >/dev/null 2>&1; then",
             "    apt-get update",
@@ -111,13 +111,13 @@ def local_sql_setup_command(database_path: str, database_name: str, install_pyth
     )
 
 
-def database_client_setup_command(engine: str, install_python_for_skills: bool = True) -> str:
+def database_client_setup_command(engine: str, *, install_python_for_skills: bool = True) -> str:
     engine_id = engine.strip().lower()
     if engine_id == "postgres":
         return "\n".join(
             [
                 "set -e",
-                *python3_client_install_lines(install_python_for_skills),
+                *python3_client_install_lines(enabled=install_python_for_skills),
                 "if ! command -v psql >/dev/null 2>&1; then",
                 "  if command -v apt-get >/dev/null 2>&1; then",
                 "    apt-get update",
@@ -135,7 +135,7 @@ def database_client_setup_command(engine: str, install_python_for_skills: bool =
         return "\n".join(
             [
                 "set -e",
-                *python3_client_install_lines(install_python_for_skills),
+                *python3_client_install_lines(enabled=install_python_for_skills),
                 "if ! command -v mysql >/dev/null 2>&1; then",
                 "  if command -v apt-get >/dev/null 2>&1; then",
                 "    apt-get update",
@@ -152,7 +152,7 @@ def database_client_setup_command(engine: str, install_python_for_skills: bool =
     raise ValueError(f"Unsupported database client: {engine}")
 
 
-def python3_client_install_lines(enabled: bool = True) -> list[str]:
+def python3_client_install_lines(*, enabled: bool = True) -> list[str]:
     if not enabled:
         return []
     return [
@@ -172,7 +172,7 @@ def python3_client_install_lines(enabled: bool = True) -> list[str]:
     ]
 
 
-def embedded_chroma_setup_command(persistence_path: str, install_python_for_skills: bool = True) -> str:
+def embedded_chroma_setup_command(persistence_path: str, *, install_python_for_skills: bool = True) -> str:
     path = persistence_path.strip() or "/workspace/vector"
     return "\n".join(
         [
@@ -380,7 +380,7 @@ def python_runtime_install_lines() -> list[str]:
     ]
 
 
-def container_snapshot_command(tag: str, runtime: str, push: bool, username_env: str, password_env: str) -> str:
+def container_snapshot_command(tag: str, runtime: str, *, push: bool, username_env: str, password_env: str) -> str:
     image_tag = tag.strip()
     if not image_tag:
         raise ValueError("Snapshot tag is required.")

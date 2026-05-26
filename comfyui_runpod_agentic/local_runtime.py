@@ -541,17 +541,17 @@ def apply_compose_file(
         raise ValueError(f"Unsupported local runtime action: {action}")
     path = str(compose_path)
     if action == "save_only":
-        return LocalApplyResult(engine, action, path, [], 0, "Compose file saved; no local runtime command was run.", "")
+        return LocalApplyResult(engine=engine, action=action, compose_path=path, command=[], returncode=0, stdout="Compose file saved; no local runtime command was run.", stderr="")
     if action == "plan":
-        return LocalApplyResult(engine, action, path, [], 0, local_runtime_summary_from_file(path), "")
+        return LocalApplyResult(engine=engine, action=action, compose_path=path, command=[], returncode=0, stdout=local_runtime_summary_from_file(path), stderr="")
     try:
         command = command_for_engine(engine, path, project_name, action)
         completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
     except (FileNotFoundError, RuntimeError) as exc:
-        return LocalApplyResult(engine, action, path, [], 127, "", str(exc))
+        return LocalApplyResult(engine=engine, action=action, compose_path=path, command=[], returncode=127, stdout="", stderr=str(exc))
     except subprocess.TimeoutExpired as exc:
-        return LocalApplyResult(engine, action, path, exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
-    return LocalApplyResult(engine, action, path, command, completed.returncode, completed.stdout, completed.stderr)
+        return LocalApplyResult(engine=engine, action=action, compose_path=path, command=exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], returncode=124, stdout=exc.stdout or "", stderr=exc.stderr or str(exc))
+    return LocalApplyResult(engine=engine, action=action, compose_path=path, command=command, returncode=completed.returncode, stdout=completed.stdout, stderr=completed.stderr)
 
 
 def apply_local_runtime_plan(
@@ -583,13 +583,13 @@ def apply_local_runtime_plan(
                 write_local_runtime_files(plan, project_name)
                 exec_result = exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds)
                 return LocalApplyResult(
-                    exec_result.engine,
-                    "resume_stopped",
-                    exec_result.compose_path,
-                    [*start_result.command, "&&", *exec_result.command] if start_result.command and exec_result.command else exec_result.command or start_result.command,
-                    exec_result.returncode,
-                    "\n".join(part for part in (start_result.stdout, exec_result.stdout) if part),
-                    "\n".join(part for part in (start_result.stderr, exec_result.stderr) if part),
+                    engine=exec_result.engine,
+                    action="resume_stopped",
+                    compose_path=exec_result.compose_path,
+                    command=[*start_result.command, "&&", *exec_result.command] if start_result.command and exec_result.command else exec_result.command or start_result.command,
+                    returncode=exec_result.returncode,
+                    stdout="\n".join(part for part in (start_result.stdout, exec_result.stdout) if part),
+                    stderr="\n".join(part for part in (start_result.stderr, exec_result.stderr) if part),
                 ), True
         cleanup = reconcile_stale_local_runtime_project(engine, compose_path, project_name, plan, timeout_seconds=timeout_seconds)
         if cleanup and cleanup.returncode != 0:
@@ -603,39 +603,39 @@ def apply_local_runtime_plan(
         stop_result = stop_local_runtime_project_containers(engine, project_name, timeout_seconds=timeout_seconds)
         if stop_result:
             result = LocalApplyResult(
-                result.engine,
-                result.action,
-                result.compose_path,
-                [*result.command, "&&", *stop_result.command] if result.command and stop_result.command else result.command or stop_result.command,
-                stop_result.returncode,
-                "\n".join(part for part in (result.stdout, stop_result.stdout) if part),
-                "\n".join(part for part in (result.stderr, stop_result.stderr) if part),
+                engine=result.engine,
+                action=result.action,
+                compose_path=result.compose_path,
+                command=[*result.command, "&&", *stop_result.command] if result.command and stop_result.command else result.command or stop_result.command,
+                returncode=stop_result.returncode,
+                stdout="\n".join(part for part in (result.stdout, stop_result.stdout) if part),
+                stderr="\n".join(part for part in (result.stderr, stop_result.stderr) if part),
             )
     if cleanup:
         result = LocalApplyResult(
-            result.engine,
-            result.action,
-            result.compose_path,
-            [*cleanup.command, "&&", *result.command] if cleanup.command and result.command else result.command or cleanup.command,
-            result.returncode,
-            "\n".join(part for part in (cleanup.stdout, result.stdout) if part),
-            "\n".join(part for part in (cleanup.stderr, result.stderr) if part),
+            engine=result.engine,
+            action=result.action,
+            compose_path=result.compose_path,
+            command=[*cleanup.command, "&&", *result.command] if cleanup.command and result.command else result.command or cleanup.command,
+            returncode=result.returncode,
+            stdout="\n".join(part for part in (cleanup.stdout, result.stdout) if part),
+            stderr="\n".join(part for part in (cleanup.stderr, result.stderr) if part),
         )
     if action in {"apply", "apply_and_wait"} and result.returncode == 0 and should_wait_local_startup(plan):
         startup = wait_local_runtime_startup_complete(engine, project_name, "agent", plan, timeout_seconds=timeout_seconds)
         if startup.returncode != 0:
-            return LocalApplyResult(result.engine, result.action, result.compose_path, result.command, startup.returncode, result.stdout, "\n".join(part for part in (result.stderr, startup.stderr) if part)), False
+            return LocalApplyResult(engine=result.engine, action=result.action, compose_path=result.compose_path, command=result.command, returncode=startup.returncode, stdout=result.stdout, stderr="\n".join(part for part in (result.stderr, startup.stderr) if part)), False
     if action == "terminate" and result.returncode == 0:
         cleanup = remove_local_retention_volumes(engine, project_name, plan, timeout_seconds=timeout_seconds)
         if cleanup:
             result = LocalApplyResult(
-                result.engine,
-                result.action,
-                result.compose_path,
-                [*result.command, "&&", *cleanup.command] if result.command else cleanup.command,
-                cleanup.returncode,
-                "\n".join(part for part in (result.stdout, cleanup.stdout) if part),
-                "\n".join(part for part in (result.stderr, cleanup.stderr) if part),
+                engine=result.engine,
+                action=result.action,
+                compose_path=result.compose_path,
+                command=[*result.command, "&&", *cleanup.command] if result.command else cleanup.command,
+                returncode=cleanup.returncode,
+                stdout="\n".join(part for part in (result.stdout, cleanup.stdout) if part),
+                stderr="\n".join(part for part in (result.stderr, cleanup.stderr) if part),
             )
     return result, False
 
@@ -663,10 +663,10 @@ def remove_local_retention_volumes(engine: str, project_name: str, plan: Deploym
         command = local_runtime_command(engine, ["volume", "rm", *volume_names])
         completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
     except (FileNotFoundError, RuntimeError) as exc:
-        return LocalApplyResult(engine, "volume_cleanup", "", [], 127, "", str(exc))
+        return LocalApplyResult(engine=engine, action="volume_cleanup", compose_path="", command=[], returncode=127, stdout="", stderr=str(exc))
     except subprocess.TimeoutExpired as exc:
-        return LocalApplyResult(engine, "volume_cleanup", "", exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
-    return LocalApplyResult(engine, "volume_cleanup", "", command, completed.returncode, completed.stdout, completed.stderr)
+        return LocalApplyResult(engine=engine, action="volume_cleanup", compose_path="", command=exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], returncode=124, stdout=exc.stdout or "", stderr=exc.stderr or str(exc))
+    return LocalApplyResult(engine=engine, action="volume_cleanup", compose_path="", command=command, returncode=completed.returncode, stdout=completed.stdout, stderr=completed.stderr)
 
 
 def stop_local_runtime_project_containers(engine: str, project_name: str, *, timeout_seconds: int = 1800) -> LocalApplyResult | None:
@@ -677,10 +677,10 @@ def stop_local_runtime_project_containers(engine: str, project_name: str, *, tim
         command = local_runtime_command(engine, ["stop", *container_ids])
         completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
     except (FileNotFoundError, RuntimeError) as exc:
-        return LocalApplyResult(engine, "stop", "", [], 127, "", str(exc))
+        return LocalApplyResult(engine=engine, action="stop", compose_path="", command=[], returncode=127, stdout="", stderr=str(exc))
     except subprocess.TimeoutExpired as exc:
-        return LocalApplyResult(engine, "stop", "", exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
-    return LocalApplyResult(engine, "stop", "", command, completed.returncode, completed.stdout, completed.stderr)
+        return LocalApplyResult(engine=engine, action="stop", compose_path="", command=exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], returncode=124, stdout=exc.stdout or "", stderr=exc.stderr or str(exc))
+    return LocalApplyResult(engine=engine, action="stop", compose_path="", command=command, returncode=completed.returncode, stdout=completed.stdout, stderr=completed.stderr)
 
 
 def start_local_runtime_project(engine: str, compose_path: str | Path, project_name: str, *, timeout_seconds: int = 1800) -> LocalApplyResult:
@@ -688,10 +688,10 @@ def start_local_runtime_project(engine: str, compose_path: str | Path, project_n
         command = [*command_for_engine(engine, str(compose_path), project_name, "plan")[:-1], "start"]
         completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
     except (FileNotFoundError, RuntimeError) as exc:
-        return LocalApplyResult(engine, "resume_stopped", str(compose_path), [], 127, "", str(exc))
+        return LocalApplyResult(engine=engine, action="resume_stopped", compose_path=str(compose_path), command=[], returncode=127, stdout="", stderr=str(exc))
     except subprocess.TimeoutExpired as exc:
-        return LocalApplyResult(engine, "resume_stopped", str(compose_path), exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
-    return LocalApplyResult(engine, "resume_stopped", str(compose_path), command, completed.returncode, completed.stdout, completed.stderr)
+        return LocalApplyResult(engine=engine, action="resume_stopped", compose_path=str(compose_path), command=exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], returncode=124, stdout=exc.stdout or "", stderr=exc.stderr or str(exc))
+    return LocalApplyResult(engine=engine, action="resume_stopped", compose_path=str(compose_path), command=command, returncode=completed.returncode, stdout=completed.stdout, stderr=completed.stderr)
 
 
 def local_retention_volume_names(project_name: str, plan: DeploymentPlan) -> list[str]:
@@ -745,7 +745,7 @@ def wait_local_runtime_startup_complete(
             return logs_result
         last_stderr = logs_result.stderr
         time.sleep(1)
-    return LocalRuntimeReadResult(engine, project_name, role, "<logs>", container_id, command, 1, "", last_stderr or "Timed out waiting for local runtime startup commands to complete.")
+    return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path="<logs>", container_id=container_id, command=command, returncode=1, stdout="", stderr=last_stderr or "Timed out waiting for local runtime startup commands to complete.")
 
 
 def should_wait_local_startup(plan: DeploymentPlan) -> bool:
@@ -766,10 +766,10 @@ def exec_agent_in_local_container(
         command = local_runtime_command(engine, ["exec", container_id, "bash", "-lc", f"bash {shlex.quote(workspace.rstrip('/') + '/.runpod_agentic/local-runtime/run-agent.sh')}"])
         completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
     except (FileNotFoundError, RuntimeError) as exc:
-        return LocalApplyResult(engine, "reuse", "", [], 127, "", str(exc))
+        return LocalApplyResult(engine=engine, action="reuse", compose_path="", command=[], returncode=127, stdout="", stderr=str(exc))
     except subprocess.TimeoutExpired as exc:
-        return LocalApplyResult(engine, "reuse", "", exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], 124, exc.stdout or "", exc.stderr or str(exc))
-    return LocalApplyResult(engine, "reuse", project_name, command, completed.returncode, completed.stdout, completed.stderr)
+        return LocalApplyResult(engine=engine, action="reuse", compose_path="", command=exc.cmd if isinstance(exc.cmd, list) else [str(exc.cmd)], returncode=124, stdout=exc.stdout or "", stderr=exc.stderr or str(exc))
+    return LocalApplyResult(engine=engine, action="reuse", compose_path=project_name, command=command, returncode=completed.returncode, stdout=completed.stdout, stderr=completed.stderr)
 
 
 def enforce_local_keep_alive(
@@ -791,9 +791,9 @@ def enforce_local_keep_alive(
     if policy.mode == "turns" and policy.turn_limit and response_collected:
         if int(policy.turn_limit) <= 1:
             return apply_compose_file(engine, compose_path, project_name=project_name, action=lifecycle_action)
-        return LocalApplyResult(engine, "keep_alive", str(compose_path), [], 0, f"Local runtime turn limit is {policy.turn_limit}; current run consumed one turn and containers remain running.", "")
+        return LocalApplyResult(engine=engine, action="keep_alive", compose_path=str(compose_path), command=[], returncode=0, stdout=f"Local runtime turn limit is {policy.turn_limit}; current run consumed one turn and containers remain running.", stderr="")
     if policy.mode == "cost":
-        return LocalApplyResult(engine, "keep_alive", str(compose_path), [], 0, "Local runtime cannot measure provider spend; cost keep-alive was recorded but not enforced locally.", "")
+        return LocalApplyResult(engine=engine, action="keep_alive", compose_path=str(compose_path), command=[], returncode=0, stdout="Local runtime cannot measure provider spend; cost keep-alive was recorded but not enforced locally.", stderr="")
     return None
 
 
@@ -801,14 +801,14 @@ def schedule_local_lifecycle(engine: str, compose_path: str | Path, project_name
     try:
         command = command_for_engine(engine, str(compose_path), project_name, action)
     except RuntimeError as exc:
-        return LocalApplyResult(engine, "keep_alive", str(compose_path), [], 127, "", str(exc))
+        return LocalApplyResult(engine=engine, action="keep_alive", compose_path=str(compose_path), command=[], returncode=127, stdout="", stderr=str(exc))
     pid_path = local_keep_alive_pid_path(project_name)
     cancel_local_keep_alive(project_name)
     shell_command = f"sleep {int(delay_seconds)}; {shlex.join(command)}"
     process = subprocess.Popen(["sh", "-c", shell_command], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     pid_path.parent.mkdir(parents=True, exist_ok=True)
     pid_path.write_text(str(process.pid))
-    return LocalApplyResult(engine, "keep_alive", str(compose_path), command, 0, f"Scheduled local runtime {action} in {int(delay_seconds)} seconds.", "")
+    return LocalApplyResult(engine=engine, action="keep_alive", compose_path=str(compose_path), command=command, returncode=0, stdout=f"Scheduled local runtime {action} in {int(delay_seconds)} seconds.", stderr="")
 
 
 def cancel_local_keep_alive(project_name: str) -> None:
@@ -845,21 +845,21 @@ def read_local_runtime_file(
         try:
             container_id = find_local_runtime_container(engine, project_name, role) or ""
         except RuntimeError as exc:
-            return LocalRuntimeReadResult(engine, project_name, role, path, "", command, 127, "", str(exc))
+            return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id="", command=command, returncode=127, stdout="", stderr=str(exc))
         if not container_id:
             stopped_container_id = find_local_runtime_project_container(engine, project_name, role)
             if stopped_container_id:
                 logs_result = read_local_runtime_logs(engine, project_name, role, stopped_container_id)
                 return LocalRuntimeReadResult(
-                    engine,
-                    project_name,
-                    role,
-                    path,
-                    stopped_container_id,
-                    logs_result.command,
-                    1,
-                    "",
-                    logs_result.stdout or logs_result.stderr or f"{role} container exited before {path} was ready.",
+                    engine=engine,
+                    project_name=project_name,
+                    role=role,
+                    path=path,
+                    container_id=stopped_container_id,
+                    command=logs_result.command,
+                    returncode=1,
+                    stdout="",
+                    stderr=logs_result.stdout or logs_result.stderr or f"{role} container exited before {path} was ready.",
                 )
             last_stderr = f"No running {role} container found for project {project_name}."
             time.sleep(1)
@@ -867,10 +867,10 @@ def read_local_runtime_file(
         try:
             command = local_runtime_command(engine, ["exec", container_id, "cat", path])
         except RuntimeError as exc:
-            return LocalRuntimeReadResult(engine, project_name, role, path, container_id, command, 127, "", str(exc))
+            return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id=container_id, command=command, returncode=127, stdout="", stderr=str(exc))
         completed = subprocess.run(command, capture_output=True, text=True, timeout=min(10, int(timeout_seconds)), check=False)
         if completed.returncode == 0 and local_runtime_response_is_ready(path, completed.stdout):
-            return LocalRuntimeReadResult(engine, project_name, role, path, container_id, command, completed.returncode, completed.stdout, completed.stderr)
+            return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id=container_id, command=command, returncode=completed.returncode, stdout=completed.stdout, stderr=completed.stderr)
         last_stderr = completed.stderr
         logs_result = read_local_runtime_logs(engine, project_name, role, container_id)
         if logs_result.returncode == 0 and local_runtime_logs_are_complete(logs_result.stdout):
@@ -878,18 +878,18 @@ def read_local_runtime_file(
                 last_stderr = logs_result.stdout or logs_result.stderr or f"{path} was not ready after the {role} container completed."
                 time.sleep(1)
                 continue
-            return LocalRuntimeReadResult(engine, project_name, role, path, container_id, logs_result.command, logs_result.returncode, logs_result.stdout, logs_result.stderr)
+            return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id=container_id, command=logs_result.command, returncode=logs_result.returncode, stdout=logs_result.stdout, stderr=logs_result.stderr)
         time.sleep(1)
-    return LocalRuntimeReadResult(engine, project_name, role, path, container_id, command, 1, "", last_stderr)
+    return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id=container_id, command=command, returncode=1, stdout="", stderr=last_stderr)
 
 
 def read_local_runtime_logs(engine: str, project_name: str, role: str, container_id: str) -> LocalRuntimeReadResult:
     try:
         command = local_runtime_command(engine, ["logs", container_id])
     except RuntimeError as exc:
-        return LocalRuntimeReadResult(engine, project_name, role, "<logs>", container_id, [], 127, "", str(exc))
+        return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path="<logs>", container_id=container_id, command=[], returncode=127, stdout="", stderr=str(exc))
     completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
-    return LocalRuntimeReadResult(engine, project_name, role, "<logs>", container_id, command, completed.returncode, completed.stdout, completed.stderr)
+    return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path="<logs>", container_id=container_id, command=command, returncode=completed.returncode, stdout=completed.stdout, stderr=completed.stderr)
 
 
 def local_runtime_logs_are_complete(logs: str) -> bool:

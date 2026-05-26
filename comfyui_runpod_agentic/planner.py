@@ -160,7 +160,20 @@ class Planner:
         )
 
         actions = self._actions(resources, deployment, agent_contract)
-        return DeploymentPlan(run_id, workflow_hash, deployment_hash, mode, prompt, resources, agent_contract, deployment.ssh_access, deployment.reuse_policy, deployment.keep_alive, actions, warnings)
+        return DeploymentPlan(
+            run_id=run_id,
+            workflow_hash=workflow_hash,
+            deployment_hash=deployment_hash,
+            mode=mode,
+            prompt=prompt,
+            resources=resources,
+            runtime_contract=agent_contract,
+            ssh_access=deployment.ssh_access,
+            reuse_policy=deployment.reuse_policy,
+            keep_alive=deployment.keep_alive,
+            actions=actions,
+            warnings=warnings,
+        )
 
     def _own_pod_dependencies(self, deployment: DeploymentSpec) -> list[tuple[str, Any]]:
         app = deployment.primary_app
@@ -240,28 +253,28 @@ class Planner:
         agent = next(resource for resource in resources if resource.role == "agent")
         actions: list[PlanAction] = []
         for resource in deps:
-            actions.append(PlanAction("CREATE_OR_RESUME", resource.role, resource.name, {"template_id": resource.template_id}))
+            actions.append(PlanAction(action="CREATE_OR_RESUME", role=resource.role, resource_name=resource.name, detail={"template_id": resource.template_id}))
         for resource in deps:
-            actions.append(PlanAction("WAIT_READY", resource.role, resource.name))
+            actions.append(PlanAction(action="WAIT_READY", role=resource.role, resource_name=resource.name))
         if deps:
-            actions.append(PlanAction("RESOLVE_DEPENDENCY_CONTRACTS", detail={"resources": [resource.name for resource in deps]}))
-        actions.append(PlanAction("CREATE_OR_RESUME", "agent", agent.name, {"template_id": agent.template_id}))
-        actions.append(PlanAction("WAIT_SSH", "agent", agent.name))
+            actions.append(PlanAction(action="RESOLVE_DEPENDENCY_CONTRACTS", detail={"resources": [resource.name for resource in deps]}))
+        actions.append(PlanAction(action="CREATE_OR_RESUME", role="agent", resource_name=agent.name, detail={"template_id": agent.template_id}))
+        actions.append(PlanAction(action="WAIT_SSH", role="agent", resource_name=agent.name))
         actions.extend(runtime_command_actions(agent, agent_contract, {"before_start"}))
         for command in sorted((deployment.ssh_commands.commands if deployment.ssh_commands else []), key=lambda item: item.order):
             if command.phase == "before_start":
-                actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, to_plain(command)))
-        actions.append(PlanAction("WRITE_RUNTIME_CONFIG", "agent", agent.name, {"files": runtime_config_paths(deployment.primary_app.workspace_path)}))
-        actions.append(PlanAction("LAUNCH_AGENT", "agent", agent.name, {"harness": deployment.primary_app.harness, "startup_mode": deployment.primary_app.startup_mode}))
+                actions.append(PlanAction(action="RUN_SSH_COMMAND", role="agent", resource_name=agent.name, detail=to_plain(command)))
+        actions.append(PlanAction(action="WRITE_RUNTIME_CONFIG", role="agent", resource_name=agent.name, detail={"files": runtime_config_paths(deployment.primary_app.workspace_path)}))
+        actions.append(PlanAction(action="LAUNCH_AGENT", role="agent", resource_name=agent.name, detail={"harness": deployment.primary_app.harness, "startup_mode": deployment.primary_app.startup_mode}))
         actions.extend(runtime_command_actions(agent, agent_contract, {"after_start", "after_ready"}))
         for command in sorted((deployment.ssh_commands.commands if deployment.ssh_commands else []), key=lambda item: item.order):
             if command.phase in {"after_start", "after_ready"}:
-                actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, to_plain(command)))
+                actions.append(PlanAction(action="RUN_SSH_COMMAND", role="agent", resource_name=agent.name, detail=to_plain(command)))
         if deployment.keep_alive:
-            actions.append(PlanAction("MONITOR_KEEP_ALIVE", "agent", agent.name, to_plain(deployment.keep_alive)))
+            actions.append(PlanAction(action="MONITOR_KEEP_ALIVE", role="agent", resource_name=agent.name, detail=to_plain(deployment.keep_alive)))
         for command in sorted((deployment.ssh_commands.commands if deployment.ssh_commands else []), key=lambda item: item.order):
             if command.phase == "teardown":
-                actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, to_plain(command)))
+                actions.append(PlanAction(action="RUN_SSH_COMMAND", role="agent", resource_name=agent.name, detail=to_plain(command)))
         return actions
 
 
@@ -313,7 +326,7 @@ def runtime_command_actions(agent: ResourcePlan, contract: RuntimeContract, phas
     for command in commands:
         detail = to_plain(command)
         detail["command_hash"] = stable_hash(detail)[:12]
-        actions.append(PlanAction("RUN_SSH_COMMAND", "agent", agent.name, detail))
+        actions.append(PlanAction(action="RUN_SSH_COMMAND", role="agent", resource_name=agent.name, detail=detail))
     return actions
 
 
