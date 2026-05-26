@@ -459,6 +459,15 @@ def write_local_runtime_files(plan: DeploymentPlan, project_name: str) -> Path:
     return runtime_dir
 
 
+def clear_local_runtime_agent_outputs(project_name: str) -> None:
+    runtime_dir = local_runtime_project_dir(project_name) / "runtime"
+    for relative_path in ("response.txt", "errors.txt", "agent.log", "startup.ready"):
+        try:
+            (runtime_dir / relative_path).unlink()
+        except FileNotFoundError:
+            pass
+
+
 def local_port_mappings(resource: ResourcePlan) -> list[str]:
     if resource.role != "agent":
         return []
@@ -552,6 +561,8 @@ def apply_local_runtime_plan(
     cleanup: LocalApplyResult | None = None
     if action in {"save_only", "plan", "apply", "apply_and_wait"}:
         write_local_runtime_files(plan, project_name)
+    if action in {"apply", "apply_and_wait"}:
+        clear_local_runtime_agent_outputs(project_name)
     if action in {"apply", "apply_and_wait"} and plan.reuse_policy != "always_create":
         agent = next(resource for resource in plan.resources if resource.role == "agent")
         container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=local_resource_desired_hash(agent, plan)) if all_local_runtime_resources_running(engine, project_name, plan) else None

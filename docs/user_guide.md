@@ -873,6 +873,18 @@ scripts/test
 scripts/lint
 ```
 
+Run the full local batch with real containerd workloads:
+
+```bash
+CRAG_LOCAL_RUNTIME_SUDO=1 scripts/test-all
+```
+
+Provider-backed live e2e tests are opt-in. This includes the local MCP workflow that installs Pi, starts a filesystem MCP server, and asks Ollama Cloud to call the MCP-backed tool:
+
+```bash
+CRAG_LOCAL_RUNTIME_SUDO=1 CRAG_RUN_OLLAMA_E2E=1 scripts/test-all
+```
+
 Verify the CRAG nodes load in a temporary CPU-only ComfyUI server:
 
 ```bash

@@ -667,6 +667,32 @@ def test_apply_local_runtime_creates_when_reuse_is_disabled(monkeypatch, tmp_pat
     assert calls[1][:5] == ["docker", "compose", "-f", str(compose_path), "-p"]
 
 
+def test_apply_local_runtime_clears_stale_agent_outputs_before_launch(monkeypatch, tmp_path):
+    monkeypatch.setenv("CRAG_LOCAL_RUNTIME_STATE_DIR", str(tmp_path / "state"))
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace")[0]
+    deployment = replace(DeployNode().build(agent)[0], reuse_policy="always_create")
+    plan = Planner().build(deployment, prompt="fresh prompt")
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text("services: {}\n")
+    runtime_dir = tmp_path / "state" / "crag-node" / "runtime"
+    runtime_dir.mkdir(parents=True)
+    stale_files = ["response.txt", "errors.txt", "agent.log", "startup.ready"]
+    for name in stale_files:
+        (runtime_dir / name).write_text("stale\n")
+
+    def fake_run(command, **kwargs):
+        assert not any((runtime_dir / name).exists() for name in stale_files)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result, reused = apply_local_runtime_plan("docker", compose_path, "crag-node", plan, action="apply")
+
+    assert reused is False
+    assert result.returncode == 0
+    assert not any((runtime_dir / name).exists() for name in stale_files)
+
+
 def test_apply_local_runtime_removes_delete_with_deployment_volumes(monkeypatch, tmp_path):
     deployment = build_local_runtime_deployment(retention_policy="delete_with_deployment")
     plan = Planner().build(deployment, prompt="cleanup")

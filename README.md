@@ -306,6 +306,18 @@ scripts/test
 
 The test suite does not require Runpod credentials. API and SSH behavior are covered through injected fakes and focused helper tests.
 
+The full local batch runs lint, unit tests, build checks, and local container e2e tests:
+
+```bash
+CRAG_LOCAL_RUNTIME_SUDO=1 scripts/test-all
+```
+
+Provider-backed live e2e tests stay opt-in. To include the local MCP workflow that installs Pi, starts a filesystem MCP server, and asks Ollama Cloud to use it:
+
+```bash
+CRAG_LOCAL_RUNTIME_SUDO=1 CRAG_RUN_OLLAMA_E2E=1 scripts/test-all
+```
+
 ## ComfyUI E2E Smoke Test
 
 To verify the nodes load inside a real ComfyUI process in CPU-only mode:

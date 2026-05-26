@@ -19,3 +19,7 @@ if [[ "${CRAG_RUN_COMFY_E2E:-0}" == "1" ]]; then
   scripts/e2e-comfy-local-ollama-deepseek --skip-clone
   scripts/e2e-comfy-container-snapshot --skip-clone
 fi
+
+if [[ "${CRAG_RUN_OLLAMA_E2E:-0}" == "1" ]]; then
+  scripts/e2e-local-mcp-ollama-cloud-live
+fi
