@@ -28,6 +28,7 @@ from .setup_commands import (
     builtin_database_skill_files,
     database_client_setup_command,
     embedded_chroma_setup_command,
+    git_repository_command,
     harness_install_command,
     language_runtime_install_command,
     local_sql_setup_command,
@@ -811,6 +812,32 @@ class PackageNode:
         return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Package")),)
 
 
+class GitRepositoryNode:
+    CATEGORY = "Runpod/Command"
+    RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
+    RETURN_NAMES = ("commands",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "repo_url": ("STRING", {"default": "https://github.com/user/repo.git"}),
+                "target_path": ("STRING", {"default": "/workspace/repo"}),
+                "git_ref": ("STRING", {"default": "main"}),
+                "failure_policy": (["fail", "continue", "retry"],),
+                "retry_count": ("INT", {"default": 0, "min": 0}),
+            },
+            "optional": {"previous": (RUNPOD_COMMAND_SSH,)},
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, repo_url: str, target_path: str, git_ref: str = "main", failure_policy: str = "fail", retry_count: int = 0, previous: SSHCommandSpec | None = None, node_id: str | None = None, order: int | None = None):
+        commands = list(previous.commands) if previous else []
+        commands.append(SSHCommand(git_repository_command(repo_url, target_path, git_ref), "before_start", inferred_command_order(previous), failure_policy, int(retry_count)))
+        return (SSHCommandSpec(sorted(commands, key=lambda item: item.order), meta(node_id, "Git Repository")),)
+
+
 class LanguageRuntimeNode:
     CATEGORY = "Runpod/Command"
     RETURN_TYPES = (RUNPOD_COMMAND_SSH,)
@@ -1321,6 +1348,7 @@ NODE_CLASSES = [
     S3StorageNode,
     SSHCommandNode,
     PackageNode,
+    GitRepositoryNode,
     LanguageRuntimeNode,
     BuildContainerNode,
     KeepAliveNode,

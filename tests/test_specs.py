@@ -11,6 +11,7 @@ from comfyui_runpod_agentic.nodes import (
     BrowserNode,
     BuildContainerNode,
     DeployNode,
+    GitRepositoryNode,
     KeepAliveNode,
     LanguageRuntimeNode,
     LLMApiNode,
@@ -41,6 +42,7 @@ from comfyui_runpod_agentic.validation import ValidationError, validate_keep_ali
 def test_user_facing_core_node_names():
     assert NODE_DISPLAY_NAME_MAPPINGS["Deploy"] == "Deploy"
     assert NODE_DISPLAY_NAME_MAPPINGS["Package"] == "Package"
+    assert NODE_DISPLAY_NAME_MAPPINGS["GitRepository"] == "Git Repository"
     assert NODE_DISPLAY_NAME_MAPPINGS["LanguageRuntime"] == "Language Runtime"
     assert NODE_DISPLAY_NAME_MAPPINGS["BuildContainer"] == "Build Container"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunOnRunpod"] == "Run on Runpod"
@@ -465,9 +467,29 @@ def test_package_node_chains_install_commands_and_apt_updates():
     assert "python3 -m pip install pytest" in pip.commands[1].command
 
 
+def test_git_repository_node_clones_or_updates_repo_and_installs_git():
+    package = PackageNode().build("apt", "jq", "fail")[0]
+    spec = GitRepositoryNode().build("https://github.com/example/repo.git", "/workspace/repo", "main", "fail", previous=package)[0]
+    command = spec.commands[1].command
+
+    assert [item.order for item in spec.commands] == [0, 100]
+    assert "apt-get install -y --no-install-recommends git ca-certificates" in command
+    assert "git -C \"$target\" fetch --tags --prune origin" in command
+    assert "git clone \"$repo\" \"$target\"" in command
+    assert "git -C \"$target\" checkout -B \"$ref\" \"origin/$ref\"" in command
+
+
+def test_git_repository_node_requires_repo_and_target():
+    with pytest.raises(ValueError, match="Git repository URL"):
+        GitRepositoryNode().build("", "/workspace/repo")
+    with pytest.raises(ValueError, match="Git target path"):
+        GitRepositoryNode().build("https://github.com/example/repo.git", "")
+
+
 def test_command_node_inputs_do_not_expose_manual_order():
     assert "order" not in SSHCommandNode.INPUT_TYPES()["required"]
     assert "order" not in PackageNode.INPUT_TYPES()["required"]
+    assert "order" not in GitRepositoryNode.INPUT_TYPES()["required"]
     assert "order" not in LanguageRuntimeNode.INPUT_TYPES()["required"]
     assert "order" not in BuildContainerNode.INPUT_TYPES()["required"]
 

@@ -294,6 +294,57 @@ def package_install_command(package_manager: str, packages: str) -> str:
     raise ValueError(f"Unsupported package manager: {package_manager}")
 
 
+def git_repository_command(repo_url: str, target_path: str, git_ref: str = "") -> str:
+    repo = repo_url.strip()
+    target = target_path.strip()
+    ref = git_ref.strip()
+    if not repo:
+        raise ValueError("Git repository URL is required.")
+    if not target:
+        raise ValueError("Git target path is required.")
+    lines = [
+        "set -e",
+        "if ! command -v git >/dev/null 2>&1; then",
+        "  if command -v apt-get >/dev/null 2>&1; then",
+        "    apt-get update",
+        "    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates",
+        "  elif command -v apk >/dev/null 2>&1; then",
+        "    apk add --no-cache git ca-certificates",
+        "  elif command -v dnf >/dev/null 2>&1; then",
+        "    dnf install -y git ca-certificates",
+        "  else",
+        "    echo 'git is required but no supported package manager was found' >&2",
+        "    exit 1",
+        "  fi",
+        "fi",
+        f"repo={shlex.quote(repo)}",
+        f"target={shlex.quote(target)}",
+        f"ref={shlex.quote(ref)}",
+        "mkdir -p \"$(dirname \"$target\")\"",
+        "if [ -d \"$target/.git\" ]; then",
+        "  git -C \"$target\" remote set-url origin \"$repo\" 2>/dev/null || git -C \"$target\" remote add origin \"$repo\"",
+        "  git -C \"$target\" fetch --tags --prune origin",
+        "else",
+        "  rm -rf \"$target\"",
+        "  git clone \"$repo\" \"$target\"",
+        "  git -C \"$target\" fetch --tags origin",
+        "fi",
+        "if [ -n \"$ref\" ]; then",
+        "  if git -C \"$target\" rev-parse --verify --quiet \"origin/$ref^{commit}\" >/dev/null; then",
+        "    git -C \"$target\" checkout -B \"$ref\" \"origin/$ref\"",
+        "  else",
+        "    git -C \"$target\" checkout \"$ref\"",
+        "  fi",
+        "else",
+        "  current_branch=\"$(git -C \"$target\" branch --show-current || true)\"",
+        "  if [ -n \"$current_branch\" ]; then",
+        "    git -C \"$target\" pull --ff-only origin \"$current_branch\"",
+        "  fi",
+        "fi",
+    ]
+    return "\n".join(lines)
+
+
 def language_runtime_install_command(runtime: str, node_major_version: int = 22) -> str:
     runtime_id = runtime.strip().lower()
     if runtime_id == "nodejs":

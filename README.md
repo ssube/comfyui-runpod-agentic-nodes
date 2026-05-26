@@ -199,6 +199,7 @@ Apps and services:
 - `Network Storage` and `S3 Storage`.
 - `SSH Command`: declarative command chain executed by `Run on Runpod`.
 - `Package`: installs apt, npm, or pip packages. Apt packages always run `apt-get update` first.
+- `Git Repository`: clones or updates a repository at a workspace path and checks out a branch, tag, or commit.
 - `Language Runtime`: installs Node.js with npm from NodeSource, or Python with pip and venv from apt.
 - `Startup Script`: ready-to-paste bash startup script for a deployment.
 - `Compose YAML`: exports a local Docker Compose compatible projection.

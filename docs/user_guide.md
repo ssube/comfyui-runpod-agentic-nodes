@@ -40,7 +40,7 @@ For automated graph generation, classify nodes by effect instead of by palette l
 
 | Category | Nodes | Effect |
 | --- | --- | --- |
-| Queue commands | `SSH Command`, `Package`, `Language Runtime` | Produce `RUNPOD_COMMAND_SSH` chains that connect to `Deploy.commands`. |
+| Queue commands | `SSH Command`, `Package`, `Git Repository`, `Language Runtime` | Produce `RUNPOD_COMMAND_SSH` chains that connect to `Deploy.commands`. |
 | Queue implicit commands | `Agent`, `Local SQL Database`, `Skill`, `Skill Framework` | Add setup commands through their runtime contracts when connected to `Agent`. |
 | Add containers | `Agent`, `Browser` with `own_pod`, `LLM Server`, `Remote SQL Database` with `own_pod`, `Vector Database` | Add pod/service resources to the deployment plan. |
 | Add storage or env | `Network Storage`, `S3 Storage`, `LLM API`, `MCP Server`, `Remote SQL Database` with `env_only`, `Local SQL Database` | Add volumes, environment variables, secret references, or runtime config without creating a standalone terminal. |
@@ -693,6 +693,23 @@ Inputs:
 
 `apt` always runs `apt-get update` before installing. `npm` and `pip` also queue the matching language runtime setup so a minimal Ubuntu 24.04 container can install packages without a pre-baked image.
 
+### Git Repository
+
+`Git Repository` clones or updates a repository in the agent workspace.
+
+Inputs:
+
+| Input | Choices / Type | Use |
+| --- | --- | --- |
+| `repo_url` | string | Repository URL. |
+| `target_path` | string | Directory where the repository should exist. |
+| `git_ref` | string | Branch, tag, or commit to check out. Leave empty to keep and fast-forward the current branch. |
+| `failure_policy` | `fail`, `continue`, `retry` | Error behavior. |
+| `retry_count` | integer | Retry count when `failure_policy=retry`. |
+| `previous` | `RUNPOD_COMMAND_SSH` | Optional previous command chain. |
+
+The node ensures `git` and certificate roots are installed when the container has a supported package manager. Existing Git checkouts are fetched and reused; non-Git directories at the target path are replaced.
+
 ### Language Runtime
 
 `Language Runtime` installs a language toolchain before the agent starts.
@@ -787,8 +804,9 @@ This pattern is useful when the agent needs both structured state and retrieval 
 
 ```text
 Language Runtime(runtime=nodejs)
-Package(previous=runtime, package_manager=npm, packages="opencode-ai")
-SSH Command(previous=packages, order=20, phase=before_start, command="python scripts/bootstrap.py")
+Git Repository(previous=runtime, repo_url="https://github.com/example/app.git", target_path="/workspace/app", git_ref="main")
+Package(previous=repo, package_manager=npm, packages="opencode-ai")
+SSH Command(previous=packages, phase=before_start, command="python scripts/bootstrap.py")
 final commands -> Deploy.commands
 ```
 
