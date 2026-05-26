@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import uuid
 from dataclasses import replace
@@ -1132,6 +1133,139 @@ def comfy_output(result: tuple[str, ...], workflow_graph: Any, names: tuple[str,
     return {"ui": ui, "result": result}
 
 
+class TextTemplateNode:
+    CATEGORY = "Runpod/Text"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "render"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"template": ("STRING", {"multiline": True, "default": "{theme}"})},
+            "optional": {
+                "theme": ("STRING", {"forceInput": True}),
+                "style": ("STRING", {"forceInput": True}),
+                "tags": ("STRING", {"forceInput": True}),
+                "lyrics": ("STRING", {"forceInput": True}),
+                "prompt": ("STRING", {"forceInput": True}),
+            },
+        }
+
+    def render(self, template: str, theme: str = "", style: str = "", tags: str = "", lyrics: str = "", prompt: str = ""):
+        values = {"theme": theme, "style": style, "tags": tags, "lyrics": lyrics, "prompt": prompt}
+        return (template.format_map(_SafeFormatDict(values)),)
+
+
+class _SafeFormatDict(dict):
+    def __missing__(self, key):
+        return "{" + key + "}"
+
+
+class JSONFieldNode:
+    CATEGORY = "Runpod/Text"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("value",)
+    FUNCTION = "extract"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"forceInput": True}),
+                "field_path": ("STRING", {"default": "lyrics"}),
+                "fallback": ("STRING", {"multiline": True, "default": ""}),
+            }
+        }
+
+    def extract(self, text: str, field_path: str = "", fallback: str = ""):
+        data = parse_json_text(text)
+        value: Any = data
+        for part in [item for item in field_path.split(".") if item]:
+            if isinstance(value, dict) and part in value:
+                value = value[part]
+                continue
+            if isinstance(value, list) and part.isdigit() and int(part) < len(value):
+                value = value[int(part)]
+                continue
+            return (fallback,)
+        if isinstance(value, (dict, list)):
+            return (json.dumps(value, ensure_ascii=False, indent=2),)
+        if value is None:
+            return (fallback,)
+        return (str(value),)
+
+
+def parse_json_text(text: str) -> Any:
+    stripped = text.strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", stripped, re.DOTALL | re.IGNORECASE)
+    if fenced:
+        stripped = fenced.group(1).strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        start_candidates = [index for index in (stripped.find("{"), stripped.find("[")) if index >= 0]
+        if not start_candidates:
+            raise ValidationError("Text does not contain JSON.") from exc
+        start = min(start_candidates)
+        end = max(stripped.rfind("}"), stripped.rfind("]"))
+        if end < start:
+            raise ValidationError("Text does not contain complete JSON.") from exc
+        try:
+            return json.loads(stripped[start : end + 1])
+        except json.JSONDecodeError as exc:
+            raise ValidationError(f"Text does not contain valid JSON: {exc}") from exc
+
+
+class SaveTextNode:
+    CATEGORY = "Runpod/Text"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("text", "saved_path")
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"forceInput": True}),
+                "filename_prefix": ("STRING", {"default": "crag/lyrics"}),
+                "extension": (["txt", "md", "json"],),
+            },
+            "hidden": {"workflow_graph": "PROMPT"},
+        }
+
+    def save(self, text: str, filename_prefix: str = "crag/lyrics", extension: str = "txt", workflow_graph: Any = None):
+        saved_path = save_text_output(text, filename_prefix, extension)
+        return comfy_output((text, saved_path), workflow_graph, self.RETURN_NAMES)
+
+
+def save_text_output(text: str, filename_prefix: str, extension: str) -> str:
+    try:
+        import folder_paths  # type: ignore
+
+        output_dir = Path(folder_paths.get_output_directory())
+    except Exception:
+        output_dir = Path("artifacts") / "text"
+    clean_prefix = sanitize_filename_prefix(filename_prefix or "crag/lyrics")
+    clean_extension = extension if extension in {"txt", "md", "json"} else "txt"
+    target = output_dir / f"{clean_prefix}.{clean_extension}"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        target = output_dir / f"{clean_prefix}-{uuid.uuid4().hex[:8]}.{clean_extension}"
+    target.write_text(text)
+    return str(target)
+
+
+def sanitize_filename_prefix(value: str) -> str:
+    parts = []
+    for part in value.replace("\\", "/").split("/"):
+        clean = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in part.strip())
+        if clean and clean not in {".", ".."}:
+            parts.append(clean)
+    return "/".join(parts) or "crag/lyrics"
+
+
 class ComfyProgress:
     def __init__(self):
         self.total = 1
@@ -1412,8 +1546,11 @@ NODE_CLASSES = [
     SSHAccessNode,
     DeployNode,
     RunOnRunpodNode,
+    TextTemplateNode,
     StartupScriptNode,
     ComposeYAMLNode,
+    JSONFieldNode,
     RunLocalContainersNode,
+    SaveTextNode,
     LogsNode,
 ]

@@ -316,6 +316,16 @@ Outputs:
 | `logs` | `STRING` | Combined log text. |
 | `saved_path` | `STRING` | Path to the saved copy, if enabled. |
 
+### Text Utilities
+
+`Text Template`, `JSON Field`, and `Save Text` are small utility nodes for agent handoffs.
+
+| Node | Use |
+| --- | --- |
+| `Text Template` | Formats a multiline prompt with named fields such as `theme`, `style`, `tags`, `lyrics`, and `prompt`. Unknown placeholders are preserved. |
+| `JSON Field` | Extracts a field path from an agent response containing raw or fenced JSON. |
+| `Save Text` | Saves a string to ComfyUI's output directory, falling back to `artifacts/text` outside ComfyUI, and returns both preview text and the saved path. |
+
 ## Agent And App Nodes
 
 ### Agent
@@ -851,6 +861,7 @@ UI-format examples for loading into ComfyUI:
 
 | File | Purpose |
 | --- | --- |
+| `examples/workflows/ui_agent_song_album_art.json` | Grouped UI version of the agentic music workflow: creative inputs, songwriting agent, ACE-step song generation, album-art prompt agent, Flux Klein album art, and final outputs. Requires a GPU ComfyUI server with the ACE-step and Flux Klein models installed for the render stages. |
 | `examples/workflows/ui_agent_skills_mcp_plan.json` | Agent with MCP servers and skills. |
 | `examples/workflows/ui_claude_data_agent_plan.json` | Claude API, Playwright, Postgres, Qdrant, and prompts. |
 | `examples/workflows/ui_container_build_and_use.json` | Builds a local agent image, emits `Build Container.image_name`, and runs a second local deployment from that image. |
@@ -865,6 +876,7 @@ API-format examples:
 | File | Purpose |
 | --- | --- |
 | `examples/workflows/api_container_snapshot_plan.json` | API-format local build workflow ending at `Build Container`. |
+| `examples/workflows/api_agent_song_album_art.json` | All-in-one agentic music workflow: agents generate ACE-step tags/lyrics and a Flux Klein album-art prompt, then the graph saves MP3 audio, album art, and lyrics text. Requires a GPU ComfyUI server with the ACE-step and Flux Klein models installed for the render stages. |
 | `examples/workflows/api_local_agent_skills_postgres.json` | Comprehensive local runtime preflight: Postgres, Ollama Cloud env, Superpowers skills, package install, harness prompt output. Change the run action to `terminate` for teardown. |
 | `examples/workflows/api_local_ollama_cloud_deepseek_agent.json` | Real Pi + Ollama Cloud DeepSeek local runtime workflow using language and package setup nodes. Change the run action to `terminate` for teardown. |
 | `examples/workflows/api_local_pi_ollama_terminal.json` | Pi + Ollama Cloud ttyd terminal workflow. Change the run action to `terminate` for teardown. |

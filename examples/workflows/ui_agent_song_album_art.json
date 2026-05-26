@@ -1,0 +1,2569 @@
+{
+  "id": "d3d553d4-1c27-472f-97c4-agent-song-album-art",
+  "revision": 0,
+  "last_node_id": 43,
+  "last_link_id": 52,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        120,
+        140
+      ],
+      "size": [
+        360,
+        150
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "value",
+          "type": "STRING",
+          "link": null,
+          "label": "Theme",
+          "widget": {
+            "name": "value"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            1,
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "A late-night road trip through rain-soaked neon streets after leaving an old life behind."
+      ],
+      "title": "Theme"
+    },
+    {
+      "id": 2,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        120,
+        340
+      ],
+      "size": [
+        360,
+        150
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "value",
+          "type": "STRING",
+          "link": null,
+          "label": "Musical Style",
+          "widget": {
+            "name": "value"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            2,
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "moody synthwave pop with cinematic drums, warm analog bass, and a hopeful chorus"
+      ],
+      "title": "Musical Style"
+    },
+    {
+      "id": 3,
+      "type": "TextTemplate",
+      "pos": [
+        600,
+        110
+      ],
+      "size": [
+        430,
+        220
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "theme",
+          "type": "STRING",
+          "link": 1
+        },
+        {
+          "name": "style",
+          "type": "STRING",
+          "link": 2
+        },
+        {
+          "name": "template",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "template"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextTemplate"
+      },
+      "widgets_values": [
+        "Write concise ACE-step inputs for a complete song. Theme: {theme}\nMusical style: {style}\nReturn only valid JSON with exactly these keys: tags, lyrics. The tags value should be one comma-separated string including genre, mood, tempo/BPM, instrumentation, vocal style, key if useful, and production notes. The lyrics value should include section headers like [Verse 1], [Chorus], and [Outro]."
+      ],
+      "title": "Song Brief Prompt"
+    },
+    {
+      "id": 4,
+      "type": "LLMApi",
+      "pos": [
+        600,
+        380
+      ],
+      "size": [
+        320,
+        170
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "llm",
+          "type": "RUNPOD_LLM",
+          "links": [
+            6,
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LLMApi"
+      },
+      "widgets_values": [
+        "Ollama Cloud",
+        "deepseek-v4-flash",
+        "OLLAMA_API_KEY",
+        ""
+      ],
+      "title": "Ollama Cloud"
+    },
+    {
+      "id": 5,
+      "type": "Agent",
+      "pos": [
+        1100,
+        100
+      ],
+      "size": [
+        360,
+        420
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "llm",
+          "type": "RUNPOD_LLM",
+          "link": 6,
+          "shape": 7
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "system_prompt"
+          }
+        },
+        {
+          "name": "harness",
+          "type": "COMBO",
+          "link": null,
+          "label": "Agent Harness",
+          "widget": {
+            "name": "harness"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "agent",
+          "type": "RUNPOD_APP_AGENT",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Agent"
+      },
+      "widgets_values": [
+        "Pi",
+        "deepseek-v4-flash",
+        "auto_start",
+        "/workspace",
+        "You are a production songwriter preparing exact model inputs. Return only valid JSON. Do not wrap the JSON in markdown."
+      ],
+      "title": "Songwriting Agent"
+    },
+    {
+      "id": 6,
+      "type": "KeepAlive",
+      "pos": [
+        1100,
+        560
+      ],
+      "size": [
+        320,
+        210
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "keep_alive",
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KeepAlive"
+      },
+      "widgets_values": [
+        "time",
+        "stop",
+        5,
+        "minutes",
+        0,
+        0,
+        0,
+        "both"
+      ],
+      "title": "Song Agent Keep Alive"
+    },
+    {
+      "id": 7,
+      "type": "Deploy",
+      "pos": [
+        1530,
+        120
+      ],
+      "size": [
+        320,
+        260
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "app",
+          "type": "RUNPOD_APP_AGENT",
+          "link": 7
+        },
+        {
+          "name": "keep_alive",
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "link": 8,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Deploy"
+      },
+      "widgets_values": [],
+      "title": "Deploy Songwriting Agent"
+    },
+    {
+      "id": 8,
+      "type": "RunLocalContainers",
+      "pos": [
+        1900,
+        90
+      ],
+      "size": [
+        420,
+        430
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 5
+        },
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "link": 9
+        },
+        {
+          "name": "engine",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "engine"
+          }
+        },
+        {
+          "name": "project_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "project_name"
+          }
+        },
+        {
+          "name": "output_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "output_path"
+          }
+        },
+        {
+          "name": "action",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "action"
+          }
+        },
+        {
+          "name": "use_sudo",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "use_sudo"
+          }
+        },
+        {
+          "name": "timeout_seconds",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "timeout_seconds"
+          }
+        },
+        {
+          "name": "response_role",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "response_role"
+          }
+        },
+        {
+          "name": "response_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "response_path"
+          }
+        },
+        {
+          "name": "response_timeout_seconds",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "response_timeout_seconds"
+          }
+        },
+        {
+          "name": "reuse_policy",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "reuse_policy"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "response",
+          "type": "STRING",
+          "links": [
+            10,
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunLocalContainers"
+      },
+      "widgets_values": [
+        "",
+        "containerd",
+        "crag-songwriting-agent",
+        "artifacts/local-runtime/songwriting-agent-compose.yaml",
+        "apply_and_wait",
+        true,
+        1200,
+        "agent",
+        "/workspace/.runpod_agentic/response.txt",
+        900,
+        "reuse_matching"
+      ],
+      "title": "Run Songwriting Agent"
+    },
+    {
+      "id": 9,
+      "type": "JSONField",
+      "pos": [
+        2380,
+        100
+      ],
+      "size": [
+        340,
+        150
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 10
+        },
+        {
+          "name": "field_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "field_path"
+          }
+        },
+        {
+          "name": "fallback",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "fallback"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "STRING",
+          "links": [
+            12,
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JSONField"
+      },
+      "widgets_values": [
+        "tags",
+        "Synthwave Pop, 92 BPM, Analog Bass, Cinematic Drums, Hopeful Chorus, Male Lead Vocal, Neon Night Drive"
+      ],
+      "title": "Tags"
+    },
+    {
+      "id": 10,
+      "type": "JSONField",
+      "pos": [
+        2380,
+        300
+      ],
+      "size": [
+        340,
+        170
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 11
+        },
+        {
+          "name": "field_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "field_path"
+          }
+        },
+        {
+          "name": "fallback",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "fallback"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "STRING",
+          "links": [
+            14,
+            17,
+            31
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JSONField"
+      },
+      "widgets_values": [
+        "lyrics",
+        "[Verse 1]\nNeon rain on the windshield\nLeaving shadows in the lane\n[Chorus]\nWe drive until the morning\nPast the ghosts that knew our names\n[Outro]\nNew light on the highway\nNew life in the flame"
+      ],
+      "title": "Lyrics"
+    },
+    {
+      "id": 11,
+      "type": "SaveText",
+      "pos": [
+        5480,
+        1720
+      ],
+      "size": [
+        340,
+        130
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 14
+        },
+        {
+          "name": "filename_prefix",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "filename_prefix"
+          }
+        },
+        {
+          "name": "extension",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "extension"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "saved_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SaveText"
+      },
+      "widgets_values": [
+        "crag/song_lyrics",
+        "txt"
+      ],
+      "title": "Save Lyrics"
+    },
+    {
+      "id": 12,
+      "type": "PrimitiveInt",
+      "pos": [
+        2840,
+        100
+      ],
+      "size": [
+        220,
+        80
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "value",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "value"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            15,
+            18
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        0
+      ],
+      "title": "Seed"
+    },
+    {
+      "id": 13,
+      "type": "DualCLIPLoader",
+      "pos": [
+        2840,
+        220
+      ],
+      "size": [
+        330,
+        140
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            19
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DualCLIPLoader"
+      },
+      "widgets_values": [
+        "qwen_0.6b_ace15.safetensors",
+        "qwen_4b_ace15.safetensors",
+        "ace",
+        "default"
+      ],
+      "title": "ACE Dual CLIP"
+    },
+    {
+      "id": 14,
+      "type": "UNETLoader",
+      "pos": [
+        2840,
+        410
+      ],
+      "size": [
+        330,
+        110
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            20
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "acestep_v1.5_turbo.safetensors",
+        "default"
+      ],
+      "title": "ACE Model"
+    },
+    {
+      "id": 15,
+      "type": "VAELoader",
+      "pos": [
+        2840,
+        570
+      ],
+      "size": [
+        330,
+        90
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            24
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "ace_1.5_vae.safetensors"
+      ],
+      "title": "ACE VAE"
+    },
+    {
+      "id": 16,
+      "type": "TextEncodeAceStepAudio1.5",
+      "pos": [
+        3240,
+        100
+      ],
+      "size": [
+        430,
+        390
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "tags",
+          "type": "STRING",
+          "link": 12
+        },
+        {
+          "name": "lyrics",
+          "type": "STRING",
+          "link": 17
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "link": 15
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            21,
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeAceStepAudio1.5"
+      },
+      "widgets_values": [
+        95,
+        120,
+        "4",
+        "en",
+        "E minor",
+        true,
+        2,
+        0.85,
+        0.9,
+        0,
+        0
+      ],
+      "title": "ACE Text Encode"
+    },
+    {
+      "id": 17,
+      "type": "EmptyAceStep1.5LatentAudio",
+      "pos": [
+        3240,
+        540
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyAceStep1.5LatentAudio"
+      },
+      "widgets_values": [
+        120,
+        1
+      ],
+      "title": "Empty ACE Latent"
+    },
+    {
+      "id": 18,
+      "type": "ConditioningZeroOut",
+      "pos": [
+        3720,
+        260
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            26
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ConditioningZeroOut"
+      },
+      "widgets_values": [],
+      "title": "ACE Negative"
+    },
+    {
+      "id": 19,
+      "type": "ModelSamplingAuraFlow",
+      "pos": [
+        3720,
+        100
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            25
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ModelSamplingAuraFlow"
+      },
+      "widgets_values": [
+        3
+      ],
+      "title": "ACE Sampling"
+    },
+    {
+      "id": 20,
+      "type": "KSampler",
+      "pos": [
+        4100,
+        110
+      ],
+      "size": [
+        360,
+        420
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "seed",
+          "type": "INT",
+          "link": 18
+        },
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 25
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 21
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 26
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            27
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        8,
+        1,
+        "euler",
+        "simple",
+        1
+      ],
+      "title": "ACE Sampler"
+    },
+    {
+      "id": 21,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        4520,
+        170
+      ],
+      "size": [
+        280,
+        110
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 27
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 24
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            28
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecodeAudio"
+      },
+      "widgets_values": [],
+      "title": "Decode Song"
+    },
+    {
+      "id": 22,
+      "type": "SaveAudioMP3",
+      "pos": [
+        5480,
+        160
+      ],
+      "size": [
+        320,
+        140
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 28
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SaveAudioMP3"
+      },
+      "widgets_values": [
+        "audio/CRAG_Agentic_Song",
+        "V0",
+        ""
+      ],
+      "title": "Save Song MP3"
+    },
+    {
+      "id": 23,
+      "type": "TextTemplate",
+      "pos": [
+        2840,
+        760
+      ],
+      "size": [
+        460,
+        250
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "theme",
+          "type": "STRING",
+          "link": 3
+        },
+        {
+          "name": "style",
+          "type": "STRING",
+          "link": 4
+        },
+        {
+          "name": "tags",
+          "type": "STRING",
+          "link": 16
+        },
+        {
+          "name": "lyrics",
+          "type": "STRING",
+          "link": 31
+        },
+        {
+          "name": "template",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "template"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            29
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextTemplate"
+      },
+      "widgets_values": [
+        "Create a square album cover prompt for an image model. Theme: {theme}\nMusical style: {style}\nTags: {tags}\nLyrics:\n{lyrics}\nReturn only valid JSON with exactly this key: image_prompt. The image prompt should describe the cover art, mood, composition, color palette, lighting, typography-free design, and high-quality album artwork style."
+      ],
+      "title": "Album Art Prompt Request"
+    },
+    {
+      "id": 24,
+      "type": "Agent",
+      "pos": [
+        3380,
+        760
+      ],
+      "size": [
+        360,
+        420
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "llm",
+          "type": "RUNPOD_LLM",
+          "link": 13,
+          "shape": 7
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "system_prompt"
+          }
+        },
+        {
+          "name": "harness",
+          "type": "COMBO",
+          "link": null,
+          "label": "Agent Harness",
+          "widget": {
+            "name": "harness"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "agent",
+          "type": "RUNPOD_APP_AGENT",
+          "links": [
+            30
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Agent"
+      },
+      "widgets_values": [
+        "Pi",
+        "deepseek-v4-flash",
+        "auto_start",
+        "/workspace",
+        "You are an album art director. Return only valid JSON. Do not wrap the JSON in markdown."
+      ],
+      "title": "Album Art Prompt Agent"
+    },
+    {
+      "id": 25,
+      "type": "KeepAlive",
+      "pos": [
+        3380,
+        1230
+      ],
+      "size": [
+        320,
+        210
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "keep_alive",
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "links": [
+            32
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KeepAlive"
+      },
+      "widgets_values": [
+        "time",
+        "stop",
+        5,
+        "minutes",
+        0,
+        0,
+        0,
+        "both"
+      ],
+      "title": "Art Agent Keep Alive"
+    },
+    {
+      "id": 26,
+      "type": "Deploy",
+      "pos": [
+        3820,
+        790
+      ],
+      "size": [
+        320,
+        260
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "app",
+          "type": "RUNPOD_APP_AGENT",
+          "link": 30
+        },
+        {
+          "name": "keep_alive",
+          "type": "RUNPOD_KEEPALIVE_POLICY",
+          "link": 32,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "links": [
+            33
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Deploy"
+      },
+      "widgets_values": [],
+      "title": "Deploy Album Art Agent"
+    },
+    {
+      "id": 27,
+      "type": "RunLocalContainers",
+      "pos": [
+        4190,
+        760
+      ],
+      "size": [
+        420,
+        430
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 29
+        },
+        {
+          "name": "deployment",
+          "type": "RUNPOD_DEPLOYMENT_SPEC",
+          "link": 33
+        },
+        {
+          "name": "engine",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "engine"
+          }
+        },
+        {
+          "name": "project_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "project_name"
+          }
+        },
+        {
+          "name": "output_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "output_path"
+          }
+        },
+        {
+          "name": "action",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "action"
+          }
+        },
+        {
+          "name": "use_sudo",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "use_sudo"
+          }
+        },
+        {
+          "name": "timeout_seconds",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "timeout_seconds"
+          }
+        },
+        {
+          "name": "response_role",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "response_role"
+          }
+        },
+        {
+          "name": "response_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "response_path"
+          }
+        },
+        {
+          "name": "response_timeout_seconds",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "response_timeout_seconds"
+          }
+        },
+        {
+          "name": "reuse_policy",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "reuse_policy"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "response",
+          "type": "STRING",
+          "links": [
+            34
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RunLocalContainers"
+      },
+      "widgets_values": [
+        "",
+        "containerd",
+        "crag-album-art-agent",
+        "artifacts/local-runtime/album-art-agent-compose.yaml",
+        "apply_and_wait",
+        true,
+        1200,
+        "agent",
+        "/workspace/.runpod_agentic/response.txt",
+        900,
+        "reuse_matching"
+      ],
+      "title": "Run Album Art Agent"
+    },
+    {
+      "id": 28,
+      "type": "JSONField",
+      "pos": [
+        4660,
+        790
+      ],
+      "size": [
+        350,
+        160
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 34
+        },
+        {
+          "name": "field_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "field_path"
+          }
+        },
+        {
+          "name": "fallback",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "fallback"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "STRING",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JSONField"
+      },
+      "widgets_values": [
+        "image_prompt",
+        "Square album cover, neon rain on a dark highway, cinematic synthwave mood, hopeful glow on wet asphalt, analog film texture, high-end music artwork, no text"
+      ],
+      "title": "Flux Prompt"
+    },
+    {
+      "id": 29,
+      "type": "PrimitiveInt",
+      "pos": [
+        2840,
+        1540
+      ],
+      "size": [
+        220,
+        80
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            36,
+            38
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        1024
+      ],
+      "title": "Album Width"
+    },
+    {
+      "id": 30,
+      "type": "PrimitiveInt",
+      "pos": [
+        2840,
+        1660
+      ],
+      "size": [
+        220,
+        80
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            37,
+            39
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        1024
+      ],
+      "title": "Album Height"
+    },
+    {
+      "id": 31,
+      "type": "UNETLoader",
+      "pos": [
+        3220,
+        1510
+      ],
+      "size": [
+        330,
+        110
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "flux-2-klein-base-9b-fp8.safetensors",
+        "default"
+      ],
+      "title": "Flux Klein 9B"
+    },
+    {
+      "id": 32,
+      "type": "CLIPLoader",
+      "pos": [
+        3220,
+        1660
+      ],
+      "size": [
+        330,
+        120
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            41,
+            42
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "qwen_3_8b_fp8mixed.safetensors",
+        "flux2",
+        "default"
+      ],
+      "title": "Flux CLIP"
+    },
+    {
+      "id": 33,
+      "type": "VAELoader",
+      "pos": [
+        3220,
+        1830
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            48
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "flux2-vae.safetensors"
+      ],
+      "title": "Flux VAE"
+    },
+    {
+      "id": 34,
+      "type": "CLIPTextEncode",
+      "pos": [
+        3600,
+        1480
+      ],
+      "size": [
+        330,
+        120
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 35
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 41
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            43
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [],
+      "title": "Flux Positive"
+    },
+    {
+      "id": 35,
+      "type": "CLIPTextEncode",
+      "pos": [
+        3600,
+        1640
+      ],
+      "size": [
+        330,
+        120
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 42
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "text"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            44
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "title": "Flux Negative"
+    },
+    {
+      "id": 36,
+      "type": "EmptyFlux2LatentImage",
+      "pos": [
+        3600,
+        1810
+      ],
+      "size": [
+        330,
+        120
+      ],
+      "flags": {},
+      "order": 35,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 36
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 37
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            45
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyFlux2LatentImage"
+      },
+      "widgets_values": [
+        1
+      ],
+      "title": "Empty Flux Latent"
+    },
+    {
+      "id": 37,
+      "type": "Flux2Scheduler",
+      "pos": [
+        3980,
+        1490
+      ],
+      "size": [
+        310,
+        130
+      ],
+      "flags": {},
+      "order": 36,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 38
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 39
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            46
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Flux2Scheduler"
+      },
+      "widgets_values": [
+        20
+      ],
+      "title": "Flux Scheduler"
+    },
+    {
+      "id": 38,
+      "type": "KSamplerSelect",
+      "pos": [
+        3980,
+        1660
+      ],
+      "size": [
+        260,
+        80
+      ],
+      "flags": {},
+      "order": 37,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            47
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "euler"
+      ],
+      "title": "Flux Sampler"
+    },
+    {
+      "id": 39,
+      "type": "RandomNoise",
+      "pos": [
+        3980,
+        1790
+      ],
+      "size": [
+        280,
+        80
+      ],
+      "flags": {},
+      "order": 38,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            49
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        653844576367526
+      ],
+      "title": "Flux Noise"
+    },
+    {
+      "id": 40,
+      "type": "CFGGuider",
+      "pos": [
+        4340,
+        1510
+      ],
+      "size": [
+        320,
+        150
+      ],
+      "flags": {},
+      "order": 39,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 40
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 43
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 44
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            50
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CFGGuider"
+      },
+      "widgets_values": [
+        5
+      ],
+      "title": "Flux Guider"
+    },
+    {
+      "id": 41,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        4720,
+        1510
+      ],
+      "size": [
+        360,
+        230
+      ],
+      "flags": {},
+      "order": 40,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 49
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 50
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 47
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 46
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 45
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            51
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      },
+      "widgets_values": [],
+      "title": "Flux Sample"
+    },
+    {
+      "id": 42,
+      "type": "VAEDecode",
+      "pos": [
+        5140,
+        1540
+      ],
+      "size": [
+        280,
+        110
+      ],
+      "flags": {},
+      "order": 41,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 51
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 48
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            52
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "widgets_values": [],
+      "title": "Decode Album Art"
+    },
+    {
+      "id": 43,
+      "type": "SaveImage",
+      "pos": [
+        5480,
+        1530
+      ],
+      "size": [
+        320,
+        120
+      ],
+      "flags": {},
+      "order": 42,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 52
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "CRAG_Agentic_Album_Art"
+      ],
+      "title": "Save Album Art"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "STRING"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      1,
+      "STRING"
+    ],
+    [
+      3,
+      1,
+      0,
+      23,
+      0,
+      "STRING"
+    ],
+    [
+      4,
+      2,
+      0,
+      23,
+      1,
+      "STRING"
+    ],
+    [
+      5,
+      3,
+      0,
+      8,
+      0,
+      "STRING"
+    ],
+    [
+      6,
+      4,
+      0,
+      5,
+      0,
+      "RUNPOD_LLM"
+    ],
+    [
+      7,
+      5,
+      0,
+      7,
+      0,
+      "RUNPOD_APP_AGENT"
+    ],
+    [
+      8,
+      6,
+      0,
+      7,
+      1,
+      "RUNPOD_KEEPALIVE_POLICY"
+    ],
+    [
+      9,
+      7,
+      0,
+      8,
+      1,
+      "RUNPOD_DEPLOYMENT_SPEC"
+    ],
+    [
+      10,
+      8,
+      1,
+      9,
+      0,
+      "STRING"
+    ],
+    [
+      11,
+      8,
+      1,
+      10,
+      0,
+      "STRING"
+    ],
+    [
+      12,
+      9,
+      0,
+      16,
+      0,
+      "STRING"
+    ],
+    [
+      13,
+      4,
+      0,
+      24,
+      0,
+      "RUNPOD_LLM"
+    ],
+    [
+      14,
+      10,
+      0,
+      11,
+      0,
+      "STRING"
+    ],
+    [
+      15,
+      12,
+      0,
+      16,
+      2,
+      "INT"
+    ],
+    [
+      16,
+      9,
+      0,
+      23,
+      2,
+      "STRING"
+    ],
+    [
+      17,
+      10,
+      0,
+      16,
+      1,
+      "STRING"
+    ],
+    [
+      18,
+      12,
+      0,
+      20,
+      0,
+      "INT"
+    ],
+    [
+      19,
+      13,
+      0,
+      16,
+      3,
+      "CLIP"
+    ],
+    [
+      20,
+      14,
+      0,
+      19,
+      0,
+      "MODEL"
+    ],
+    [
+      21,
+      16,
+      0,
+      20,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      22,
+      16,
+      0,
+      18,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      23,
+      17,
+      0,
+      20,
+      4,
+      "LATENT"
+    ],
+    [
+      24,
+      15,
+      0,
+      21,
+      1,
+      "VAE"
+    ],
+    [
+      25,
+      19,
+      0,
+      20,
+      1,
+      "MODEL"
+    ],
+    [
+      26,
+      18,
+      0,
+      20,
+      3,
+      "CONDITIONING"
+    ],
+    [
+      27,
+      20,
+      0,
+      21,
+      0,
+      "LATENT"
+    ],
+    [
+      28,
+      21,
+      0,
+      22,
+      0,
+      "AUDIO"
+    ],
+    [
+      29,
+      23,
+      0,
+      27,
+      0,
+      "STRING"
+    ],
+    [
+      30,
+      24,
+      0,
+      26,
+      0,
+      "RUNPOD_APP_AGENT"
+    ],
+    [
+      31,
+      10,
+      0,
+      23,
+      3,
+      "STRING"
+    ],
+    [
+      32,
+      25,
+      0,
+      26,
+      1,
+      "RUNPOD_KEEPALIVE_POLICY"
+    ],
+    [
+      33,
+      26,
+      0,
+      27,
+      1,
+      "RUNPOD_DEPLOYMENT_SPEC"
+    ],
+    [
+      34,
+      27,
+      1,
+      28,
+      0,
+      "STRING"
+    ],
+    [
+      35,
+      28,
+      0,
+      34,
+      0,
+      "STRING"
+    ],
+    [
+      36,
+      29,
+      0,
+      36,
+      0,
+      "INT"
+    ],
+    [
+      37,
+      30,
+      0,
+      36,
+      1,
+      "INT"
+    ],
+    [
+      38,
+      29,
+      0,
+      37,
+      0,
+      "INT"
+    ],
+    [
+      39,
+      30,
+      0,
+      37,
+      1,
+      "INT"
+    ],
+    [
+      40,
+      31,
+      0,
+      40,
+      0,
+      "MODEL"
+    ],
+    [
+      41,
+      32,
+      0,
+      34,
+      1,
+      "CLIP"
+    ],
+    [
+      42,
+      32,
+      0,
+      35,
+      0,
+      "CLIP"
+    ],
+    [
+      43,
+      34,
+      0,
+      40,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      44,
+      35,
+      0,
+      40,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      45,
+      36,
+      0,
+      41,
+      4,
+      "LATENT"
+    ],
+    [
+      46,
+      37,
+      0,
+      41,
+      3,
+      "SIGMAS"
+    ],
+    [
+      47,
+      38,
+      0,
+      41,
+      2,
+      "SAMPLER"
+    ],
+    [
+      48,
+      33,
+      0,
+      42,
+      1,
+      "VAE"
+    ],
+    [
+      49,
+      39,
+      0,
+      41,
+      0,
+      "NOISE"
+    ],
+    [
+      50,
+      40,
+      0,
+      41,
+      1,
+      "GUIDER"
+    ],
+    [
+      51,
+      41,
+      0,
+      42,
+      0,
+      "LATENT"
+    ],
+    [
+      52,
+      42,
+      0,
+      43,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Creative Inputs",
+      "bounding": [
+        80,
+        80,
+        440,
+        460
+      ],
+      "color": "#355f9c",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Songwriting Agent",
+      "bounding": [
+        560,
+        60,
+        2200,
+        720
+      ],
+      "color": "#3f7f5f",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "ACE-Step Song Generation",
+      "bounding": [
+        2800,
+        60,
+        2440,
+        650
+      ],
+      "color": "#8a6f38",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Album Art Prompt Agent",
+      "bounding": [
+        2800,
+        720,
+        2250,
+        740
+      ],
+      "color": "#5c4f8a",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Flux Klein Album Art",
+      "bounding": [
+        2800,
+        1470,
+        2640,
+        540
+      ],
+      "color": "#7c4f5f",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Final Outputs",
+      "bounding": [
+        5440,
+        120,
+        420,
+        1780
+      ],
+      "color": "#4f718a",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6,
+      "offset": [
+        -40,
+        20
+      ]
+    },
+    "frontendVersion": "1.43.18"
+  },
+  "version": 0.4
+}

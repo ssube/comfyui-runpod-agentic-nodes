@@ -195,6 +195,7 @@ Core:
 - `Build Container`: commits a configured container to a tagged image, can push it to Docker Hub, and emits that image name for a later `Agent` node to consume.
 - `Keep Alive`: time, turns, cost, or manual policy with server-side, pod-side, or layered enforcement.
 - `Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
+- `Text Template`, `JSON Field`, and `Save Text`: small text utilities for agentic handoff workflows where one agent produces structured text for later ComfyUI model nodes.
 
 Apps and services:
 

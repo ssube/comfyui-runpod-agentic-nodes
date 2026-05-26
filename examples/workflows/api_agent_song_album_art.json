@@ -1,0 +1,661 @@
+{
+  "1": {
+    "inputs": {
+      "value": "A late-night road trip through rain-soaked neon streets after leaving an old life behind."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Theme"
+    }
+  },
+  "2": {
+    "inputs": {
+      "value": "moody synthwave pop with cinematic drums, warm analog bass, and a hopeful chorus"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Musical Style"
+    }
+  },
+  "3": {
+    "inputs": {
+      "template": "Write concise ACE-step inputs for a complete song. Theme: {theme}\nMusical style: {style}\nReturn only valid JSON with exactly these keys: tags, lyrics. The tags value should be one comma-separated string including genre, mood, tempo/BPM, instrumentation, vocal style, key if useful, and production notes. The lyrics value should include section headers like [Verse 1], [Chorus], and [Outro].",
+      "theme": [
+        "1",
+        0
+      ],
+      "style": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "TextTemplate",
+    "_meta": {
+      "title": "Song Brief Prompt"
+    }
+  },
+  "4": {
+    "inputs": {
+      "provider": "Ollama Cloud",
+      "model": "deepseek-v4-flash",
+      "api_key_secret_name": "OLLAMA_API_KEY",
+      "base_url_override": ""
+    },
+    "class_type": "LLMApi",
+    "_meta": {
+      "title": "Ollama Cloud"
+    }
+  },
+  "5": {
+    "inputs": {
+      "harness": "Pi",
+      "model": "deepseek-v4-flash",
+      "startup_mode": "auto_start",
+      "workspace_path": "/workspace",
+      "system_prompt": "You are a production songwriter preparing exact model inputs. Return only valid JSON. Do not wrap the JSON in markdown.",
+      "llm": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "Agent",
+    "_meta": {
+      "title": "Songwriting Agent"
+    }
+  },
+  "6": {
+    "inputs": {
+      "app": [
+        "5",
+        0
+      ],
+      "keep_alive": [
+        "37",
+        0
+      ]
+    },
+    "class_type": "Deploy",
+    "_meta": {
+      "title": "Deploy Songwriting Agent"
+    }
+  },
+  "7": {
+    "inputs": {
+      "prompt": [
+        "3",
+        0
+      ],
+      "deployment": [
+        "6",
+        0
+      ],
+      "engine": "containerd",
+      "project_name": "crag-songwriting-agent",
+      "output_path": "artifacts/local-runtime/songwriting-agent-compose.yaml",
+      "action": "apply_and_wait",
+      "use_sudo": true,
+      "timeout_seconds": 1200,
+      "response_role": "agent",
+      "response_path": "/workspace/.runpod_agentic/response.txt",
+      "response_timeout_seconds": 900,
+      "reuse_policy": "reuse_matching"
+    },
+    "class_type": "RunLocalContainers",
+    "_meta": {
+      "title": "Run Songwriting Agent"
+    }
+  },
+  "8": {
+    "inputs": {
+      "text": [
+        "7",
+        1
+      ],
+      "field_path": "tags",
+      "fallback": "Synthwave Pop, 92 BPM, Analog Bass, Cinematic Drums, Hopeful Chorus, Male Lead Vocal, Neon Night Drive"
+    },
+    "class_type": "JSONField",
+    "_meta": {
+      "title": "Tags"
+    }
+  },
+  "9": {
+    "inputs": {
+      "text": [
+        "7",
+        1
+      ],
+      "field_path": "lyrics",
+      "fallback": "[Verse 1]\nNeon rain on the windshield\nLeaving shadows in the lane\n[Chorus]\nWe drive until the morning\nPast the ghosts that knew our names\n[Outro]\nNew light on the highway\nNew life in the flame"
+    },
+    "class_type": "JSONField",
+    "_meta": {
+      "title": "Lyrics"
+    }
+  },
+  "10": {
+    "inputs": {
+      "text": [
+        "9",
+        0
+      ],
+      "filename_prefix": "crag/song_lyrics",
+      "extension": "txt"
+    },
+    "class_type": "SaveText",
+    "_meta": {
+      "title": "Save Lyrics"
+    }
+  },
+  "11": {
+    "inputs": {
+      "template": "Create a square album cover prompt for an image model. Theme: {theme}\nMusical style: {style}\nTags: {tags}\nLyrics:\n{lyrics}\nReturn only valid JSON with exactly this key: image_prompt. The image prompt should describe the cover art, mood, composition, color palette, lighting, typography-free design, and high-quality album artwork style.",
+      "theme": [
+        "1",
+        0
+      ],
+      "style": [
+        "2",
+        0
+      ],
+      "tags": [
+        "8",
+        0
+      ],
+      "lyrics": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "TextTemplate",
+    "_meta": {
+      "title": "Album Art Prompt Request"
+    }
+  },
+  "12": {
+    "inputs": {
+      "harness": "Pi",
+      "model": "deepseek-v4-flash",
+      "startup_mode": "auto_start",
+      "workspace_path": "/workspace",
+      "system_prompt": "You are an album art director. Return only valid JSON. Do not wrap the JSON in markdown.",
+      "llm": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "Agent",
+    "_meta": {
+      "title": "Album Art Prompt Agent"
+    }
+  },
+  "13": {
+    "inputs": {
+      "app": [
+        "12",
+        0
+      ],
+      "keep_alive": [
+        "38",
+        0
+      ]
+    },
+    "class_type": "Deploy",
+    "_meta": {
+      "title": "Deploy Album Art Agent"
+    }
+  },
+  "14": {
+    "inputs": {
+      "prompt": [
+        "11",
+        0
+      ],
+      "deployment": [
+        "13",
+        0
+      ],
+      "engine": "containerd",
+      "project_name": "crag-album-art-agent",
+      "output_path": "artifacts/local-runtime/album-art-agent-compose.yaml",
+      "action": "apply_and_wait",
+      "use_sudo": true,
+      "timeout_seconds": 1200,
+      "response_role": "agent",
+      "response_path": "/workspace/.runpod_agentic/response.txt",
+      "response_timeout_seconds": 900,
+      "reuse_policy": "reuse_matching"
+    },
+    "class_type": "RunLocalContainers",
+    "_meta": {
+      "title": "Run Album Art Agent"
+    }
+  },
+  "15": {
+    "inputs": {
+      "text": [
+        "14",
+        1
+      ],
+      "field_path": "image_prompt",
+      "fallback": "Square album cover, neon rain on a dark highway, cinematic synthwave mood, hopeful glow on wet asphalt, analog film texture, high-end music artwork, no text"
+    },
+    "class_type": "JSONField",
+    "_meta": {
+      "title": "Flux Prompt"
+    }
+  },
+  "16": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Seed"
+    }
+  },
+  "17": {
+    "inputs": {
+      "seed": [
+        "16",
+        0
+      ],
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "21",
+        0
+      ],
+      "positive": [
+        "20",
+        0
+      ],
+      "negative": [
+        "19",
+        0
+      ],
+      "latent_image": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "ACE Sampler"
+    }
+  },
+  "18": {
+    "inputs": {
+      "seconds": 120,
+      "batch_size": 1
+    },
+    "class_type": "EmptyAceStep1.5LatentAudio",
+    "_meta": {
+      "title": "Empty Ace Step 1.5 Latent Audio"
+    }
+  },
+  "19": {
+    "inputs": {
+      "conditioning": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "ACE Negative Conditioning"
+    }
+  },
+  "20": {
+    "inputs": {
+      "tags": [
+        "8",
+        0
+      ],
+      "lyrics": [
+        "9",
+        0
+      ],
+      "seed": [
+        "16",
+        0
+      ],
+      "bpm": 95,
+      "duration": 120,
+      "timesignature": "4",
+      "language": "en",
+      "keyscale": "E minor",
+      "generate_audio_codes": true,
+      "cfg_scale": 2,
+      "temperature": 0.85,
+      "top_p": 0.9,
+      "top_k": 0,
+      "min_p": 0,
+      "clip": [
+        "22",
+        0
+      ]
+    },
+    "class_type": "TextEncodeAceStepAudio1.5",
+    "_meta": {
+      "title": "ACE Text Encode"
+    }
+  },
+  "21": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "ACE Model Sampling"
+    }
+  },
+  "22": {
+    "inputs": {
+      "clip_name1": "qwen_0.6b_ace15.safetensors",
+      "clip_name2": "qwen_4b_ace15.safetensors",
+      "type": "ace",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "ACE Dual CLIP"
+    }
+  },
+  "23": {
+    "inputs": {
+      "unet_name": "acestep_v1.5_turbo.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "ACE Model"
+    }
+  },
+  "24": {
+    "inputs": {
+      "vae_name": "ace_1.5_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "ACE VAE"
+    }
+  },
+  "25": {
+    "inputs": {
+      "samples": [
+        "17",
+        0
+      ],
+      "vae": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "Decode Song"
+    }
+  },
+  "26": {
+    "inputs": {
+      "filename_prefix": "audio/CRAG_Agentic_Song",
+      "quality": "V0",
+      "audioUI": "",
+      "audio": [
+        "25",
+        0
+      ]
+    },
+    "class_type": "SaveAudioMP3",
+    "_meta": {
+      "title": "Save Song MP3"
+    }
+  },
+  "27": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Flux Sampler"
+    }
+  },
+  "28": {
+    "inputs": {
+      "steps": 20,
+      "width": [
+        "34",
+        0
+      ],
+      "height": [
+        "35",
+        0
+      ]
+    },
+    "class_type": "Flux2Scheduler",
+    "_meta": {
+      "title": "Flux Scheduler"
+    }
+  },
+  "29": {
+    "inputs": {
+      "cfg": 5,
+      "model": [
+        "32",
+        0
+      ],
+      "positive": [
+        "36",
+        0
+      ],
+      "negative": [
+        "33",
+        0
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "Flux Guider"
+    }
+  },
+  "30": {
+    "inputs": {
+      "noise": [
+        "39",
+        0
+      ],
+      "guider": [
+        "29",
+        0
+      ],
+      "sampler": [
+        "27",
+        0
+      ],
+      "sigmas": [
+        "28",
+        0
+      ],
+      "latent_image": [
+        "31",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "Flux Sample"
+    }
+  },
+  "31": {
+    "inputs": {
+      "width": [
+        "34",
+        0
+      ],
+      "height": [
+        "35",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "Empty Flux Latent"
+    }
+  },
+  "32": {
+    "inputs": {
+      "unet_name": "flux-2-klein-base-9b-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Flux Klein 9B"
+    }
+  },
+  "33": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "40",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Flux Negative"
+    }
+  },
+  "34": {
+    "inputs": {
+      "value": 1024
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Album Width"
+    }
+  },
+  "35": {
+    "inputs": {
+      "value": 1024
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Album Height"
+    }
+  },
+  "36": {
+    "inputs": {
+      "text": [
+        "15",
+        0
+      ],
+      "clip": [
+        "40",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Flux Positive"
+    }
+  },
+  "37": {
+    "inputs": {
+      "mode": "time",
+      "action": "stop",
+      "time_value": 5,
+      "time_unit": "minutes",
+      "turn_limit": 0,
+      "cost_limit_usd": 0,
+      "idle_grace_seconds": 0,
+      "enforcement": "both"
+    },
+    "class_type": "KeepAlive",
+    "_meta": {
+      "title": "Song Agent Keep Alive"
+    }
+  },
+  "38": {
+    "inputs": {
+      "mode": "time",
+      "action": "stop",
+      "time_value": 5,
+      "time_unit": "minutes",
+      "turn_limit": 0,
+      "cost_limit_usd": 0,
+      "idle_grace_seconds": 0,
+      "enforcement": "both"
+    },
+    "class_type": "KeepAlive",
+    "_meta": {
+      "title": "Art Agent Keep Alive"
+    }
+  },
+  "39": {
+    "inputs": {
+      "noise_seed": 653844576367526
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "Flux Noise"
+    }
+  },
+  "40": {
+    "inputs": {
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Flux CLIP"
+    }
+  },
+  "41": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Flux VAE"
+    }
+  },
+  "42": {
+    "inputs": {
+      "samples": [
+        "30",
+        0
+      ],
+      "vae": [
+        "41",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Decode Album Art"
+    }
+  },
+  "43": {
+    "inputs": {
+      "filename_prefix": "CRAG_Agentic_Album_Art",
+      "images": [
+        "42",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Album Art"
+    }
+  }
+}

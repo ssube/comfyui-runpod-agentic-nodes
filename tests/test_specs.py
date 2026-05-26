@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from comfyui_runpod_agentic import NODE_DISPLAY_NAME_MAPPINGS
+from comfyui_runpod_agentic import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 from comfyui_runpod_agentic.harnesses import CENTRAL_SKILLS_PATH, harness_matrix_rows
 from comfyui_runpod_agentic.local_runtime import LocalApplyResult
 from comfyui_runpod_agentic.nodes import (
@@ -12,6 +12,7 @@ from comfyui_runpod_agentic.nodes import (
     BuildContainerNode,
     DeployNode,
     GitRepositoryNode,
+    JSONFieldNode,
     KeepAliveNode,
     LanguageRuntimeNode,
     LLMApiNode,
@@ -24,10 +25,12 @@ from comfyui_runpod_agentic.nodes import (
     RunLocalContainersNode,
     RunOnRunpodNode,
     S3StorageNode,
+    SaveTextNode,
     SkillFrameworkNode,
     SkillNode,
     SSHCommandNode,
     StartupScriptNode,
+    TextTemplateNode,
     VectorDatabaseNode,
     WebTerminalNode,
     local_terminal_auth,
@@ -44,6 +47,9 @@ def test_user_facing_core_node_names():
     assert NODE_DISPLAY_NAME_MAPPINGS["Package"] == "Package"
     assert NODE_DISPLAY_NAME_MAPPINGS["GitRepository"] == "Git Repository"
     assert NODE_DISPLAY_NAME_MAPPINGS["LanguageRuntime"] == "Language Runtime"
+    assert NODE_DISPLAY_NAME_MAPPINGS["TextTemplate"] == "Text Template"
+    assert NODE_DISPLAY_NAME_MAPPINGS["JSONField"] == "JSON Field"
+    assert NODE_DISPLAY_NAME_MAPPINGS["SaveText"] == "Save Text"
     assert NODE_DISPLAY_NAME_MAPPINGS["BuildContainer"] == "Build Container"
     assert NODE_DISPLAY_NAME_MAPPINGS["RunOnRunpod"] == "Run on Runpod"
     assert NODE_DISPLAY_NAME_MAPPINGS["StartupScript"] == "Startup Script"
@@ -72,6 +78,43 @@ def test_local_runtime_nodes_expose_deployment_actions_only():
 def test_terminal_run_nodes_put_prompt_first():
     assert next(iter(RunOnRunpodNode.INPUT_TYPES()["required"])) == "prompt"
     assert next(iter(RunLocalContainersNode.INPUT_TYPES()["required"])) == "prompt"
+
+
+def test_text_template_renders_named_agent_fields():
+    text = TextTemplateNode().render("Theme: {theme}\nStyle: {style}\nTags: {tags}\nLyrics: {lyrics}\nMissing: {unknown}", theme="neon rain", style="synthwave", tags="80 BPM", lyrics="line one")[0]
+
+    assert "Theme: neon rain" in text
+    assert "Style: synthwave" in text
+    assert "Tags: 80 BPM" in text
+    assert "Lyrics: line one" in text
+    assert "Missing: {unknown}" in text
+
+
+def test_json_field_extracts_agent_fenced_json():
+    payload = 'Agent answer:\n```json\n{"song": {"tags": "dark pop, 92 BPM", "lyrics": "[Verse]\\nGlow"}}\n```'
+
+    assert JSONFieldNode().extract(payload, "song.tags")[0] == "dark pop, 92 BPM"
+    assert JSONFieldNode().extract(payload, "song.lyrics")[0] == "[Verse]\nGlow"
+    assert JSONFieldNode().extract(payload, "song.missing", "fallback")[0] == "fallback"
+
+
+def test_json_field_rejects_text_without_json():
+    with pytest.raises(ValidationError, match="does not contain JSON"):
+        JSONFieldNode().extract("plain text only", "lyrics")
+
+
+def test_save_text_writes_preview_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    text, saved_path = SaveTextNode().save("lyrics", "album/lyrics", "txt")
+
+    assert text == "lyrics"
+    assert Path(saved_path).read_text() == "lyrics"
+    assert saved_path.endswith("artifacts/text/album/lyrics.txt")
+
+    _second_text, second_saved_path = SaveTextNode().save("more lyrics", "album/lyrics", "txt")
+    assert Path(second_saved_path).read_text() == "more lyrics"
+    assert "album/lyrics-" in second_saved_path
 
 
 def test_deploy_is_graph_only_and_runpod_terminal_owns_placement_options():
@@ -285,6 +328,34 @@ def test_pi_ollama_terminal_example_attaches_ttyd_to_tmux_session():
     assert workflow["5"]["inputs"]["provider"] == "Ollama Cloud"
     assert workflow["6"]["inputs"]["startup_mode"] == "manual"
     assert workflow["8"]["inputs"]["action"] == "apply"
+
+
+def test_agent_song_album_art_example_wires_text_agents_to_ace_and_flux():
+    workflow = json.loads(Path("examples/workflows/api_agent_song_album_art.json").read_text())
+    class_types = [node["class_type"] for node in workflow.values()]
+
+    assert class_types.count("Agent") == 2
+    assert class_types.count("RunLocalContainers") == 2
+    assert class_types.count("TextTemplate") == 2
+    assert class_types.count("JSONField") == 3
+    assert class_types.count("SaveText") == 1
+    assert workflow["7"]["inputs"]["prompt"] == ["3", 0]
+    assert workflow["14"]["inputs"]["prompt"] == ["11", 0]
+    assert workflow["8"]["inputs"]["text"] == ["7", 1]
+    assert workflow["9"]["inputs"]["text"] == ["7", 1]
+    assert workflow["15"]["inputs"]["text"] == ["14", 1]
+    assert workflow["20"]["inputs"]["tags"] == ["8", 0]
+    assert workflow["20"]["inputs"]["lyrics"] == ["9", 0]
+    assert workflow["36"]["inputs"]["text"] == ["15", 0]
+    assert workflow["10"]["inputs"]["text"] == ["9", 0]
+    assert workflow["26"]["class_type"] == "SaveAudioMP3"
+    assert workflow["43"]["class_type"] == "SaveImage"
+
+    crag_nodes = {"Agent", "Deploy", "KeepAlive", "RunLocalContainers", "LLMApi", "TextTemplate", "JSONField", "SaveText"}
+    for node in workflow.values():
+        class_type = node["class_type"]
+        if class_type in crag_nodes:
+            assert class_type in NODE_CLASS_MAPPINGS
 
 
 def test_container_snapshot_example_uses_build_container_plan():
