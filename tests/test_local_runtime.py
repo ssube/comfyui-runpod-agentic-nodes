@@ -148,6 +148,17 @@ def test_local_runtime_resource_helpers_cover_roles_and_ports():
     assert local_port_mappings(agent) == []
 
 
+def test_local_runtime_uses_agent_image_name_override():
+    agent = AgentNode().build("Pi", "model", "manual", image_name="docker.io/example/crag:latest")[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+    agent_resource = next(resource for resource in plan.resources if resource.role == "agent")
+    compose = yaml.safe_load(compose_yaml_for_plan(plan))
+    agent_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
+
+    assert image_for_resource(agent_resource) == "docker.io/example/crag:latest"
+    assert agent_service["image"] == "docker.io/example/crag:latest"
+
+
 def test_database_skill_files_are_written_by_local_runtime():
     sql = LocalSQLDatabaseNode().build("SQLite", "app", "/workspace/db/app.sqlite")[0]
     agent = AgentNode().build("Pi", "model", "manual", "/workspace", sql_database=sql)[0]

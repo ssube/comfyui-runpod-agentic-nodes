@@ -532,6 +532,19 @@ def test_build_container_node_returns_named_comfy_outputs(monkeypatch, tmp_path)
 
     assert output["ui"]["response"] == ["built\n"]
     assert output["ui"]["saved_path"] == [str(output_path)]
+    assert output["ui"]["image_name"] == ["example/crag:latest"]
+
+
+def test_agent_accepts_built_image_name_for_runpod_pod_input():
+    agent = AgentNode().build("Pi", "model", "manual", image_name="docker.io/example/crag:latest")[0]
+    deployment = DeployNode().build(agent)[0]
+
+    plan = Planner().build(deployment)
+    agent_resource = next(resource for resource in plan.resources if resource.role == "agent")
+
+    assert agent.image_name == "docker.io/example/crag:latest"
+    assert AgentNode.INPUT_TYPES()["optional"]["image_name"][0] == "RUNPOD_CONTAINER_IMAGE"
+    assert agent_resource.pod_input["imageName"] == "docker.io/example/crag:latest"
 
 
 def test_command_nodes_ignore_legacy_order_argument_and_infer_from_chain():

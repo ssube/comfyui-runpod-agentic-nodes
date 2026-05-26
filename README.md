@@ -179,7 +179,7 @@ Core:
 - `Deploy`: creates the portable workload spec around the primary agent.
 - `Run on Runpod`: plan/apply/stop/terminate output node for the Runpod target with the per-run agent prompt and placement settings.
 - `Run Local Containers`: save or plan the same deployment against a local Docker, Podman, or containerd engine, then optionally apply, reuse, stop, or terminate it.
-- `Build Container`: commits a configured container to a tagged image and can push it to Docker Hub for reuse.
+- `Build Container`: commits a configured container to a tagged image, can push it to Docker Hub, and emits that image name for a later `Agent` node to consume.
 - `Keep Alive`: time, turns, cost, or manual policy with server-side, pod-side, or layered enforcement.
 - `Logs`: reads captured local run logs and returns `(logs, saved_path)` text outputs.
 

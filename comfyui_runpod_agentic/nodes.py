@@ -71,6 +71,7 @@ from .types import (
     RUNPOD_APP_TERMINAL,
     RUNPOD_APP_VECTOR_DATABASE,
     RUNPOD_COMMAND_SSH,
+    RUNPOD_CONTAINER_IMAGE,
     RUNPOD_DEPLOYMENT_SPEC,
     RUNPOD_KEEPALIVE_POLICY,
     RUNPOD_LLM,
@@ -672,11 +673,11 @@ class AgentNode:
     def INPUT_TYPES(cls):
         return {
             "required": {"harness": (["Codex", "Claude", "OpenCode", "Hermes", "Pi"],), "model": ("STRING", {"default": ""}), "startup_mode": (["wait_for_commands", "auto_start", "manual"],), "workspace_path": ("STRING", {"default": "/workspace"}), "system_prompt": ("STRING", {"multiline": True, "default": ""})},
-            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm": (RUNPOD_LLM,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,), "skills": (RUNPOD_AGENT_SKILLS,), "terminal": (RUNPOD_APP_TERMINAL,)},
+            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm": (RUNPOD_LLM,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,), "skills": (RUNPOD_AGENT_SKILLS,), "terminal": (RUNPOD_APP_TERMINAL,), "image_name": (RUNPOD_CONTAINER_IMAGE,)},
             "hidden": {"node_id": "UNIQUE_ID", "workflow_graph": "PROMPT"},
         }
 
-    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", system_prompt: str = "", browser=None, llm=None, sql_database=None, vector_database=None, mcp_servers=None, skills=None, terminal=None, node_id: str | None = None, workflow_graph: Any = None):
+    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", system_prompt: str = "", browser=None, llm=None, sql_database=None, vector_database=None, mcp_servers=None, skills=None, terminal=None, image_name: str | None = None, node_id: str | None = None, workflow_graph: Any = None):
         llm_api = llm if isinstance(llm, LLMApiSpec) else None
         llm_server = llm if isinstance(llm, LLMServerSpec) else None
         capabilities = []
@@ -715,7 +716,7 @@ class AgentNode:
                 files={**contract.files, **terminal.runtime_contract.files},
                 commands=[*contract.commands, *terminal.runtime_contract.commands],
             )
-        return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, terminal, contract, capabilities, None, meta(node_id, harness)),)
+        return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, terminal, image_name.strip() if image_name else None, contract, capabilities, None, meta(node_id, harness)),)
 
 
 def harness_capability_warning(harness_id: str, system_prompt: str) -> str:
@@ -865,8 +866,8 @@ class LanguageRuntimeNode:
 
 class BuildContainerNode:
     CATEGORY = "Runpod/Core"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("result", "response", "errors", "compose_yaml", "saved_path")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", RUNPOD_CONTAINER_IMAGE)
+    RETURN_NAMES = ("result", "response", "errors", "compose_yaml", "saved_path", "image_name")
     FUNCTION = "apply"
     OUTPUT_NODE = True
 
@@ -924,7 +925,7 @@ class BuildContainerNode:
                 timeout_seconds=int(timeout_seconds),
             ),
         )
-        output = runtime_node_output(result, self.RETURN_NAMES, (result.artifacts.get("compose_yaml", ""), result.artifacts.get("saved_path", "")))
+        output = runtime_node_output(result, self.RETURN_NAMES, (result.artifacts.get("compose_yaml", ""), result.artifacts.get("saved_path", ""), image_tag.strip()))
         return comfy_output(output, workflow_graph, self.RETURN_NAMES)
 
 

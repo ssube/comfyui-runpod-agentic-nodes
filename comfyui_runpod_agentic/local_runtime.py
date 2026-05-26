@@ -410,6 +410,8 @@ def shell_write_file_lines(path: str, content: str) -> list[str]:
 
 def image_for_resource(resource: ResourcePlan) -> str:
     env = resource.pod_input.get("env") or {}
+    if resource.pod_input.get("imageName"):
+        return str(resource.pod_input["imageName"])
     if resource.role == "agent":
         return DEFAULT_IMAGES["agent"]
     if resource.role == "browser":

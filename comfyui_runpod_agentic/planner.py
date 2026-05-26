@@ -154,7 +154,7 @@ class Planner:
                 env=contract_env_for_creation(agent_contract),
                 secrets=agent_contract.env.secrets,
                 ports=[to_plain(port) for port in agent_pod_contract.ports],
-                pod_input=self._pod_input(deployment, agent_selection.template_id, agent_name, "agent", deployment.primary_app.meta.node_id, agent_hash, agent_pod_contract, network_storage=deployment.network_storage, install_sshd=deployment.ssh_access.install_internal_sshd),
+                pod_input=self._pod_input(deployment, agent_selection.template_id, agent_name, "agent", deployment.primary_app.meta.node_id, agent_hash, agent_pod_contract, network_storage=deployment.network_storage, install_sshd=deployment.ssh_access.install_internal_sshd, image_name=deployment.primary_app.image_name),
                 storage_retention_policy=deployment.network_storage.retention_policy if deployment.network_storage else None,
             )
         )
@@ -184,6 +184,7 @@ class Planner:
         *,
         network_storage: NetworkStorageSpec | None = None,
         install_sshd: bool = False,
+        image_name: str | None = None,
     ) -> dict[str, Any]:
         hints = deployment.resource_hints
         env = contract_env_for_creation(contract)
@@ -204,6 +205,8 @@ class Planner:
             "containerDiskInGb": hints.container_disk_gb,
             "cloudType": hints.cloud_type,
         }
+        if image_name:
+            pod_input["imageName"] = image_name
         if hints.cpu_only:
             pod_input["computeType"] = "CPU"
             if hints.vcpu_count:

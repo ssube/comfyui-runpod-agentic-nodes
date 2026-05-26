@@ -337,6 +337,7 @@ Inputs:
 | `vector_database` | `RUNPOD_APP_VECTOR_DATABASE` | Optional vector DB contract. |
 | `mcp_servers` | `RUNPOD_MCP_SERVERS` | Optional MCP server list. |
 | `skills` | `RUNPOD_AGENT_SKILLS` | Optional downloaded skills/frameworks. |
+| `image_name` | `RUNPOD_CONTAINER_IMAGE` | Optional image name/tag from `Build Container`; local runs use it as the Compose image and Runpod runs pass it as `imageName`. |
 
 Output:
 
@@ -747,7 +748,9 @@ Inputs:
 | `use_sudo` | boolean | Prefix local runtime commands with `sudo`. |
 | `timeout_seconds` | integer | Timeout for the local build run. |
 
-Use this as a terminal when you want to turn a one-time configured agent container into a reusable image. Connect setup command chains to `Deploy.commands`; `Build Container` appends the snapshot command internally and runs the deployment locally.
+Use this as a terminal when you want to turn a one-time configured agent container into a reusable image. Connect setup command chains to `Deploy.commands`; `Build Container` runs the deployment locally, waits for startup setup to finish, and commits the resulting agent container from the host runtime.
+
+Outputs include `image_name`, the exact image tag from `image_tag`. Connect it to `Agent.image_name` in a later branch to force Comfy to build and push before the Runpod deployment consumes the image.
 
 ## Common Workflow Patterns
 

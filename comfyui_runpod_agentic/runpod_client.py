@@ -21,6 +21,7 @@ REQUIRED_GRAPHQL_TYPES: dict[str, list[str]] = {
         "env",
         "gpuCount",
         "gpuTypeId",
+        "imageName",
         "minVcpuCount",
         "name",
         "ports",

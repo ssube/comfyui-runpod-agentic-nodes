@@ -194,6 +194,7 @@ class AgentSpec:
     mcp_servers: MCPServerSpec | None = None
     skills: SkillSpec | None = None
     terminal: WebTerminalSpec | None = None
+    image_name: str | None = None
     runtime_contract: RuntimeContract = field(default_factory=RuntimeContract)
     required_image_capabilities: list[str] = field(default_factory=list)
     template_key: str | None = None

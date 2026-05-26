@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+venv/bin/python tests/e2e/local_build_then_run_image_live.py "$@"

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from .planner import DeploymentPlan, Planner
-from .specs import DeploymentSpec, SpecMeta
+from .specs import DeploymentSpec
 
 
 @dataclass(frozen=True)
@@ -174,6 +175,28 @@ class ContainerBuildBackend:
         engine = {"nerdctl": "containerd", "docker": "docker", "podman": "podman"}[options.container_runtime]
         try:
             result, reused = local_runtime.apply_local_runtime_plan(engine, saved_path, project, plan, action="apply_and_wait", timeout_seconds=int(options.timeout_seconds))
+            build_stdout = ""
+            build_stderr = ""
+            if result.returncode == 0:
+                container_id = local_runtime.find_local_runtime_container(engine, project, "agent")
+                if not container_id:
+                    build_stderr = f"No running agent container found for build project {project}."
+                    result_returncode = 1
+                else:
+                    build_result = commit_local_container_image(engine, container_id, options)
+                    build_stdout = build_result.stdout
+                    build_stderr = build_result.stderr
+                    result_returncode = build_result.returncode
+                if result_returncode != 0:
+                    result = local_runtime.LocalApplyResult(
+                        result.engine,
+                        result.action,
+                        result.compose_path,
+                        result.command,
+                        result_returncode,
+                        result.stdout,
+                        "\n".join(part for part in (result.stderr, build_stderr) if part),
+                    )
         finally:
             if old_sudo is None:
                 os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
@@ -181,7 +204,10 @@ class ContainerBuildBackend:
                 os.environ["CRAG_LOCAL_RUNTIME_SUDO"] = old_sudo
         payload = json.loads(result.to_text())
         payload["reused"] = reused
-        return RuntimeResult(payload=payload, response=result.stdout, errors=result.stderr, artifacts={"compose_yaml": compose_yaml, "saved_path": saved_path})
+        payload["image_name"] = options.image_tag
+        response = "\n".join(part for part in (result.stdout, build_stdout) if part)
+        errors = "\n".join(part for part in (result.stderr, build_stderr) if part)
+        return RuntimeResult(payload=payload, response=response, errors=errors, artifacts={"compose_yaml": compose_yaml, "saved_path": saved_path, "image_name": options.image_tag})
 
     def apply_and_wait(self, deployment: DeploymentSpec, options: RuntimeOptions) -> RuntimeResult:
         return self.apply(deployment, options)
@@ -193,18 +219,32 @@ class ContainerBuildBackend:
         raise NotImplementedError("Container builds only support apply.")
 
     def _build_deployment(self, deployment: DeploymentSpec, options: RuntimeOptions) -> DeploymentSpec:
-        from .setup_commands import container_snapshot_command
-        from .specs import SSHCommand, SSHCommandSpec
+        return replace(deployment, reuse_policy="always_create")
 
-        build_command = SSHCommand(
-            container_snapshot_command(options.image_tag, options.container_runtime, bool(options.push_to_docker_hub), options.dockerhub_username_env, options.dockerhub_token_env),
-            "after_ready",
-            50000,
-            options.failure_policy,
-            int(options.retry_count),
-        )
-        commands = [*(deployment.ssh_commands.commands if deployment.ssh_commands else []), build_command]
-        return replace(deployment, ssh_commands=SSHCommandSpec(sorted(commands, key=lambda item: item.order), SpecMeta(display_name="Build Container")), reuse_policy="always_create")
+
+def commit_local_container_image(engine: str, container_id: str, options: RuntimeOptions) -> subprocess.CompletedProcess[str]:
+    from . import local_runtime
+
+    commands = [local_runtime.local_runtime_command(engine, ["commit", container_id, options.image_tag])]
+    if options.push_to_docker_hub:
+        username = os.environ.get(options.dockerhub_username_env.strip() or "DOCKERHUB_USERNAME", "")
+        token = os.environ.get(options.dockerhub_token_env.strip() or "DOCKERHUB_TOKEN", "")
+        if username and token:
+            commands.append(local_runtime.local_runtime_command(engine, ["login", "docker.io", "-u", username, "--password-stdin"]))
+        commands.append(local_runtime.local_runtime_command(engine, ["push", options.image_tag]))
+
+    stdout: list[str] = []
+    stderr: list[str] = []
+    for command in commands:
+        input_text = None
+        if "login" in command and "--password-stdin" in command:
+            input_text = os.environ.get(options.dockerhub_token_env.strip() or "DOCKERHUB_TOKEN", "")
+        completed = subprocess.run(command, input=input_text, capture_output=True, text=True, timeout=int(options.timeout_seconds), check=False)
+        stdout.append(completed.stdout)
+        stderr.append(completed.stderr)
+        if completed.returncode != 0:
+            return subprocess.CompletedProcess(command, completed.returncode, "\n".join(stdout), "\n".join(stderr))
+    return subprocess.CompletedProcess(commands[-1] if commands else [], 0, "\n".join(stdout), "\n".join(stderr))
 
 
 def runtime_node_output(result: RuntimeResult, names: tuple[str, ...], extra: tuple[str, ...] = ()) -> tuple[str, ...]:
