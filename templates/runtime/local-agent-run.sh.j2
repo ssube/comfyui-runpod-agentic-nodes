@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+workspace="${WORKSPACE_DIR:-/workspace}"
+crag_dir="$workspace/.runpod_agentic"
+mkdir -p "$crag_dir/local-runtime"
+rm -f "$crag_dir/startup.ready"
+cd "$workspace"
+
+chmod +x "$crag_dir/launcher.sh" "$crag_dir"/launcher.d/*.sh "$crag_dir"/launcher.d/harnesses/*.sh "$crag_dir"/local-runtime/commands/*.sh 2>/dev/null || true
+WORKSPACE_DIR="$workspace" CRAG_RUNTIME_DIR="$crag_dir" AGENT_PROMPT_FILE="$crag_dir/prompt.txt" AGENT_SYSTEM_PROMPT_FILE="$crag_dir/system_prompt.txt" MCP_SERVERS_FILE="$crag_dir/mcp_servers.json" bash "$crag_dir/launcher.d/20-harness-links.sh"
+
+run_crag_command() {
+  label="$1"
+  failure_policy="$2"
+  retry_count="$3"
+  script_path="$4"
+  attempt=0
+  while true; do
+    echo "[crag-local-runtime] running ${label} attempt ${attempt}"
+    /bin/bash "$script_path"
+    status=$?
+    if [ "$status" -eq 0 ]; then return 0; fi
+    if [ "$failure_policy" = "continue" ]; then
+      echo "[crag-local-runtime] ${label} failed with ${status}; continuing" >&2
+      return 0
+    fi
+    if [ "$failure_policy" = "retry" ] && [ "$attempt" -lt "$retry_count" ]; then
+      attempt=$((attempt + 1))
+      sleep 1
+      continue
+    fi
+    echo "[crag-local-runtime] ${label} failed with ${status}" >&2
+    return "$status"
+  done
+}
+
+{{ before_commands }}
+{{ launch_block }}
+{{ after_commands }}
+
+touch "$crag_dir/startup.ready"
+echo '[crag-local-runtime] startup commands complete'
+{{ keep_alive_block }}

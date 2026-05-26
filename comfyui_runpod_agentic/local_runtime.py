@@ -23,6 +23,7 @@ from .runner import (
     shell_env,
     startup_script_for_plan,
 )
+from .setup_commands import render_template
 
 DEFAULT_IMAGES = {
     "agent": "ubuntu:24.04",
@@ -113,11 +114,17 @@ def compose_yaml_for_plan(plan: DeploymentPlan, *, project_name: str = "crag-loc
         command = compose_command(resource, plan)
         if command:
             service["command"] = escape_compose_interpolation(command)
+        service_volumes = []
         volume_mount = volume_mount_for_resource(resource)
         if volume_mount:
             volume_name, mount_path, retention_policy = volume_mount
-            service["volumes"] = [f"{volume_name}:{mount_path}"]
+            service_volumes.append(f"{volume_name}:{mount_path}")
             volumes[volume_name] = {"labels": {"comfyui-runpod-agentic.retention_policy": retention_policy}}
+        runtime_mount = local_runtime_mount_for_resource(project_name, resource)
+        if runtime_mount:
+            service_volumes.append(runtime_mount)
+        if service_volumes:
+            service["volumes"] = service_volumes
         port_mappings = local_port_mappings(resource)
         if port_mappings:
             service["ports"] = port_mappings
@@ -262,83 +269,65 @@ def stable_local_hash(value: object) -> str:
 
 
 def agent_startup_command(plan: DeploymentPlan, resource: ResourcePlan) -> str:
-    return "bash -lc " + shlex.quote(agent_run_script(plan, keep_container_alive=True))
+    workspace = resource.pod_input.get("env", {}).get("WORKSPACE_DIR", "/workspace")
+    return "bash -lc " + shlex.quote(f"bash {shlex.quote(workspace.rstrip('/') + '/.runpod_agentic/local-runtime/run-agent.sh')}")
 
 
 def agent_run_script(plan: DeploymentPlan, *, keep_container_alive: bool = False) -> str:
     before_commands = local_runtime_commands_for_phase(plan, {"before_start"})
     after_commands = local_runtime_commands_for_phase(plan, {"after_start", "after_ready"})
-    script = [
-        "set -euo pipefail",
-        "workspace=\"${WORKSPACE_DIR:-/workspace}\"",
-        "crag_dir=\"$workspace/.runpod_agentic\"",
-        "mkdir -p \"$crag_dir/local-runtime\"",
-        "rm -f \"$crag_dir/startup.ready\"",
-        "cd \"$workspace\"",
-        *local_runtime_file_writes(plan),
-        "run_crag_command() {",
-        "  label=\"$1\"",
-        "  failure_policy=\"$2\"",
-        "  retry_count=\"$3\"",
-        "  body=\"$4\"",
-        "  attempt=0",
-        "  while true; do",
-        "    echo \"[crag-local-runtime] running ${label} attempt ${attempt}\"",
-        "    /bin/bash -lc \"$body\"",
-        "    status=$?",
-        "    if [ \"$status\" -eq 0 ]; then return 0; fi",
-        "    if [ \"$failure_policy\" = \"continue\" ]; then",
-        "      echo \"[crag-local-runtime] ${label} failed with ${status}; continuing\" >&2",
-        "      return 0",
-        "    fi",
-        "    if [ \"$failure_policy\" = \"retry\" ] && [ \"$attempt\" -lt \"$retry_count\" ]; then",
-        "      attempt=$((attempt + 1))",
-        "      sleep 1",
-        "      continue",
-        "    fi",
-        "    echo \"[crag-local-runtime] ${label} failed with ${status}\" >&2",
-        "    return \"$status\"",
-        "  done",
-        "}",
-    ]
+    before_lines = []
     for index, command in enumerate(before_commands):
         label = command.get("source") or f"{command.get('phase', 'command')}:{index}"
-        script.append(
+        before_lines.append(
             "run_crag_command "
             + " ".join(
                 [
                     shlex.quote(str(label)),
                     shlex.quote(str(command.get("failure_policy") or "fail")),
                     shlex.quote(str(int(command.get("retry_count") or 0))),
-                    shlex.quote(str(command.get("command") or "")),
+                    f"\"$crag_dir/local-runtime/commands/{local_runtime_command_filename(index, command)}\"",
                 ]
             )
         )
     launch = launch_command_for_plan(plan)
     if launch:
-        script.append("rm -f \"$crag_dir/response.txt\" \"$crag_dir/errors.txt\" \"$crag_dir/agent.log\"")
-        script.append(launch)
+        launch_block = "\n".join(['rm -f "$crag_dir/response.txt" "$crag_dir/errors.txt" "$crag_dir/agent.log"', launch])
     else:
-        script.append("echo '[crag-local-runtime] startup mode is manual; launcher not started.'")
+        launch_block = "echo '[crag-local-runtime] startup mode is manual; launcher not started.'"
+    after_lines = []
     for index, command in enumerate(after_commands):
         label = command.get("source") or f"{command.get('phase', 'command')}:{index}"
-        script.append(
+        command_index = len(before_commands) + index
+        after_lines.append(
             "run_crag_command "
             + " ".join(
                 [
                     shlex.quote(str(label)),
                     shlex.quote(str(command.get("failure_policy") or "fail")),
                     shlex.quote(str(int(command.get("retry_count") or 0))),
-                    shlex.quote(str(command.get("command") or "")),
+                    f"\"$crag_dir/local-runtime/commands/{local_runtime_command_filename(command_index, command)}\"",
                 ]
             )
         )
-    script.append("touch \"$crag_dir/startup.ready\"")
-    script.append("echo '[crag-local-runtime] startup commands complete'")
+    keep_alive_lines = []
     if keep_container_alive:
-        script.extend(local_runtime_self_shutdown_lines(plan))
-        script.append("sleep infinity")
-    return "\n".join(script)
+        keep_alive_lines.extend(local_runtime_self_shutdown_lines(plan))
+        keep_alive_lines.append("sleep infinity")
+    return render_template(
+        "runtime/local-agent-run.sh.j2",
+        {
+            "before_commands": "\n".join(before_lines),
+            "launch_block": launch_block,
+            "after_commands": "\n".join(after_lines),
+            "keep_alive_block": "\n".join(keep_alive_lines),
+        },
+    )
+
+
+def local_runtime_command_filename(index: int, command: dict[str, Any]) -> str:
+    phase = re.sub(r"[^a-zA-Z0-9_.-]+", "-", str(command.get("phase") or "command")).strip("-") or "command"
+    return f"{index:04d}-{phase}.sh"
 
 
 def local_runtime_commands_for_phase(plan: DeploymentPlan, phases: set[str]) -> list[dict[str, Any]]:
@@ -356,7 +345,7 @@ def local_runtime_self_shutdown_lines(plan: DeploymentPlan) -> list[str]:
     return [f"bash -lc {shell_env(script)}"]
 
 
-def local_runtime_file_writes(plan: DeploymentPlan, service_names: dict[str, str] | None = None) -> list[str]:
+def local_runtime_file_contents(plan: DeploymentPlan, service_names: dict[str, str] | None = None, *, keep_container_alive: bool = True) -> dict[str, str]:
     service_names = service_names or {resource.name: compose_service_name(resource) for resource in plan.resources}
     agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
     workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
@@ -366,24 +355,37 @@ def local_runtime_file_writes(plan: DeploymentPlan, service_names: dict[str, str
         key: resolve_local_secret_placeholder(resolve_crag_placeholders(str(value), service_names))
         for key, value in sorted(plan.runtime_contract.env.values.items())
     }
-    lines: list[str] = []
-    lines.extend(shell_write_file_lines(f"{base}/resources.json", json.dumps([resource_as_runtime_json(resource) for resource in plan.resources if resource.role != "agent"], indent=2, sort_keys=True)))
-    lines.extend(shell_write_file_lines(f"{base}/session.env", "\n".join(f"export {key}={shlex.quote(str(value))}" for key, value in resolved_env.items()) + "\n"))
-    lines.extend(shell_write_file_lines(f"{base}/commands.json", json.dumps(commands, indent=2, sort_keys=True)))
+    files: dict[str, str] = {}
+    files["resources.json"] = json.dumps([resource_as_runtime_json(resource) for resource in plan.resources if resource.role != "agent"], indent=2, sort_keys=True)
+    files["session.env"] = "\n".join(f"export {key}={shlex.quote(str(value))}" for key, value in resolved_env.items()) + "\n"
+    files["commands.json"] = json.dumps(commands, indent=2, sort_keys=True)
     if resolved_env.get("AGENT_SYSTEM_PROMPT"):
-        lines.extend(shell_write_file_lines(f"{base}/system_prompt.txt", resolved_env["AGENT_SYSTEM_PROMPT"]))
+        files["system_prompt.txt"] = resolved_env["AGENT_SYSTEM_PROMPT"]
     if resolved_env.get("AGENT_PROMPT"):
-        lines.extend(shell_write_file_lines(f"{base}/prompt.txt", resolved_env["AGENT_PROMPT"]))
+        files["prompt.txt"] = resolved_env["AGENT_PROMPT"]
     if resolved_env.get("MCP_SERVERS_JSON"):
-        lines.extend(shell_write_file_lines(f"{base}/mcp_servers.json", resolved_env["MCP_SERVERS_JSON"]))
+        files["mcp_servers.json"] = resolved_env["MCP_SERVERS_JSON"]
     for relative_path, content in plan.runtime_contract.files.items():
-        lines.extend(shell_write_file_lines(f"/{relative_path.strip('/')}", content))
+        normalized = "/" + relative_path.strip("/")
+        if normalized.startswith(base.rstrip("/") + "/"):
+            files[normalized.removeprefix(base.rstrip("/") + "/")] = content
     for relative_path, content in pi_runtime_files(resolved_env).items():
-        lines.extend(shell_write_file_lines(f"{base}/{relative_path}", content))
+        files[relative_path] = content
     for relative_path, content in launcher_runtime_files().items():
+        files[relative_path] = content
+    files["local-runtime/run-agent.sh"] = agent_run_script(plan, keep_container_alive=keep_container_alive)
+    for index, command in enumerate(commands):
+        files[f"local-runtime/commands/{local_runtime_command_filename(index, command)}"] = "#!/usr/bin/env bash\n" + str(command.get("command") or "") + "\n"
+    return files
+
+
+def local_runtime_file_writes(plan: DeploymentPlan, service_names: dict[str, str] | None = None) -> list[str]:
+    agent_env = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"]
+    workspace = agent_env.get("WORKSPACE_DIR", "/workspace")
+    base = workspace.rstrip("/") + "/.runpod_agentic"
+    lines: list[str] = []
+    for relative_path, content in local_runtime_file_contents(plan, service_names).items():
         lines.extend(shell_write_file_lines(f"{base}/{relative_path}", content))
-    lines.append("chmod +x \"$crag_dir/launcher.sh\" \"$crag_dir\"/launcher.d/*.sh \"$crag_dir\"/launcher.d/harnesses/*.sh 2>/dev/null || true")
-    lines.append('WORKSPACE_DIR="$workspace" CRAG_RUNTIME_DIR="$crag_dir" AGENT_PROMPT_FILE="$crag_dir/prompt.txt" AGENT_SYSTEM_PROMPT_FILE="$crag_dir/system_prompt.txt" MCP_SERVERS_FILE="$crag_dir/mcp_servers.json" bash "$crag_dir/launcher.d/20-harness-links.sh"')
     return lines
 
 
@@ -428,6 +430,31 @@ def volume_mount_for_resource(resource: ResourcePlan) -> tuple[str, str, str] | 
         return None
     retention_policy = resource.storage_retention_policy or "preserve"
     return (compose_service_name_from_text(str(volume_id)), str(mount_path), retention_policy)
+
+
+def local_runtime_mount_for_resource(project_name: str, resource: ResourcePlan) -> str | None:
+    if resource.role != "agent":
+        return None
+    workspace = resource.pod_input.get("env", {}).get("WORKSPACE_DIR", "/workspace")
+    return f"{local_runtime_project_dir(project_name)}/runtime:{workspace.rstrip('/')}/.runpod_agentic"
+
+
+def local_runtime_project_dir(project_name: str) -> Path:
+    safe_project = re.sub(r"[^a-zA-Z0-9_.-]+", "-", project_name).strip("-") or "crag-local"
+    return Path(os.environ.get("CRAG_LOCAL_RUNTIME_STATE_DIR", "/tmp/crag-local-runtime")) / safe_project
+
+
+def write_local_runtime_files(plan: DeploymentPlan, project_name: str) -> Path:
+    service_names = {resource.name: compose_service_name(resource) for resource in plan.resources}
+    runtime_dir = local_runtime_project_dir(project_name) / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    for relative_path, content in local_runtime_file_contents(plan, service_names).items():
+        target = runtime_dir / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+        if relative_path.endswith(".sh"):
+            target.chmod(0o755)
+    return runtime_dir
 
 
 def local_port_mappings(resource: ResourcePlan) -> list[str]:
@@ -521,10 +548,13 @@ def apply_local_runtime_plan(
     timeout_seconds: int = 1800,
 ) -> tuple[LocalApplyResult, bool]:
     cleanup: LocalApplyResult | None = None
+    if action in {"save_only", "plan", "apply", "apply_and_wait"}:
+        write_local_runtime_files(plan, project_name)
     if action in {"apply", "apply_and_wait"} and plan.reuse_policy != "always_create":
         agent = next(resource for resource in plan.resources if resource.role == "agent")
         container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=local_resource_desired_hash(agent, plan)) if all_local_runtime_resources_running(engine, project_name, plan) else None
         if container_id:
+            write_local_runtime_files(plan, project_name)
             return exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds), True
         if plan.reuse_policy == "resume_stopped" and all_local_runtime_resources_exist(engine, project_name, plan):
             start_result = start_local_runtime_project(engine, compose_path, project_name, timeout_seconds=timeout_seconds)
@@ -532,6 +562,7 @@ def apply_local_runtime_plan(
                 return start_result, False
             container_id = find_local_runtime_container(engine, project_name, "agent", desired_hash=local_resource_desired_hash(agent, plan))
             if container_id:
+                write_local_runtime_files(plan, project_name)
                 exec_result = exec_agent_in_local_container(engine, project_name, container_id, plan, timeout_seconds=timeout_seconds)
                 return LocalApplyResult(
                     exec_result.engine,
@@ -713,7 +744,8 @@ def exec_agent_in_local_container(
     timeout_seconds: int = 1800,
 ) -> LocalApplyResult:
     try:
-        command = local_runtime_command(engine, ["exec", container_id, "bash", "-lc", agent_run_script(plan)])
+        workspace = next(resource for resource in plan.resources if resource.role == "agent").pod_input["env"].get("WORKSPACE_DIR", "/workspace")
+        command = local_runtime_command(engine, ["exec", container_id, "bash", "-lc", f"bash {shlex.quote(workspace.rstrip('/') + '/.runpod_agentic/local-runtime/run-agent.sh')}"])
         completed = subprocess.run(command, capture_output=True, text=True, timeout=int(timeout_seconds), check=False)
     except (FileNotFoundError, RuntimeError) as exc:
         return LocalApplyResult(engine, "reuse", "", [], 127, "", str(exc))

@@ -23,6 +23,7 @@ from comfyui_runpod_agentic.local_runtime import (
     local_port_mappings,
     local_resource_desired_hash,
     local_runtime_command,
+    local_runtime_file_contents,
     local_runtime_file_writes,
     local_runtime_response_is_ready,
     parse_container_list,
@@ -82,7 +83,8 @@ def test_compose_yaml_resolves_dependency_env_and_volumes():
     agent = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
     assert agent["environment"]["OLLAMA_HOST"].startswith("http://")
     assert agent["environment"]["OLLAMA_HOST"].endswith(":11434")
-    assert agent["volumes"] == ["vol-workspace:/workspace"]
+    assert "vol-workspace:/workspace" in agent["volumes"]
+    assert any(volume.endswith(":/workspace/.runpod_agentic") for volume in agent["volumes"])
     assert compose["volumes"]["vol-workspace"]["labels"]["comfyui-runpod-agentic.retention_policy"] == "preserve"
 
 
@@ -222,7 +224,7 @@ def test_compose_yaml_publishes_web_terminal_only_for_agent():
     agent_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
 
     assert agent_service["ports"] == ["127.0.0.1:8765:7681"]
-    assert "ttyd" in agent_service["command"]
+    assert "ttyd" in "\n".join(local_runtime_file_contents(plan).values())
 
 
 def test_local_runtime_resolves_ollama_env_file_secret(tmp_path, monkeypatch):
@@ -254,12 +256,17 @@ def test_agent_compose_command_runs_startup_commands():
     compose = yaml.safe_load(compose_yaml_for_plan(plan))
     agent_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
 
-    assert "run_crag_command" in agent_service["command"]
-    assert ".runpod_agentic/prompt.txt" in agent_service["command"]
-    assert ".runpod_agentic/launcher.sh" in agent_service["command"]
-    assert "printf startup-ok > /workspace/startup.txt" in agent_service["command"]
-    assert "$${label}" in agent_service["command"]
-    assert "sleep infinity" in agent_service["command"]
+    runtime_files = local_runtime_file_contents(plan)
+
+    assert agent_service["command"] == "bash -lc 'bash /workspace/.runpod_agentic/local-runtime/run-agent.sh'"
+    assert len(agent_service["command"]) < 100
+    assert any(volume.endswith(":/workspace/.runpod_agentic") for volume in agent_service["volumes"])
+    assert any("/tmp/crag-local-runtime/" in volume for volume in agent_service["volumes"])
+    assert "run_crag_command" in runtime_files["local-runtime/run-agent.sh"]
+    assert any("printf startup-ok > /workspace/startup.txt" in text for path, text in runtime_files.items() if path.startswith("local-runtime/commands/"))
+    assert "printf startup-ok > /workspace/startup.txt" in "\n".join(runtime_files.values())
+    assert "${label}" in runtime_files["local-runtime/run-agent.sh"]
+    assert "sleep infinity" in runtime_files["local-runtime/run-agent.sh"]
 
 
 def test_local_runtime_file_writes_include_prompt_system_mcp_and_pi_config():
@@ -303,9 +310,13 @@ def test_terminal_compose_command_does_not_block_startup_commands():
     compose = yaml.safe_load(compose_yaml_for_plan(plan))
     agent_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
 
-    assert "run_crag_command web_terminal continue 0" in agent_service["command"]
-    assert "printf startup-ok > /workspace/startup.txt" in agent_service["command"]
-    assert "startup.ready" in agent_service["command"]
+    runtime_files = local_runtime_file_contents(plan)
+    run_script = runtime_files["local-runtime/run-agent.sh"]
+
+    assert "run_crag_command web_terminal continue 0" in run_script
+    assert "printf startup-ok > /workspace/startup.txt" in "\n".join(runtime_files.values())
+    assert "startup.ready" in run_script
+    assert len(agent_service["command"]) < 100
 
 
 def test_local_resource_hash_changes_with_startup_commands():
@@ -372,13 +383,12 @@ def test_agent_compose_command_layers_pod_side_keep_alive():
     deployment = DeployNode().build(agent, keep_alive=keep_alive)[0]
     plan = Planner().build(deployment, prompt="wait")
 
-    compose = yaml.safe_load(compose_yaml_for_plan(plan))
-    agent_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
+    run_script = local_runtime_file_contents(plan)["local-runtime/run-agent.sh"]
 
-    assert "runpodctl remove pod" in agent_service["command"]
-    assert "RUNPOD_API_KEY" in agent_service["command"]
-    assert "podTerminate" in agent_service["command"]
-    assert "kill -TERM 1" in agent_service["command"]
+    assert "runpodctl remove pod" in run_script
+    assert "RUNPOD_API_KEY" in run_script
+    assert "podTerminate" in run_script
+    assert "kill -TERM 1" in run_script
 
 
 def test_agent_auto_start_with_keep_alive_generates_valid_shell():
@@ -476,7 +486,7 @@ def test_apply_local_runtime_reuses_matching_agent_container(monkeypatch, tmp_pa
     assert result.action == "reuse"
     assert result.stdout == "relaunched\n"
     assert not any(command[:3] == ["docker", "compose", "-f"] for command in calls)
-    assert any(command[:4] == ["docker", "exec", "agent1", "bash"] and "second prompt" in command[-1] for command in calls)
+    assert any(command[:4] == ["docker", "exec", "agent1", "bash"] and "run-agent.sh" in command[-1] for command in calls)
 
 
 def test_apply_local_runtime_recreates_when_dependency_container_is_missing(monkeypatch, tmp_path):
