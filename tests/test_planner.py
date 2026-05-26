@@ -13,6 +13,7 @@ from comfyui_runpod_agentic.nodes import (
     RemoteSQLDatabaseNode,
     SSHAccessNode,
     SSHCommandNode,
+    SubagentNode,
     VectorDatabaseNode,
 )
 from comfyui_runpod_agentic.planner import Planner
@@ -168,3 +169,16 @@ def test_remote_env_sql_does_not_create_dependency_pod():
 
     assert [resource.role for resource in plan.resources] == ["agent"]
     assert plan.resources[0].pod_input["env"]["DATABASE_URL"] == "${APP_DATABASE_URL}"
+
+
+def test_subagents_are_written_to_agent_runtime_contract():
+    helper = SubagentNode().build("Reviewer", "deepseek-v4-flash", "Review answers for accuracy.", node_id="sub1")[0]
+    agent = AgentNode().build("Pi", "deepseek-v4-flash", "manual", subagents=helper)[0]
+    deployment = DeployNode().build(agent)[0]
+
+    plan = Planner().build(deployment)
+    env = plan.runtime_contract.env.values
+
+    assert "CRAG_SUBAGENTS_JSON" in env
+    assert '"name": "reviewer"' in env["CRAG_SUBAGENTS_JSON"]
+    assert plan.resources[0].pod_input["env"]["CRAG_SUBAGENTS_JSON"] == env["CRAG_SUBAGENTS_JSON"]

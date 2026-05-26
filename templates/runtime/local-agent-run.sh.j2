@@ -8,7 +8,7 @@ rm -f "$crag_dir/startup.ready"
 cd "$workspace"
 
 chmod +x "$crag_dir/launcher.sh" "$crag_dir"/launcher.d/*.sh "$crag_dir"/launcher.d/harnesses/*.sh "$crag_dir"/local-runtime/commands/*.sh 2>/dev/null || true
-WORKSPACE_DIR="$workspace" CRAG_RUNTIME_DIR="$crag_dir" AGENT_PROMPT_FILE="$crag_dir/prompt.txt" AGENT_SYSTEM_PROMPT_FILE="$crag_dir/system_prompt.txt" MCP_SERVERS_FILE="$crag_dir/mcp_servers.json" bash "$crag_dir/launcher.d/20-harness-links.sh"
+WORKSPACE_DIR="$workspace" CRAG_RUNTIME_DIR="$crag_dir" AGENT_PROMPT_FILE="$crag_dir/prompt.txt" AGENT_SYSTEM_PROMPT_FILE="$crag_dir/system_prompt.txt" MCP_SERVERS_FILE="$crag_dir/mcp_servers.json" CRAG_SUBAGENTS_FILE="$crag_dir/subagents.json" bash "$crag_dir/launcher.d/20-harness-links.sh"
 
 run_crag_command() {
   label="$1"

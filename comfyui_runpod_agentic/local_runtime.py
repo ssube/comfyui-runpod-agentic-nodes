@@ -22,6 +22,7 @@ from .runner import (
     pi_runtime_files,
     shell_env,
     startup_script_for_plan,
+    subagent_runtime_files,
 )
 from .setup_commands import render_template
 
@@ -365,10 +366,14 @@ def local_runtime_file_contents(plan: DeploymentPlan, service_names: dict[str, s
         files["prompt.txt"] = resolved_env["AGENT_PROMPT"]
     if resolved_env.get("MCP_SERVERS_JSON"):
         files["mcp_servers.json"] = resolved_env["MCP_SERVERS_JSON"]
+    if resolved_env.get("CRAG_SUBAGENTS_JSON"):
+        files["subagents.json"] = resolved_env["CRAG_SUBAGENTS_JSON"]
     for relative_path, content in plan.runtime_contract.files.items():
         normalized = "/" + relative_path.strip("/")
         if normalized.startswith(base.rstrip("/") + "/"):
             files[normalized.removeprefix(base.rstrip("/") + "/")] = content
+    for relative_path, content in subagent_runtime_files(resolved_env).items():
+        files[relative_path] = content
     for relative_path, content in pi_runtime_files(resolved_env).items():
         files[relative_path] = content
     for relative_path, content in launcher_runtime_files().items():

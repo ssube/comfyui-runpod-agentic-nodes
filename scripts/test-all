@@ -22,4 +22,5 @@ fi
 
 if [[ "${CRAG_RUN_OLLAMA_E2E:-0}" == "1" ]]; then
   scripts/e2e-local-mcp-ollama-cloud-live
+  scripts/e2e-local-subagent-ollama-cloud-live
 fi

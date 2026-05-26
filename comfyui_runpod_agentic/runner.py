@@ -375,8 +375,12 @@ class RunpodRunner:
             self.ssh_client.write_file(host, port, f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"])
         if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
             self.ssh_client.write_file(host, port, f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"])
+        if plan.runtime_contract.env.values.get("CRAG_SUBAGENTS_JSON"):
+            self.ssh_client.write_file(host, port, f"{base}/subagents.json", plan.runtime_contract.env.values["CRAG_SUBAGENTS_JSON"])
         for relative_path, content in plan.runtime_contract.files.items():
             self.ssh_client.write_file(host, port, f"/{relative_path.strip('/')}", content)
+        for relative_path, content in subagent_runtime_files(plan.runtime_contract.env.values).items():
+            self.ssh_client.write_file(host, port, f"{base}/{relative_path}", content)
         for relative_path, content in pi_runtime_files(plan.runtime_contract.env.values).items():
             self.ssh_client.write_file(host, port, f"{base}/{relative_path}", content)
         for relative_path, content in launcher_runtime_files().items():
@@ -574,8 +578,12 @@ def startup_script_for_plan(plan: DeploymentPlan) -> str:
         lines.extend(file_write_lines(f"{base}/prompt.txt", plan.runtime_contract.env.values["AGENT_PROMPT"]))
     if plan.runtime_contract.env.values.get("MCP_SERVERS_JSON"):
         lines.extend(file_write_lines(f"{base}/mcp_servers.json", plan.runtime_contract.env.values["MCP_SERVERS_JSON"]))
+    if plan.runtime_contract.env.values.get("CRAG_SUBAGENTS_JSON"):
+        lines.extend(file_write_lines(f"{base}/subagents.json", plan.runtime_contract.env.values["CRAG_SUBAGENTS_JSON"]))
     for relative_path, content in plan.runtime_contract.files.items():
         lines.extend(file_write_lines(f"/{relative_path.strip('/')}", content))
+    for relative_path, content in subagent_runtime_files(plan.runtime_contract.env.values).items():
+        lines.extend(file_write_lines(f"{base}/{relative_path}", content))
     for relative_path, content in pi_runtime_files(plan.runtime_contract.env.values).items():
         lines.extend(file_write_lines(f"{base}/{relative_path}", content))
     for relative_path, content in launcher_runtime_files().items():
@@ -588,6 +596,7 @@ def startup_script_for_plan(plan: DeploymentPlan) -> str:
                 f"AGENT_PROMPT_FILE={shell_env(base + '/prompt.txt')}",
                 f"AGENT_SYSTEM_PROMPT_FILE={shell_env(base + '/system_prompt.txt')}",
                 f"MCP_SERVERS_FILE={shell_env(base + '/mcp_servers.json')}",
+                f"CRAG_SUBAGENTS_FILE={shell_env(base + '/subagents.json')}",
                 "bash",
                 shell_env(base + "/launcher.d/20-harness-links.sh"),
             ]
@@ -638,6 +647,140 @@ def launcher_runtime_files() -> dict[str, str]:
         "launcher.d/harnesses/pi.sh": pi_harness_script(),
         "launcher.d/harnesses/generic.sh": generic_harness_script(),
     }
+
+
+def subagent_runtime_files(env: dict[str, str]) -> dict[str, str]:
+    raw = env.get("CRAG_SUBAGENTS_JSON")
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    subagents = payload.get("subagents")
+    if not isinstance(subagents, list):
+        return {}
+    files: dict[str, str] = {}
+    for item in subagents:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        model = str(item.get("model") or "").strip()
+        system_prompt = str(item.get("system_prompt") or "")
+        if not name or not model:
+            continue
+        files[f"subagents/{name}.yaml"] = subagent_yaml(name, model, system_prompt)
+        files[f"subagents/{name}/SUBAGENT.md"] = subagent_markdown(name, model, system_prompt)
+    if files:
+        files["harness/pi/extensions/crag-subagents/package.json"] = pi_subagents_extension_package()
+        files["harness/pi/extensions/crag-subagents/index.ts"] = pi_subagents_extension()
+    return files
+
+
+def subagent_yaml(name: str, model: str, system_prompt: str) -> str:
+    return "\n".join(
+        [
+            f"name: {json.dumps(name)}",
+            f"model: {json.dumps(model)}",
+            "scope: project",
+            "system_prompt: |-",
+            *[f"  {line}" if line else "" for line in system_prompt.splitlines()],
+            "",
+        ]
+    )
+
+
+def subagent_markdown(name: str, model: str, system_prompt: str) -> str:
+    return "\n".join(
+        [
+            "---",
+            f"name: {name}",
+            f"model: {model}",
+            "scope: project",
+            "---",
+            "",
+            system_prompt,
+            "",
+        ]
+    )
+
+
+def pi_subagents_extension_package() -> str:
+    return json.dumps({"type": "module", "dependencies": {"typebox": "^1.0.58"}}, indent=2, sort_keys=True)
+
+
+def pi_subagents_extension() -> str:
+    return r"""import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { Type } from "typebox";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+type Subagent = {
+  name: string;
+  model: string;
+  system_prompt: string;
+};
+
+function loadSubagents(): Subagent[] {
+  const raw = process.env.CRAG_SUBAGENTS_JSON || readFileSync(process.env.CRAG_SUBAGENTS_FILE || "/workspace/.runpod_agentic/subagents.json", "utf8");
+  const parsed = JSON.parse(raw);
+  return parsed.subagents || [];
+}
+
+function baseUrl(): string {
+  const raw = process.env.OPENAI_BASE_URL || process.env.LLM_API_BASE_URL || process.env.OLLAMA_HOST || "https://ollama.com";
+  return raw.endsWith("/v1") ? raw : `${raw.replace(/\/+$/, "")}/v1`;
+}
+
+function apiKey(): string {
+  return process.env.OPENAI_API_KEY || process.env.OLLAMA_CLOUD_API_KEY || process.env.OLLAMA_API_KEY || "";
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool({
+    name: "crag_delegate_subagent",
+    label: "CRAG delegate subagent",
+    description: "Delegate a task to a CRAG configured subagent by name and return that subagent's response.",
+    parameters: Type.Object({
+      name: Type.String({ description: "Subagent name from CRAG subagents configuration" }),
+      task: Type.String({ description: "Task or question for the subagent" }),
+    }),
+    async execute(_toolCallId, params) {
+      const subagent = loadSubagents().find((item) => item.name === params.name);
+      if (!subagent) {
+        throw new Error(`Unknown CRAG subagent: ${params.name}`);
+      }
+      const response = await fetch(`${baseUrl()}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKey() ? { Authorization: `Bearer ${apiKey()}` } : {}),
+        },
+        body: JSON.stringify({
+          model: subagent.model,
+          messages: [
+            { role: "system", content: subagent.system_prompt },
+            { role: "user", content: params.task },
+          ],
+          temperature: 0,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Subagent model call failed: ${response.status} ${await response.text()}`);
+      }
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content || "";
+      const proofPath = `/workspace/.runpod_agentic/subagents/${subagent.name}/last-response.json`;
+      mkdirSync(dirname(proofPath), { recursive: true });
+      writeFileSync(proofPath, JSON.stringify({ subagent, task: params.task, response: text }, null, 2));
+      return {
+        content: [{ type: "text", text }],
+        details: { subagent: subagent.name, model: subagent.model, response: text },
+      };
+    },
+  });
+}
+"""
 
 
 def pi_runtime_files(env: dict[str, str]) -> dict[str, str]:
@@ -748,6 +891,7 @@ export AGENT_SYSTEM_PROMPT_FILE="${AGENT_SYSTEM_PROMPT_FILE:-$CRAG_RUNTIME_DIR/s
 export AGENT_RESPONSE_FILE="${AGENT_RESPONSE_FILE:-$CRAG_RUNTIME_DIR/response.txt}"
 export AGENT_ERRORS_FILE="${AGENT_ERRORS_FILE:-$CRAG_RUNTIME_DIR/errors.txt}"
 export MCP_SERVERS_FILE="${MCP_SERVERS_FILE:-$CRAG_RUNTIME_DIR/mcp_servers.json}"
+export CRAG_SUBAGENTS_FILE="${CRAG_SUBAGENTS_FILE:-$CRAG_RUNTIME_DIR/subagents.json}"
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
 if [ -n "${OLLAMA_API_KEY:-}" ] && [ -z "${OLLAMA_CLOUD_API_KEY:-}" ]; then
   export OLLAMA_CLOUD_API_KEY="$OLLAMA_API_KEY"
@@ -763,6 +907,9 @@ fi
 if [ -f "$MCP_SERVERS_FILE" ]; then
   export MCP_SERVERS_JSON="$(cat "$MCP_SERVERS_FILE")"
 fi
+if [ -f "$CRAG_SUBAGENTS_FILE" ]; then
+  export CRAG_SUBAGENTS_JSON="$(cat "$CRAG_SUBAGENTS_FILE")"
+fi
 if [ -d "$CRAG_RUNTIME_DIR/harness/pi" ]; then
   mkdir -p "$HOME/.pi/agent" "$WORKSPACE_DIR/.pi/agent"
   cp "$CRAG_RUNTIME_DIR/harness/pi/models.json" "$HOME/.pi/agent/models.json"
@@ -774,12 +921,18 @@ if [ -d "$CRAG_RUNTIME_DIR/harness/pi" ]; then
   export PI_MODELS_FILE="$HOME/.pi/agent/models.json"
   export PI_PROVIDERS_FILE="$HOME/.pi/agent/providers.json"
 fi
+if [ -f "$CRAG_RUNTIME_DIR/harness/pi/extensions/crag-subagents/package.json" ]; then
+  if command -v npm >/dev/null 2>&1 && [ ! -d "$CRAG_RUNTIME_DIR/harness/pi/extensions/crag-subagents/node_modules" ]; then
+    npm install --prefix "$CRAG_RUNTIME_DIR/harness/pi/extensions/crag-subagents" --omit=dev >/dev/null
+  fi
+fi
 """
 
 
 def harness_links_script() -> str:
     return r"""#!/usr/bin/env bash
-mkdir -p "$CRAG_RUNTIME_DIR/skills" "$CRAG_RUNTIME_DIR/agent" "$HOME/.agents" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode" "$HOME/.hermes" "$HOME/.pi"
+CRAG_SUBAGENTS_FILE="${CRAG_SUBAGENTS_FILE:-$CRAG_RUNTIME_DIR/subagents.json}"
+mkdir -p "$CRAG_RUNTIME_DIR/skills" "$CRAG_RUNTIME_DIR/subagents" "$CRAG_RUNTIME_DIR/agent" "$HOME/.agents" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode" "$HOME/.hermes" "$HOME/.pi" "$WORKSPACE_DIR/.agents"
 legacy_skills="$WORKSPACE_DIR/.codex/skills"
 if [ -d "$legacy_skills" ] && [ ! -L "$legacy_skills" ]; then
   cp -a "$legacy_skills"/. "$CRAG_RUNTIME_DIR/skills"/ 2>/dev/null || true
@@ -793,9 +946,17 @@ ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.claude/skills"
 ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.config/opencode/skills"
 ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.hermes/skills"
 ln -sfn "$CRAG_RUNTIME_DIR/skills" "$HOME/.pi/skills"
+ln -sfn "$CRAG_RUNTIME_DIR/subagents" "$HOME/.agents/subagents"
+ln -sfn "$CRAG_RUNTIME_DIR/subagents" "$HOME/.codex/agents"
+ln -sfn "$CRAG_RUNTIME_DIR/subagents" "$HOME/.claude/agents"
+ln -sfn "$CRAG_RUNTIME_DIR/subagents" "$HOME/.config/opencode/agents"
+ln -sfn "$CRAG_RUNTIME_DIR/subagents" "$HOME/.hermes/agents"
+ln -sfn "$CRAG_RUNTIME_DIR/subagents" "$HOME/.pi/subagents"
+ln -sfn "$CRAG_RUNTIME_DIR/subagents" "$WORKSPACE_DIR/.agents/subagents"
 ln -sfn "$AGENT_PROMPT_FILE" "$CRAG_RUNTIME_DIR/agent/prompt.txt"
 ln -sfn "$AGENT_SYSTEM_PROMPT_FILE" "$CRAG_RUNTIME_DIR/agent/system_prompt.txt"
 ln -sfn "$MCP_SERVERS_FILE" "$CRAG_RUNTIME_DIR/agent/mcp_servers.json"
+ln -sfn "$CRAG_SUBAGENTS_FILE" "$CRAG_RUNTIME_DIR/agent/subagents.json"
 """
 
 
@@ -845,6 +1006,7 @@ run_harness_command() {
     echo "prompt_file: ${AGENT_PROMPT_FILE:-}"
     echo "system_prompt_file: ${AGENT_SYSTEM_PROMPT_FILE:-}"
     echo "mcp_servers_file: ${MCP_SERVERS_FILE:-}"
+    echo "subagents_file: ${CRAG_SUBAGENTS_FILE:-}"
     if [ "${AGENT_HARNESS:-}" = "pi" ]; then
       echo "models_file: ${PI_MODELS_FILE:-$HOME/.pi/agent/models.json}"
       echo "providers_file: ${PI_PROVIDERS_FILE:-$HOME/.pi/agent/providers.json}"
@@ -972,6 +1134,9 @@ elif [ -n "${PI_PROVIDER:-}" ]; then
 fi
 if [ -s "$AGENT_SYSTEM_PROMPT_FILE" ]; then
   args+=(--system-prompt "$(cat "$AGENT_SYSTEM_PROMPT_FILE")")
+fi
+if [ -f "$CRAG_RUNTIME_DIR/harness/pi/extensions/crag-subagents/index.ts" ]; then
+  args+=(--extension "$CRAG_RUNTIME_DIR/harness/pi/extensions/crag-subagents/index.ts")
 fi
 append_keep_alive_args args 0 0
 run_harness_command pi "${args[@]}" -p "$prompt"

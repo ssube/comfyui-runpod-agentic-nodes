@@ -19,6 +19,7 @@ from comfyui_runpod_agentic.nodes import (
     SkillFrameworkNode,
     SkillNode,
     SSHCommandNode,
+    SubagentNode,
     WebTerminalNode,
 )
 from comfyui_runpod_agentic.planner import Planner
@@ -34,6 +35,7 @@ from comfyui_runpod_agentic.runner import (
     readiness_probe_paths,
     sanitize_pod_input,
     startup_script_for_plan,
+    subagent_runtime_files,
     terminal_auth_for_plan,
     terminal_urls_for_pods,
 )
@@ -147,6 +149,35 @@ def test_runner_apply_uses_injected_clients(tmp_path, monkeypatch):
     commands = runner.state_store.list_commands(result["run_id"])
     assert len(commands) == 1
     assert any(command.endswith("pi --help >/dev/null") for command in ssh.commands)
+
+
+def test_runner_writes_subagent_config_and_pi_extension(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    subagents = SubagentNode().build("Reviewer", "deepseek-v4-flash", "Return CRAG_SUBAGENT_OK.", node_id="sub1")[0]
+    agent = AgentNode().build("Pi", "deepseek-v4-flash", "manual", subagents=subagents)[0]
+    deployment = DeployNode().build(agent)[0]
+    ssh = FakeSSHClient()
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+
+    runner.run(deployment, mode="apply")
+
+    assert "/workspace/.runpod_agentic/subagents.json" in ssh.files
+    assert "/workspace/.runpod_agentic/subagents/reviewer.yaml" in ssh.files
+    assert "/workspace/.runpod_agentic/subagents/reviewer/SUBAGENT.md" in ssh.files
+    assert "/workspace/.runpod_agentic/harness/pi/extensions/crag-subagents/index.ts" in ssh.files
+    assert "crag_delegate_subagent" in ssh.files["/workspace/.runpod_agentic/harness/pi/extensions/crag-subagents/index.ts"]
+
+
+def test_subagent_runtime_files_include_harness_formats():
+    env = {
+        "CRAG_SUBAGENTS_JSON": '{"subagents":[{"name":"reviewer","model":"deepseek-v4-flash","system_prompt":"Return CRAG_SUBAGENT_OK."}]}',
+    }
+
+    files = subagent_runtime_files(env)
+
+    assert files["subagents/reviewer.yaml"].startswith('name: "reviewer"')
+    assert "model: deepseek-v4-flash" in files["subagents/reviewer/SUBAGENT.md"]
+    assert "crag_delegate_subagent" in files["harness/pi/extensions/crag-subagents/index.ts"]
 
 
 def test_runner_result_includes_web_terminal_url(tmp_path, monkeypatch):

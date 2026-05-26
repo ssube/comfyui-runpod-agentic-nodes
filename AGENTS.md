@@ -77,7 +77,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Queue commands: `SSH Command`, `Package`, and `Language Runtime` produce command chains for `Deploy.commands`.
 - Queue implicit commands: `Agent`, `Local SQL Database`, `Skill`, and `Skill Framework` add setup commands through runtime contracts.
 - Add containers: `Agent`, `Browser` with `own_pod`, `LLM Server`, `Remote SQL Database` with `own_pod`, and `Vector Database` add pod/service resources.
-- Add storage or env only: `Network Storage`, `S3 Storage`, `LLM API`, `MCP Server`, `Remote SQL Database` with `env_only`, and `Local SQL Database` add volumes, env, secrets, or config.
+- Add storage or env only: `Network Storage`, `S3 Storage`, `LLM API`, `MCP Server`, `Subagent`, `Remote SQL Database` with `env_only`, and `Local SQL Database` add volumes, env, secrets, or config.
 - Assemble policy: `Deploy`, `Keep Alive`, and `SSH Access` build graph/lifecycle/access policy. `Deploy` is graph-only; Runpod placement belongs on `Run on Runpod`.
 - Terminal nodes: `Run on Runpod`, `Run Local Containers`, `Build Container`, `Compose YAML`, `Startup Script`, and `Logs` end workflow branches by planning, applying, exporting, building, or reading results.
 

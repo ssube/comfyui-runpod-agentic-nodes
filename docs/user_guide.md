@@ -43,7 +43,7 @@ For automated graph generation, classify nodes by effect instead of by palette l
 | Queue commands | `SSH Command`, `Package`, `Git Repository`, `Language Runtime` | Produce `RUNPOD_COMMAND_SSH` chains that connect to `Deploy.commands`. |
 | Queue implicit commands | `Agent`, `Local SQL Database`, `Skill`, `Skill Framework` | Add setup commands through their runtime contracts when connected to `Agent`. |
 | Add containers | `Agent`, `Browser` with `own_pod`, `LLM Server`, `Remote SQL Database` with `own_pod`, `Vector Database` | Add pod/service resources to the deployment plan. |
-| Add storage or env | `Network Storage`, `S3 Storage`, `LLM API`, `MCP Server`, `Remote SQL Database` with `env_only`, `Local SQL Database` | Add volumes, environment variables, secret references, or runtime config without creating a standalone terminal. |
+| Add storage or env | `Network Storage`, `S3 Storage`, `LLM API`, `MCP Server`, `Subagent`, `Remote SQL Database` with `env_only`, `Local SQL Database` | Add volumes, environment variables, secret references, or runtime config without creating a standalone terminal. |
 | Graph assembly | `Deploy`, `Keep Alive`, `SSH Access` | Build deployment policy and lifecycle/access settings. `Deploy` does not choose Runpod placement. |
 | Terminals | `Run on Runpod`, `Run Local Containers`, `Build Container`, `Compose YAML`, `Startup Script`, `Logs` | End a workflow branch by planning, applying, exporting, building, or reading results. `Build Container` internally queues the snapshot command for its local build run. |
 
@@ -101,7 +101,7 @@ In the ComfyUI UI, prefer `PrimitiveStringMultiline` nodes connected to these st
    Use `LLM API` for hosted APIs or `LLM Server` for self-hosted Ollama/vLLM. Both output the generic `RUNPOD_LLM` type and connect to `Agent.llm`.
 
 3. Add optional tools and state.
-   Add `Browser`, `Remote SQL Database`, `Local SQL Database`, `Vector Database`, `MCP Server`, `Skill`, or `Skill Framework` nodes, then connect them to the agent.
+   Add `Browser`, `Remote SQL Database`, `Local SQL Database`, `Vector Database`, `MCP Server`, `Skill`, `Skill Framework`, or `Subagent` nodes, then connect them to the agent.
 
 4. Add storage where persistence is needed.
    Connect `Network Storage` directly to the pod or to service nodes that run in their own pods. Service-specific storage is separate from the agent pod's workspace storage.
@@ -556,6 +556,27 @@ Output:
 
 The node is chainable. Connect the previous MCP output into the next node's `previous` input, then connect the final output to `Agent.mcp_servers`.
 
+### Subagent
+
+`Subagent` defines a project-scoped helper agent that the primary `Agent` can use.
+
+Inputs:
+
+| Input | Type | Use |
+| --- | --- | --- |
+| `name` | string | Stable subagent name. Spaces and underscores are normalized to dashes. |
+| `model` | string | Model passed to the subagent when the harness supports delegation. |
+| `system_prompt` | multiline string | Instructions for the subagent. |
+| `previous` | `RUNPOD_AGENT_SUBAGENTS` | Optional previous subagent chain. |
+
+Output:
+
+| Output | Type |
+| --- | --- |
+| `subagents` | `RUNPOD_AGENT_SUBAGENTS` |
+
+CRAG writes central subagent files under `.runpod_agentic/subagents`, links them into the common harness config locations, and exposes `CRAG_SUBAGENTS_JSON`. Pi also receives a bundled `crag_delegate_subagent` extension that calls the configured model through the current OpenAI-compatible/Ollama Cloud connection.
+
 ### Skill
 
 `Skill` downloads a skill from a GitHub repository into the agent working state.
@@ -879,7 +900,7 @@ Run the full local batch with real containerd workloads:
 CRAG_LOCAL_RUNTIME_SUDO=1 scripts/test-all
 ```
 
-Provider-backed live e2e tests are opt-in. This includes the local MCP workflow that installs Pi, starts a filesystem MCP server, and asks Ollama Cloud to call the MCP-backed tool:
+Provider-backed live e2e tests are opt-in. This includes local MCP and subagent workflows that install Pi and ask Ollama Cloud to call the generated tools:
 
 ```bash
 CRAG_LOCAL_RUNTIME_SUDO=1 CRAG_RUN_OLLAMA_E2E=1 scripts/test-all

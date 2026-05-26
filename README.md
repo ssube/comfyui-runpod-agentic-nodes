@@ -198,7 +198,7 @@ Core:
 
 Apps and services:
 
-- `Agent`: composition point for browser, LLM, SQL, vector, MCP resources, skills, and the agent system prompt.
+- `Agent`: composition point for browser, LLM, SQL, vector, MCP resources, skills, subagents, and the agent system prompt.
 - `Browser`: Neko or Playwright.
 - `Web Terminal`: opt-in ttyd terminal for the agent container. The frontend extension opens an in-page terminal panel when a run returns a terminal URL.
 - `LLM Server`: Ollama or vLLM own-pod service.
@@ -206,6 +206,7 @@ Apps and services:
 - `MCP Server`: chainable stdio/http/sse MCP server definitions exposed to the agent as `MCP_SERVERS_JSON` and `.runpod_agentic/mcp_servers.json`.
 - `Skill`: chainable GitHub skill download into the agent workspace.
 - `Skill Framework`: chainable preset installer for popular skill frameworks such as Superpowers.
+- `Subagent`: chainable project subagent definitions with a model and system prompt, materialized into harness-specific config files. Pi gets a bundled extension that can delegate to the configured model.
 - `Remote SQL Database`: Postgres/MySQL through a provisioned pod or existing `DATABASE_URL` env.
 - `Local SQL Database`: SQLite file path plus startup setup for the agent pod.
 - `Vector Database`: Chroma or Qdrant.
@@ -312,7 +313,7 @@ The full local batch runs lint, unit tests, build checks, and local container e2
 CRAG_LOCAL_RUNTIME_SUDO=1 scripts/test-all
 ```
 
-Provider-backed live e2e tests stay opt-in. To include the local MCP workflow that installs Pi, starts a filesystem MCP server, and asks Ollama Cloud to use it:
+Provider-backed live e2e tests stay opt-in. To include the local MCP and subagent workflows that install Pi and ask Ollama Cloud to use the generated tools:
 
 ```bash
 CRAG_LOCAL_RUNTIME_SUDO=1 CRAG_RUN_OLLAMA_E2E=1 scripts/test-all

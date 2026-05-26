@@ -179,6 +179,20 @@ class SkillSpec:
 
 
 @dataclass(frozen=True)
+class Subagent:
+    name: str
+    model: str
+    system_prompt: str
+
+
+@dataclass(frozen=True)
+class SubagentSpec:
+    subagents: list[Subagent]
+    runtime_contract: RuntimeContract
+    meta: SpecMeta = field(default_factory=SpecMeta)
+
+
+@dataclass(frozen=True)
 class AgentSpec:
     kind: Literal["agent"]
     harness: Literal["codex", "claude", "opencode", "hermes", "pi"]
@@ -193,6 +207,7 @@ class AgentSpec:
     vector_database: VectorDatabaseSpec | None = None
     mcp_servers: MCPServerSpec | None = None
     skills: SkillSpec | None = None
+    subagents: SubagentSpec | None = None
     terminal: WebTerminalSpec | None = None
     image_name: str | None = None
     runtime_contract: RuntimeContract = field(default_factory=RuntimeContract)

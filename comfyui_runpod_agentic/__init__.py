@@ -23,6 +23,7 @@ from .nodes import (
     SSHAccessNode,
     SSHCommandNode,
     StartupScriptNode,
+    SubagentNode,
     VectorDatabaseNode,
     WebTerminalNode,
 )
@@ -36,6 +37,7 @@ NODE_CLASS_MAPPINGS = {
     "MCPServer": MCPServerNode,
     "Skill": SkillNode,
     "SkillFramework": SkillFrameworkNode,
+    "Subagent": SubagentNode,
     "RemoteSQLDatabase": RemoteSQLDatabaseNode,
     "LocalSQLDatabase": LocalSQLDatabaseNode,
     "VectorDatabase": VectorDatabaseNode,
@@ -65,6 +67,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MCPServer": "MCP Server",
     "Skill": "Skill",
     "SkillFramework": "Skill Framework",
+    "Subagent": "Subagent",
     "RemoteSQLDatabase": "Remote SQL Database",
     "LocalSQLDatabase": "Local SQL Database",
     "VectorDatabase": "Vector Database",

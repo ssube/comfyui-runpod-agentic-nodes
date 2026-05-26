@@ -60,11 +60,14 @@ from .specs import (
     SSHAccessPolicy,
     SSHCommand,
     SSHCommandSpec,
+    Subagent,
+    SubagentSpec,
     VectorDatabaseSpec,
     WebTerminalSpec,
 )
 from .types import (
     RUNPOD_AGENT_SKILLS,
+    RUNPOD_AGENT_SUBAGENTS,
     RUNPOD_APP_AGENT,
     RUNPOD_APP_BROWSER,
     RUNPOD_APP_SQL_DATABASE,
@@ -574,6 +577,53 @@ def clean_mcp_server(server: MCPServer) -> dict[str, Any]:
     return data
 
 
+def sanitize_subagent_name(value: str, fallback: str) -> str:
+    raw = value.strip().lower().replace(" ", "-").replace("_", "-") or fallback
+    clean = "".join(ch for ch in raw if ch.isalnum() or ch == "-").strip("-")
+    return clean or fallback
+
+
+def subagent_runtime_contract(subagents: list[Subagent]) -> RuntimeContract:
+    payload = {"subagents": [subagent_payload(item) for item in subagents]}
+    return RuntimeContract(EnvPatch({"CRAG_SUBAGENTS_JSON": json.dumps(payload, sort_keys=True)}))
+
+
+def subagent_payload(subagent: Subagent) -> dict[str, str]:
+    return {"name": subagent.name, "model": subagent.model, "system_prompt": subagent.system_prompt}
+
+
+class SubagentNode:
+    CATEGORY = "Runpod/Agent"
+    RETURN_TYPES = (RUNPOD_AGENT_SUBAGENTS,)
+    RETURN_NAMES = ("subagents",)
+    FUNCTION = "build"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "name": ("STRING", {"default": "helper"}),
+                "model": ("STRING", {"default": ""}),
+                "system_prompt": ("STRING", {"multiline": True, "default": ""}),
+            },
+            "optional": {"previous": (RUNPOD_AGENT_SUBAGENTS,)},
+            "hidden": {"node_id": "UNIQUE_ID"},
+        }
+
+    def build(self, name: str, model: str, system_prompt: str = "", previous: SubagentSpec | None = None, node_id: str | None = None):
+        fallback = f"subagent-{str(node_id or uuid.uuid4().hex[:8]).lower()}"
+        subagent_name = sanitize_subagent_name(name, fallback)
+        subagent_model = model.strip()
+        if not subagent_model:
+            raise ValidationError("Subagent model is required.")
+        subagent = Subagent(subagent_name, subagent_model, system_prompt.strip())
+        subagents = [*(previous.subagents if previous else []), subagent]
+        names = [item.name for item in subagents]
+        if len(names) != len(set(names)):
+            raise ValidationError(f"Duplicate subagent name: {subagent_name}.")
+        return (SubagentSpec(subagents, subagent_runtime_contract(subagents), meta(node_id, "Subagent")),)
+
+
 def inferred_command_order(previous: SSHCommandSpec | None) -> int:
     if not previous or not previous.commands:
         return 0
@@ -673,11 +723,11 @@ class AgentNode:
     def INPUT_TYPES(cls):
         return {
             "required": {"harness": (["Codex", "Claude", "OpenCode", "Hermes", "Pi"],), "model": ("STRING", {"default": ""}), "startup_mode": (["wait_for_commands", "auto_start", "manual"],), "workspace_path": ("STRING", {"default": "/workspace"}), "system_prompt": ("STRING", {"multiline": True, "default": ""})},
-            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm": (RUNPOD_LLM,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,), "skills": (RUNPOD_AGENT_SKILLS,), "terminal": (RUNPOD_APP_TERMINAL,), "image_name": (RUNPOD_CONTAINER_IMAGE,)},
+            "optional": {"browser": (RUNPOD_APP_BROWSER,), "llm": (RUNPOD_LLM,), "sql_database": (RUNPOD_APP_SQL_DATABASE,), "vector_database": (RUNPOD_APP_VECTOR_DATABASE,), "mcp_servers": (RUNPOD_MCP_SERVERS,), "skills": (RUNPOD_AGENT_SKILLS,), "subagents": (RUNPOD_AGENT_SUBAGENTS,), "terminal": (RUNPOD_APP_TERMINAL,), "image_name": (RUNPOD_CONTAINER_IMAGE,)},
             "hidden": {"node_id": "UNIQUE_ID", "workflow_graph": "PROMPT"},
         }
 
-    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", system_prompt: str = "", browser=None, llm=None, sql_database=None, vector_database=None, mcp_servers=None, skills=None, terminal=None, image_name: str | None = None, node_id: str | None = None, workflow_graph: Any = None):
+    def build(self, harness: str, model: str, startup_mode: str, workspace_path: str = "/workspace", system_prompt: str = "", browser=None, llm=None, sql_database=None, vector_database=None, mcp_servers=None, skills=None, subagents=None, terminal=None, image_name: str | None = None, node_id: str | None = None, workflow_graph: Any = None):
         llm_api = llm if isinstance(llm, LLMApiSpec) else None
         llm_server = llm if isinstance(llm, LLMServerSpec) else None
         capabilities = []
@@ -709,6 +759,12 @@ class AgentNode:
                 files={**contract.files, **skills.runtime_contract.files},
                 commands=[*contract.commands, *skills.runtime_contract.commands],
             )
+        if subagents:
+            contract = RuntimeContract(
+                EnvPatch({**contract.env.values, **subagents.runtime_contract.env.values}, [*contract.env.secrets, *subagents.runtime_contract.env.secrets]),
+                files={**contract.files, **subagents.runtime_contract.files},
+                commands=[*contract.commands, *subagents.runtime_contract.commands],
+            )
         if terminal:
             contract = RuntimeContract(
                 EnvPatch({**contract.env.values, **terminal.runtime_contract.env.values}, [*contract.env.secrets, *terminal.runtime_contract.env.secrets]),
@@ -716,7 +772,7 @@ class AgentNode:
                 files={**contract.files, **terminal.runtime_contract.files},
                 commands=[*contract.commands, *terminal.runtime_contract.commands],
             )
-        return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, terminal, image_name.strip() if image_name else None, contract, capabilities, None, meta(node_id, harness)),)
+        return (AgentSpec("agent", harness_id, model, startup_mode, workspace_path, system_prompt, browser, llm_api, llm_server, sql_database, vector_database, mcp_servers, skills, subagents, terminal, image_name.strip() if image_name else None, contract, capabilities, None, meta(node_id, harness)),)
 
 
 def harness_capability_warning(harness_id: str, system_prompt: str) -> str:
