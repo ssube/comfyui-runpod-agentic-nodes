@@ -33,7 +33,7 @@ def main() -> int:
     node = RunLocalContainersNode()
 
     try:
-        result_text, _response, errors, _compose_yaml, saved_path = node.apply(
+        result_text, _response, errors, _compose_yaml, saved_path, _image = node.apply(
             deployment,
             engine=args.engine,
             prompt="Local keep-alive timeout smoke test.",

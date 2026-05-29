@@ -43,7 +43,7 @@ def main() -> int:
     deployment = build_deployment()
     node = RunLocalContainersNode()
     try:
-        result_text, response, errors, compose_yaml, saved_path = node.apply(
+        result_text, response, errors, compose_yaml, saved_path, _image = node.apply(
             deployment,
             engine=args.engine,
             prompt=(

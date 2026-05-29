@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -f "$repo_dir/.env.d/ollama.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$repo_dir/.env.d/ollama.env"
+  set +a
+fi
+
+exec "$repo_dir/venv/bin/python" -m tests.e2e.local_browser_screenshot_live "$@"

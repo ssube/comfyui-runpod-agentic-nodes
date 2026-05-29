@@ -62,7 +62,7 @@ def run_case(args: argparse.Namespace, case: str) -> dict[str, object]:
     deployment = build_deployment(case, report_path)
     node = RunLocalContainersNode()
     try:
-        result_text, response, errors, _compose_yaml, saved_path = node.apply(
+        result_text, response, errors, _compose_yaml, saved_path, _image = node.apply(
             deployment,
             engine=args.engine,
             prompt=f"Verify CRAG database skill for {case}.",

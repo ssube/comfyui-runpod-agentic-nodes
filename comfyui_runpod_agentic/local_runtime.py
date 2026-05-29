@@ -29,7 +29,7 @@ from .setup_commands import render_template
 DEFAULT_IMAGES = {
     "agent": "ubuntu:24.04",
     "browser:neko": "ghcr.io/m1k1o/neko/chromium:latest",
-    "browser:playwright": "mcr.microsoft.com/playwright:v1.56.1-noble",
+    "browser:playwright": "mcr.microsoft.com/playwright:v1.60.0-noble",
     "llm:ollama": "ollama/ollama:0.12.10",
     "llm:vllm": "vllm/vllm-openai:latest",
     "sql:postgres": "postgres:17.7",
@@ -115,6 +115,8 @@ def compose_yaml_for_plan(plan: DeploymentPlan, *, project_name: str = "crag-loc
         command = compose_command(resource, plan)
         if command:
             service["command"] = escape_compose_interpolation(command)
+        if resource.role == "browser":
+            service["shm_size"] = "2gb"
         service_volumes = []
         volume_mount = volume_mount_for_resource(resource)
         if volume_mount:
@@ -223,6 +225,8 @@ def compose_command(resource: ResourcePlan, plan: DeploymentPlan) -> str | None:
     env = resource.pod_input.get("env") or {}
     if resource.role == "llm" and env.get("LLM_PROVIDER") == "ollama":
         return "serve"
+    if resource.role == "browser" and env.get("BROWSER_KIND") == "playwright":
+        return "npx playwright run-server --host 0.0.0.0 --port 3000"
     return None
 
 
@@ -879,6 +883,48 @@ def read_local_runtime_file(
                 time.sleep(1)
                 continue
             return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id=container_id, command=logs_result.command, returncode=logs_result.returncode, stdout=logs_result.stdout, stderr=logs_result.stderr)
+        time.sleep(1)
+    return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id=container_id, command=command, returncode=1, stdout="", stderr=last_stderr)
+
+
+def copy_local_runtime_file(
+    engine: str,
+    project_name: str,
+    role: str,
+    path: str,
+    *,
+    timeout_seconds: int = 120,
+) -> LocalRuntimeReadResult:
+    deadline = time.time() + int(timeout_seconds)
+    last_stderr = ""
+    command: list[str] = []
+    container_id = ""
+    safe_project = re.sub(r"[^a-zA-Z0-9_.-]+", "-", project_name).strip("-") or "crag-local"
+    target_dir = Path("artifacts") / "local-runtime" / safe_project / "files"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / Path(path).name
+    while time.time() < deadline:
+        try:
+            container_id = find_local_runtime_container(engine, project_name, role) or ""
+        except RuntimeError as exc:
+            return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id="", command=command, returncode=127, stdout="", stderr=str(exc))
+        if not container_id:
+            last_stderr = f"No running {role} container found for project {project_name}."
+            time.sleep(1)
+            continue
+        try:
+            test_command = local_runtime_command(engine, ["exec", container_id, "sh", "-lc", f"test -s {shlex.quote(path)}"])
+            command = local_runtime_command(engine, ["cp", f"{container_id}:{path}", str(target_path)])
+        except RuntimeError as exc:
+            return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id=container_id, command=command, returncode=127, stdout="", stderr=str(exc))
+        test_result = subprocess.run(test_command, capture_output=True, text=True, timeout=min(10, int(timeout_seconds)), check=False)
+        if test_result.returncode == 0:
+            copy_result = subprocess.run(command, capture_output=True, text=True, timeout=min(30, int(timeout_seconds)), check=False)
+            if copy_result.returncode == 0:
+                return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id=container_id, command=command, returncode=0, stdout=str(target_path), stderr=copy_result.stderr)
+            last_stderr = copy_result.stderr
+        else:
+            last_stderr = test_result.stderr
         time.sleep(1)
     return LocalRuntimeReadResult(engine=engine, project_name=project_name, role=role, path=path, container_id=container_id, command=command, returncode=1, stdout="", stderr=last_stderr)
 

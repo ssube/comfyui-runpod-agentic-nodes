@@ -13,6 +13,7 @@ from comfyui_runpod_agentic.local_runtime import (
     apply_local_runtime_plan,
     command_for_engine,
     compose_yaml_for_plan,
+    copy_local_runtime_file,
     enforce_local_keep_alive,
     find_local_runtime_container,
     find_local_runtime_project_container,
@@ -36,6 +37,7 @@ from comfyui_runpod_agentic.local_runtime import (
 )
 from comfyui_runpod_agentic.nodes import (
     AgentNode,
+    BrowserNode,
     ComposeYAMLNode,
     DeployNode,
     KeepAliveNode,
@@ -99,6 +101,21 @@ def test_compose_yaml_resolves_database_host_placeholders():
     assert agent_env["DATABASE_HOST"].startswith("crag-")
     assert agent_env["DATABASE_URL"].startswith("postgresql://app:app@crag-")
     assert ":5432/app" in agent_env["DATABASE_URL"]
+
+
+def test_compose_yaml_configures_browser_services():
+    browser = BrowserNode().build("Playwright", "own_pod", "chromium")[0]
+    agent = AgentNode().build("Pi", "model", "manual", "/workspace", browser=browser)[0]
+    plan = Planner().build(DeployNode().build(agent)[0])
+
+    compose = yaml.safe_load(compose_yaml_for_plan(plan, project_name="crag-browser"))
+    browser_service = next(service for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "browser")
+    agent_env = next(service["environment"] for service in compose["services"].values() if service["environment"]["CRAG_ROLE"] == "agent")
+
+    assert browser_service["command"] == "npx playwright run-server --host 0.0.0.0 --port 3000"
+    assert browser_service["shm_size"] == "2gb"
+    assert agent_env["PLAYWRIGHT_WS_ENDPOINT"].startswith("http://")
+    assert agent_env["PLAYWRIGHT_WS_ENDPOINT"].endswith(":3000")
 
 
 def test_local_runtime_session_env_resolves_database_host_placeholders():
@@ -828,7 +845,7 @@ def test_apply_node_reads_response_file_after_up(monkeypatch, tmp_path):
 
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
 
-    result_text, response, errors, _compose_yaml, _saved_path = RunLocalContainersNode().apply(
+    result_text, response, errors, _compose_yaml, _saved_path, _image = RunLocalContainersNode().apply(
         deployment,
         engine="docker",
         project_name="crag-node",
@@ -866,7 +883,7 @@ def test_apply_node_waits_for_agent_response_instead_of_returning_startup_logs(m
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.time.sleep", lambda _seconds: None)
 
-    _result_text, response, errors, _compose_yaml, _saved_path = RunLocalContainersNode().apply(
+    _result_text, response, errors, _compose_yaml, _saved_path, _image = RunLocalContainersNode().apply(
         deployment,
         engine="docker",
         project_name="crag-node",
@@ -898,7 +915,7 @@ def test_apply_node_falls_back_to_completed_container_logs(monkeypatch, tmp_path
 
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
 
-    _result_text, response, errors, _compose_yaml, _saved_path = RunLocalContainersNode().apply(
+    _result_text, response, errors, _compose_yaml, _saved_path, _image = RunLocalContainersNode().apply(
         deployment,
         engine="docker",
         project_name="crag-node",
@@ -941,6 +958,44 @@ def test_read_local_runtime_file_fails_fast_when_container_exited(monkeypatch):
     ]
 
 
+def test_copy_local_runtime_file_waits_and_copies_artifact(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command == ["docker", "ps", "--format", "{{json .}}"]:
+            return SimpleNamespace(returncode=0, stdout='{"ID":"agent1","Names":"crag-node-agent"}\n', stderr="")
+        if command == ["docker", "inspect", "agent1"]:
+            return SimpleNamespace(returncode=0, stdout='[{"Config":{"Labels":{"comfyui-runpod-agentic.role":"agent"}}}]', stderr="")
+        if command == ["docker", "exec", "agent1", "sh", "-lc", "test -s /workspace/e2e/screenshot.png"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command == ["docker", "cp", "agent1:/workspace/e2e/screenshot.png", "artifacts/local-runtime/crag-node/files/screenshot.png"]:
+            target = tmp_path / command[-1]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"png")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=1, stdout="", stderr="unexpected command")
+
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.subprocess.run", fake_run)
+
+    result = copy_local_runtime_file("docker", "crag-node", "agent", "/workspace/e2e/screenshot.png", timeout_seconds=1)
+
+    assert result.returncode == 0
+    assert result.stdout == "artifacts/local-runtime/crag-node/files/screenshot.png"
+    assert (tmp_path / result.stdout).read_bytes() == b"png"
+    assert calls[-1] == ["docker", "cp", "agent1:/workspace/e2e/screenshot.png", "artifacts/local-runtime/crag-node/files/screenshot.png"]
+
+
+def test_copy_local_runtime_file_reports_runtime_errors(monkeypatch):
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.find_local_runtime_container", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("missing runtime")))
+
+    result = copy_local_runtime_file("docker", "crag-node", "agent", "/workspace/e2e/screenshot.png", timeout_seconds=1)
+
+    assert result.returncode == 127
+    assert result.stderr == "missing runtime"
+
+
 def test_missing_containerd_runtime_returns_error_result(monkeypatch, tmp_path):
     monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.shutil.which", lambda command: None)
     compose_path = tmp_path / "compose.yaml"
@@ -967,7 +1022,7 @@ def test_compose_export_and_apply_nodes_save_files(monkeypatch, tmp_path):
         "comfyui_runpod_agentic.local_runtime.subprocess.run",
         lambda command, **kwargs: SimpleNamespace(returncode=0, stdout="valid\n", stderr=""),
     )
-    result_text, response, errors, apply_yaml, apply_saved_path = RunLocalContainersNode().apply(deployment, engine="docker", project_name="crag-node", output_path=str(apply_path), action="plan")
+    result_text, response, errors, apply_yaml, apply_saved_path, _image = RunLocalContainersNode().apply(deployment, engine="docker", project_name="crag-node", output_path=str(apply_path), action="plan")
 
     assert apply_saved_path == str(apply_path)
     assert response == ""

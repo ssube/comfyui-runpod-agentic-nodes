@@ -28,17 +28,37 @@ def test_runpod_backend_delegates_apply_to_runner(monkeypatch):
         def __init__(self, progress=None):
             seen["progress"] = progress
 
-        def run(self, deployment, *, mode, prompt, workflow_graph, on_error):
-            seen["args"] = (mode, prompt, workflow_graph, on_error)
-            return {"status": "completed", "response": "reply", "errors": ""}
+        def run(self, deployment, *, mode, prompt, workflow_graph, on_error, response_image_path):
+            seen["args"] = (mode, prompt, workflow_graph, on_error, response_image_path)
+            return {"status": "completed", "response": "reply", "errors": "", "image_path": "artifacts/runpod/screenshot.png"}
 
     monkeypatch.setattr("comfyui_runpod_agentic.runner.RunpodRunner", FakeRunner)
 
-    result = RunpodBackend(progress=object()).apply(deployment, RuntimeOptions(action="apply", prompt="hello", workflow_graph={"id": 1}, on_error="leave_running"))
+    result = RunpodBackend(progress=object()).apply(deployment, RuntimeOptions(action="apply", prompt="hello", workflow_graph={"id": 1}, on_error="leave_running", response_image_path="/workspace/screenshot.png"))
 
     assert result.response == "reply"
-    assert seen["args"] == ("apply", "hello", {"id": 1}, "leave_running")
+    assert result.artifacts["image_path"] == "artifacts/runpod/screenshot.png"
+    assert seen["args"] == ("apply", "hello", {"id": 1}, "leave_running", "/workspace/screenshot.png")
     assert seen["progress"] is not None
+
+
+def test_runpod_backend_supports_legacy_runner_without_image_argument(monkeypatch):
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent)[0]
+
+    class LegacyRunner:
+        def __init__(self, progress=None):
+            pass
+
+        def run(self, deployment, *, mode, prompt, workflow_graph, on_error):
+            return {"status": "completed", "response": "legacy reply", "errors": ""}
+
+    monkeypatch.setattr("comfyui_runpod_agentic.runner.RunpodRunner", LegacyRunner)
+
+    result = RunpodBackend().apply(deployment, RuntimeOptions(action="apply", response_image_path="/workspace/screenshot.png"))
+
+    assert result.response == "legacy reply"
+    assert result.artifacts["image_path"] == ""
 
 
 def test_local_backend_preserves_apply_payload_and_artifacts(monkeypatch, tmp_path):
@@ -56,7 +76,66 @@ def test_local_backend_preserves_apply_payload_and_artifacts(monkeypatch, tmp_pa
     result = LocalContainerBackend().apply(deployment, RuntimeOptions(action="apply", engine="docker", output_path=str(output_path), response_timeout_seconds=0))
 
     assert result.payload["reused"] is True
-    assert result.artifacts == {"compose_yaml": "services: {}\n", "saved_path": str(output_path)}
+    assert result.artifacts == {"compose_yaml": "services: {}\n", "saved_path": str(output_path), "image_path": ""}
+
+
+def test_local_backend_collects_response_image_artifact(monkeypatch, tmp_path):
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent)[0]
+    output_path = tmp_path / "compose.yaml"
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.compose_yaml_for_plan", lambda *_args, **_kwargs: "services: {}\n")
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.write_compose_file", lambda *_args, **_kwargs: str(output_path))
+    monkeypatch.setattr(
+        "comfyui_runpod_agentic.local_runtime.apply_local_runtime_plan",
+        lambda *_args, **_kwargs: (LocalApplyResult("docker", "apply", str(output_path), ["docker"], 0, "up\n", ""), False),
+    )
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.enforce_local_keep_alive", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.read_local_runtime_file", lambda *_args, **_kwargs: type("Read", (), {"stdout": "reply", "stderr": ""})())
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.copy_local_runtime_file", lambda *_args, **_kwargs: type("Read", (), {"returncode": 0, "stdout": "artifacts/screenshot.png\n", "stderr": ""})())
+
+    result = LocalContainerBackend().apply(
+        deployment,
+        RuntimeOptions(
+            action="apply",
+            engine="docker",
+            output_path=str(output_path),
+            response_path="/workspace/response.txt",
+            response_image_path="/workspace/screenshot.png",
+            response_timeout_seconds=1,
+        ),
+    )
+
+    assert result.response == "reply"
+    assert result.artifacts["image_path"] == "artifacts/screenshot.png"
+
+
+def test_local_backend_reports_response_image_copy_errors(monkeypatch, tmp_path):
+    agent = AgentNode().build("Pi", "model", "manual")[0]
+    deployment = DeployNode().build(agent)[0]
+    output_path = tmp_path / "compose.yaml"
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.compose_yaml_for_plan", lambda *_args, **_kwargs: "services: {}\n")
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.write_compose_file", lambda *_args, **_kwargs: str(output_path))
+    monkeypatch.setattr(
+        "comfyui_runpod_agentic.local_runtime.apply_local_runtime_plan",
+        lambda *_args, **_kwargs: (LocalApplyResult("docker", "apply", str(output_path), ["docker"], 0, "up\n", ""), False),
+    )
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.enforce_local_keep_alive", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.read_local_runtime_file", lambda *_args, **_kwargs: type("Read", (), {"stdout": "", "stderr": ""})())
+    monkeypatch.setattr("comfyui_runpod_agentic.local_runtime.copy_local_runtime_file", lambda *_args, **_kwargs: type("Read", (), {"returncode": 1, "stdout": "", "stderr": "missing screenshot"})())
+
+    result = LocalContainerBackend().apply(
+        deployment,
+        RuntimeOptions(
+            action="apply",
+            engine="docker",
+            output_path=str(output_path),
+            response_image_path="/workspace/screenshot.png",
+            response_timeout_seconds=1,
+        ),
+    )
+
+    assert result.errors == "missing screenshot"
+    assert result.artifacts["image_path"] == ""
 
 
 def test_container_build_backend_commits_agent_container_from_host_runtime(monkeypatch, tmp_path):

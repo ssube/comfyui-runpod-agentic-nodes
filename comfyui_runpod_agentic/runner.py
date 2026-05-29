@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import secrets
@@ -56,7 +57,7 @@ class RunpodRunner:
         if self.planner is None:
             self.planner = Planner()
 
-    def run(self, deployment: DeploymentSpec, *, mode: str, prompt: str = "", workflow_graph: Any = None, on_error: str = "stop_created") -> dict[str, Any]:
+    def run(self, deployment: DeploymentSpec, *, mode: str, prompt: str = "", workflow_graph: Any = None, on_error: str = "stop_created", response_image_path: str = "") -> dict[str, Any]:
         validate_deployment(deployment, mode=mode, require_api_key=True)
         plan = self.planner.build(deployment, mode=mode, prompt=prompt, workflow_graph=workflow_graph)
         self._set_progress_total(plan)
@@ -65,7 +66,7 @@ class RunpodRunner:
         try:
             if mode in {"stop", "terminate"}:
                 return self._lifecycle(plan, mode)
-            result = self._apply(plan, wait=mode == "apply_and_wait")
+            result = self._apply(plan, wait=mode == "apply_and_wait", response_image_path=response_image_path)
             self.state_store.record_run(plan.run_id, plan.workflow_hash, plan.deployment_hash, mode, "completed")
             self._progress_step("completed")
             return result
@@ -76,7 +77,7 @@ class RunpodRunner:
                 self._cleanup_created(plan, terminate=on_error == "terminate_created")
             raise
 
-    def _apply(self, plan: DeploymentPlan, *, wait: bool) -> dict[str, Any]:
+    def _apply(self, plan: DeploymentPlan, *, wait: bool, response_image_path: str = "") -> dict[str, Any]:
         plan = materialize_generated_tokens(plan)
         plan = self._materialize_network_volumes(plan)
         created: dict[str, dict[str, Any]] = {}
@@ -101,11 +102,16 @@ class RunpodRunner:
         host, port = self._wait_ssh_endpoint(agent_pod, plan)
         self._wait_ssh_ready(host, port)
         response, errors = self._run_agent_ssh_steps(plan, host, port, resource_ids.get(agent.name), wait=wait)
+        image_path = ""
+        if wait and response_image_path.strip():
+            image_path = self._copy_remote_image_file(plan.run_id, host, port, response_image_path.strip())
         keep_alive_result = self._enforce_response_keep_alive(plan, agent_pod, response_collected=bool(response))
         status = "waiting" if wait else "launched"
         if wait and response:
             status = "completed"
         result = {"run_id": plan.run_id, "status": status, "pods": {name: pod.get("id") for name, pod in created.items()}, "response": response, "errors": errors, "plan": plan.to_dict()}
+        if image_path:
+            result["image_path"] = image_path
         terminal_urls = terminal_urls_for_pods(plan, created)
         if terminal_urls:
             result["terminal_urls"] = terminal_urls
@@ -287,6 +293,17 @@ class RunpodRunner:
         if result.exit_code != 0:
             return None
         return result.stdout
+
+    def _copy_remote_image_file(self, run_id: str, host: str, port: int, path: str) -> str:
+        result = self.ssh_client.run(host, port, f"test -s {shell_env(path)} && base64 -w 0 {shell_env(path)}", timeout_seconds=60)
+        if result.exit_code != 0 or not result.stdout.strip():
+            return ""
+        target_dir = Path("artifacts") / "runpod" / run_id / "files"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = target_dir / Path(path).name
+        target_path.write_bytes(base64.b64decode(result.stdout.strip()))
+        self.state_store.add_event(run_id, "agent_image_collected", path, payload={"local_path": str(target_path)})
+        return str(target_path)
 
     def _enforce_response_keep_alive(self, plan: DeploymentPlan, agent_pod: dict[str, Any], *, response_collected: bool) -> dict[str, Any] | None:
         policy = plan.keep_alive

@@ -185,6 +185,9 @@ class BrowserNode:
                 capabilities.append("playwright")
         else:
             values["NEKO_URL"] = "crag://browser/neko"
+            values["NEKO_MEMBER_MULTIUSER_USER_PASSWORD"] = "neko"
+            values["NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD"] = "admin"
+            values["NEKO_DESKTOP_SCREEN"] = "1280x720@30"
             ports.append(PortSpec(name="neko", container_port=8080, protocol="http", public=True))
         return (
             BrowserSpec(
@@ -1295,8 +1298,8 @@ class DeployNode:
 
 class RunOnRunpodNode:
     CATEGORY = "Runpod/Core"
-    RETURN_TYPES = (RUNPOD_RUN_RESULT, "STRING", "STRING")
-    RETURN_NAMES = ("result", "response", "errors")
+    RETURN_TYPES = (RUNPOD_RUN_RESULT, "STRING", "STRING", "IMAGE")
+    RETURN_NAMES = ("result", "response", "errors", "image")
     FUNCTION = "run"
     OUTPUT_NODE = True
 
@@ -1324,6 +1327,7 @@ class RunOnRunpodNode:
                 "reuse_policy": (["reuse_matching", "always_create", "resume_stopped"],),
                 "on_error": (["stop_created", "terminate_created", "leave_running"],),
                 "log_level": (["info", "debug"],),
+                "response_image_path": ("STRING", {"default": ""}),
             },
             "optional": {"ssh_access": (RUNPOD_SSH_ACCESS_POLICY,)},
             "hidden": {"workflow_graph": "PROMPT"},
@@ -1344,30 +1348,53 @@ class RunOnRunpodNode:
         reuse_policy: str = "reuse_matching",
         on_error: str = "stop_created",
         log_level: str = "info",
+        response_image_path: str = "",
         ssh_access=None,
         workflow_graph: Any = None,
     ):
         progress = ComfyProgress()
         deployment = with_terminal_options(deployment, gpu_type_id=gpu_type_id, gpu_count=gpu_count, vcpu_count=vcpu_count, cloud_type=cloud_type, container_disk_gb=container_disk_gb, volume_gb=volume_gb, expose_public_ip=expose_public_ip, reuse_policy=reuse_policy, ssh_access=ssh_access)
         backend = RunpodBackend(progress=progress)
-        options = RuntimeOptions(action=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error)
+        options = RuntimeOptions(action=mode, prompt=prompt, workflow_graph=workflow_graph, on_error=on_error, response_image_path=response_image_path)
         if mode != "plan":
             result = getattr(backend, mode)(deployment, options)
-            output = runtime_node_output(result, self.RETURN_NAMES)
+            output = (*runtime_node_output(result, self.RETURN_NAMES[:-1]), comfy_image_from_path(result.artifacts.get("image_path", "")))
             return comfy_output(output, workflow_graph, self.RETURN_NAMES)
         plan = backend.plan(deployment, options)
-        output = (json.dumps(plan.to_dict(), indent=2, sort_keys=True), "", "")
+        output = (json.dumps(plan.to_dict(), indent=2, sort_keys=True), "", "", blank_comfy_image())
         return comfy_output(output, workflow_graph, self.RETURN_NAMES)
 
 
-def comfy_output(result: tuple[str, ...], workflow_graph: Any, names: tuple[str, ...] | None = None):
+def comfy_output(result: tuple[Any, ...], workflow_graph: Any, names: tuple[str, ...] | None = None):
     if workflow_graph is None:
         return result
     ui: dict[str, list[str]] = {"text": [result[0]]}
     if names is not None:
         for name, value in zip(names, result, strict=False):
-            ui[name] = [value]
+            if isinstance(value, str):
+                ui[name] = [value]
     return {"ui": ui, "result": result}
+
+
+def blank_comfy_image():
+    import torch
+
+    return torch.zeros((1, 1, 1, 3), dtype=torch.float32)
+
+
+def comfy_image_from_path(path: str):
+    if not path:
+        return blank_comfy_image()
+    image_path = Path(path)
+    if not image_path.is_file():
+        return blank_comfy_image()
+    import numpy as np
+    import torch
+    from PIL import Image
+
+    image = Image.open(image_path).convert("RGB")
+    array = np.asarray(image).astype(np.float32) / 255.0
+    return torch.from_numpy(array).unsqueeze(0)
 
 
 class TextTemplateNode:
@@ -1584,8 +1611,8 @@ class ComposeYAMLNode:
 
 class RunLocalContainersNode:
     CATEGORY = "Runpod/Local"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("result", "response", "errors", "compose_yaml", "saved_path")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "IMAGE")
+    RETURN_NAMES = ("result", "response", "errors", "compose_yaml", "saved_path", "image")
     FUNCTION = "apply"
     OUTPUT_NODE = True
 
@@ -1609,6 +1636,7 @@ class RunLocalContainersNode:
                 "timeout_seconds": ("INT", {"default": 1800, "min": 1}),
                 "response_role": ("STRING", {"default": "agent"}),
                 "response_path": ("STRING", {"default": "/workspace/e2e/agent-skill-report.txt"}),
+                "response_image_path": ("STRING", {"default": ""}),
                 "response_timeout_seconds": ("INT", {"default": 120, "min": 0}),
                 "reuse_policy": (["reuse_matching", "always_create", "resume_stopped"],),
             },
@@ -1627,6 +1655,7 @@ class RunLocalContainersNode:
         timeout_seconds: int = 1800,
         response_role: str = "agent",
         response_path: str = "/workspace/e2e/agent-skill-report.txt",
+        response_image_path: str = "",
         response_timeout_seconds: int = 120,
         reuse_policy: str = "reuse_matching",
         workflow_graph: Any = None,
@@ -1646,10 +1675,15 @@ class RunLocalContainersNode:
                 timeout_seconds=int(timeout_seconds),
                 response_role=response_role,
                 response_path=response_path,
+                response_image_path=response_image_path,
                 response_timeout_seconds=int(response_timeout_seconds),
             ),
         )
-        output = runtime_node_output(result, self.RETURN_NAMES, (result.artifacts.get("compose_yaml", ""), result.artifacts.get("saved_path", "")))
+        output = runtime_node_output(
+            result,
+            self.RETURN_NAMES,
+            (result.artifacts.get("compose_yaml", ""), result.artifacts.get("saved_path", ""), comfy_image_from_path(result.artifacts.get("image_path", ""))),
+        )
         return comfy_output(output, workflow_graph, self.RETURN_NAMES)
 
 

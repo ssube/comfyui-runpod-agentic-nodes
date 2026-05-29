@@ -1,0 +1,116 @@
+{
+  "1": {
+    "class_type": "Browser",
+    "inputs": {
+      "browser": "Playwright",
+      "placement": "own_pod",
+      "browser_engine": "chromium"
+    }
+  },
+  "2": {
+    "class_type": "LLMApi",
+    "inputs": {
+      "provider": "Ollama Cloud",
+      "model": "deepseek-v4-flash",
+      "api_key_secret_name": "OLLAMA_API_KEY",
+      "base_url_override": ""
+    }
+  },
+  "3": {
+    "class_type": "LanguageRuntime",
+    "inputs": {
+      "runtime": "python",
+      "node_major_version": 22,
+      "failure_policy": "fail",
+      "retry_count": 0
+    }
+  },
+  "4": {
+    "class_type": "Package",
+    "inputs": {
+      "previous": [
+        "3",
+        0
+      ],
+      "package_manager": "pip",
+      "packages": "playwright requests",
+      "failure_policy": "fail",
+      "retry_count": 0
+    }
+  },
+  "5": {
+    "class_type": "SSHCommand",
+    "inputs": {
+      "previous": [
+        "4",
+        0
+      ],
+      "command": "set -e\npython3 -m playwright install --with-deps chromium\nmkdir -p /workspace/e2e",
+      "phase": "before_start",
+      "failure_policy": "fail",
+      "retry_count": 0
+    }
+  },
+  "6": {
+    "class_type": "Agent",
+    "inputs": {
+      "harness": "Pi",
+      "model": "deepseek-v4-flash",
+      "startup_mode": "auto_start",
+      "workspace_path": "/workspace",
+      "system_prompt": "Use Python Playwright when asked for browser screenshots. Save images exactly where the user requests.",
+      "browser": [
+        "1",
+        0
+      ],
+      "llm": [
+        "2",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "Deploy",
+    "inputs": {
+      "app": [
+        "6",
+        0
+      ],
+      "commands": [
+        "5",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "RunLocalContainers",
+    "inputs": {
+      "prompt": "Take a browser screenshot of https://example.com using the configured Playwright browser. Save it to /workspace/e2e/browser-screenshot.png and reply with the saved path.",
+      "deployment": [
+        "7",
+        0
+      ],
+      "engine": "containerd",
+      "project_name": "crag-local-browser-screenshot-save-image",
+      "output_path": "artifacts/local-runtime/browser-screenshot-save-image-compose.yaml",
+      "action": "apply_and_wait",
+      "use_sudo": true,
+      "timeout_seconds": 1200,
+      "response_role": "agent",
+      "response_path": "/workspace/.runpod_agentic/response.txt",
+      "response_image_path": "/workspace/e2e/browser-screenshot.png",
+      "response_timeout_seconds": 1200,
+      "reuse_policy": "always_create"
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "crag/browser-screenshot",
+      "images": [
+        "8",
+        5
+      ]
+    }
+  }
+}

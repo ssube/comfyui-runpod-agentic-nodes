@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from comfyui_runpod_agentic import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 from comfyui_runpod_agentic.harnesses import CENTRAL_SKILLS_PATH, harness_matrix_rows
@@ -33,6 +34,7 @@ from comfyui_runpod_agentic.nodes import (
     TextTemplateNode,
     VectorDatabaseNode,
     WebTerminalNode,
+    comfy_image_from_path,
     local_terminal_auth,
     local_terminal_urls,
     with_terminal_options,
@@ -200,8 +202,27 @@ def test_run_nodes_emit_comfy_ui_text_when_called_by_graph(tmp_path):
 
     assert result["ui"]["text"]
     assert result["result"][0] == result["ui"]["text"][0]
+    assert tuple(result["result"][5].shape) == (1, 1, 1, 3)
+    assert "image" not in result["ui"]
     payload = json.loads(result["result"][0])
     assert "terminal_auth" not in payload
+
+
+def test_comfy_image_from_path_loads_rgb_tensor(tmp_path):
+    image_path = tmp_path / "screenshot.png"
+    Image.new("RGB", (3, 2), color=(255, 0, 0)).save(image_path)
+
+    image = comfy_image_from_path(str(image_path))
+
+    assert tuple(image.shape) == (1, 2, 3, 3)
+    assert image[0, 0, 0, 0].item() == 1.0
+    assert image[0, 0, 0, 1].item() == 0.0
+
+
+def test_comfy_image_from_path_returns_blank_for_missing_file(tmp_path):
+    image = comfy_image_from_path(str(tmp_path / "missing.png"))
+
+    assert tuple(image.shape) == (1, 1, 1, 3)
 
 
 def test_runpod_node_plan_and_apply_outputs(monkeypatch):
@@ -230,6 +251,7 @@ def test_runpod_node_plan_and_apply_outputs(monkeypatch):
     apply_output = RunOnRunpodNode().run(deployment, mode="apply", prompt="hello", on_error="terminate_created", workflow_graph={})
 
     assert apply_output["ui"]["response"] == ["agent reply"]
+    assert tuple(apply_output["result"][3].shape) == (1, 1, 1, 3)
     assert json.loads(apply_output["result"][0])["status"] == "completed"
 
 
@@ -328,6 +350,17 @@ def test_pi_ollama_terminal_example_attaches_ttyd_to_tmux_session():
     assert workflow["5"]["inputs"]["provider"] == "Ollama Cloud"
     assert workflow["6"]["inputs"]["startup_mode"] == "manual"
     assert workflow["8"]["inputs"]["action"] == "apply"
+
+
+def test_browser_screenshot_example_routes_run_image_to_save_image():
+    workflow = json.loads(Path("examples/workflows/api_local_browser_screenshot_save_image.json").read_text())
+
+    assert workflow["1"]["class_type"] == "Browser"
+    assert workflow["1"]["inputs"]["placement"] == "own_pod"
+    assert workflow["8"]["class_type"] == "RunLocalContainers"
+    assert workflow["8"]["inputs"]["response_image_path"] == "/workspace/e2e/browser-screenshot.png"
+    assert workflow["9"]["class_type"] == "SaveImage"
+    assert workflow["9"]["inputs"]["images"] == ["8", 5]
 
 
 def test_agent_song_album_art_example_wires_text_agents_to_ace_and_flux():

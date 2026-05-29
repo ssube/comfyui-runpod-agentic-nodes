@@ -49,7 +49,7 @@ def run_harness(args: argparse.Namespace, harness: str, binary: str) -> dict[str
     deployment = build_deployment(harness, binary, report_path)
     node = RunLocalContainersNode()
     try:
-        result_text, response, errors, _compose_yaml, saved_path = node.apply(
+        result_text, response, errors, _compose_yaml, saved_path, _image = node.apply(
             deployment,
             engine=args.engine,
             prompt=f"Install {harness} harness and collect CLI metadata.",

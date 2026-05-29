@@ -23,6 +23,7 @@ class RuntimeOptions:
     timeout_seconds: int = 1800
     response_role: str = "agent"
     response_path: str = "/workspace/e2e/agent-skill-report.txt"
+    response_image_path: str = ""
     response_timeout_seconds: int = 120
     image_tag: str = ""
     container_runtime: str = "nerdctl"
@@ -84,10 +85,15 @@ class RunpodBackend:
                 runner = runner_module.RunpodRunner(progress=self.progress)
             except TypeError:
                 runner = runner_module.RunpodRunner()
-            payload = runner.run(deployment, mode=options.action, prompt=options.prompt, workflow_graph=options.workflow_graph, on_error=options.on_error)
+            try:
+                payload = runner.run(deployment, mode=options.action, prompt=options.prompt, workflow_graph=options.workflow_graph, on_error=options.on_error, response_image_path=options.response_image_path)
+            except TypeError as exc:
+                if "response_image_path" not in str(exc):
+                    raise
+                payload = runner.run(deployment, mode=options.action, prompt=options.prompt, workflow_graph=options.workflow_graph, on_error=options.on_error)
         except Exception as exc:
             payload = {"status": "failed", "mode": options.action, "error": str(exc), "errors": str(exc)}
-        return RuntimeResult(payload=payload, response=str(payload.get("response") or ""), errors=str(payload.get("errors") or ""))
+        return RuntimeResult(payload=payload, response=str(payload.get("response") or ""), errors=str(payload.get("errors") or ""), artifacts={"image_path": str(payload.get("image_path") or "")})
 
 
 class LocalContainerBackend:
@@ -125,6 +131,7 @@ class LocalContainerBackend:
             result, reused = local_runtime.apply_local_runtime_plan(options.engine, saved_path, project, plan, action=options.action, timeout_seconds=int(options.timeout_seconds))
             response = ""
             response_errors = ""
+            image_artifact_path = ""
             keep_alive_result = None
             if options.action in {"apply", "apply_and_wait"} and result.returncode == 0:
                 keep_alive_result = local_runtime.enforce_local_keep_alive(options.engine, saved_path, project, plan, response_collected=False)
@@ -134,6 +141,18 @@ class LocalContainerBackend:
                     response_errors = read_result.stderr
                     response_keep_alive_result = local_runtime.enforce_local_keep_alive(options.engine, saved_path, project, plan, response_collected=bool(response))
                     keep_alive_result = response_keep_alive_result or keep_alive_result
+                if options.response_image_path.strip() and int(options.response_timeout_seconds) > 0:
+                    image_read = local_runtime.copy_local_runtime_file(
+                        options.engine,
+                        project,
+                        options.response_role.strip() or "agent",
+                        options.response_image_path.strip(),
+                        timeout_seconds=int(options.response_timeout_seconds),
+                    )
+                    if image_read.returncode == 0:
+                        image_artifact_path = image_read.stdout.strip()
+                    else:
+                        response_errors = "\n".join(part for part in (response_errors, image_read.stderr) if part)
         finally:
             if old_sudo is None:
                 os.environ.pop("CRAG_LOCAL_RUNTIME_SUDO", None)
@@ -150,7 +169,7 @@ class LocalContainerBackend:
         if keep_alive_result:
             payload["keep_alive"] = json.loads(keep_alive_result.to_text())
         errors = "\n".join(part for part in (result.stderr, response_errors, keep_alive_result.stderr if keep_alive_result else "") if part)
-        return RuntimeResult(payload=payload, response=response, errors=errors, artifacts={"compose_yaml": compose_yaml, "saved_path": saved_path})
+        return RuntimeResult(payload=payload, response=response, errors=errors, artifacts={"compose_yaml": compose_yaml, "saved_path": saved_path, "image_path": image_artifact_path})
 
 
 class ContainerBuildBackend:
@@ -247,7 +266,7 @@ def commit_local_container_image(engine: str, container_id: str, options: Runtim
     return subprocess.CompletedProcess(commands[-1] if commands else [], 0, "\n".join(stdout), "\n".join(stderr))
 
 
-def runtime_node_output(result: RuntimeResult, names: tuple[str, ...], extra: tuple[str, ...] = ()) -> tuple[str, ...]:
+def runtime_node_output(result: RuntimeResult, names: tuple[str, ...], extra: tuple[Any, ...] = ()) -> tuple[Any, ...]:
     values = (result.json_text(), result.response, result.errors, *extra)
     return values[: len(names)]
 

@@ -91,7 +91,7 @@
     {
       "containerDiskInGb": 10,
       "dockerArgs": "sleep infinity",
-      "imageName": "mcr.microsoft.com/playwright:v1.56.1-noble",
+      "imageName": "mcr.microsoft.com/playwright:v1.60.0-noble",
       "key": "rp-browser-playwright",
       "name": "crag-browser-playwright",
       "ports": "3000/http,22/tcp",

@@ -1,3 +1,4 @@
+import base64
 import os
 import subprocess
 from dataclasses import replace
@@ -420,6 +421,28 @@ def test_runner_apply_and_wait_collects_agent_response_file(tmp_path, monkeypatc
     assert any(event["event_type"] == "agent_response_collected" for event in runner.state_store.list_events(result["run_id"]))
 
 
+def test_runner_apply_and_wait_collects_agent_image_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("RUNPOD_API_KEY", "test")
+    monkeypatch.setenv("CRAG_AGENT_RESPONSE_TIMEOUT_SECONDS", "1")
+    agent = AgentNode().build("Pi", "model", "wait_for_commands")[0]
+    deployment = DeployNode().build(agent)[0]
+    image_bytes = b"\x89PNG\r\n\x1a\nimage"
+    ssh = FakeSSHClient(
+        outputs={
+            "test -s '/workspace/.runpod_agentic/response.txt' && cat '/workspace/.runpod_agentic/response.txt'": ("agent done\n", ""),
+            "test -s '/workspace/.runpod_agentic/errors.txt' && cat '/workspace/.runpod_agentic/errors.txt'": ("", ""),
+            "test -s '/workspace/e2e/screenshot.png' && base64 -w 0 '/workspace/e2e/screenshot.png'": (base64.b64encode(image_bytes).decode(), ""),
+        }
+    )
+    runner = RunpodRunner(runpod_client=FakeRunpodClient(), ssh_client=ssh, state_store=StateStore(tmp_path / "state.sqlite"))
+
+    result = runner.run(deployment, mode="apply_and_wait", response_image_path="/workspace/e2e/screenshot.png")
+
+    assert Path(result["image_path"]).read_bytes() == image_bytes
+    assert any(event["event_type"] == "agent_image_collected" for event in runner.state_store.list_events(result["run_id"]))
+
+
 def test_runner_apply_and_wait_does_not_return_agent_log_as_response(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "test")
     monkeypatch.setenv("CRAG_AGENT_RESPONSE_TIMEOUT_SECONDS", "1")
@@ -520,11 +543,12 @@ def test_run_node_plan_exposes_response_and_errors_slots():
     agent = AgentNode().build("Pi", "model", "manual")[0]
     deployment = DeployNode().build(agent)[0]
 
-    result, response, errors = RunOnRunpodNode().run(deployment, mode="plan")
+    result, response, errors, image = RunOnRunpodNode().run(deployment, mode="plan")
 
     assert '"resources"' in result
     assert response == ""
     assert errors == ""
+    assert tuple(image.shape) == (1, 1, 1, 3)
 
 
 def test_run_node_apply_returns_errors_without_losing_output_slots(monkeypatch):
@@ -536,11 +560,12 @@ def test_run_node_apply_returns_errors_without_losing_output_slots(monkeypatch):
     agent = AgentNode().build("Pi", "model", "manual")[0]
     deployment = DeployNode().build(agent)[0]
 
-    result, response, errors = RunOnRunpodNode().run(deployment, mode="apply")
+    result, response, errors, image = RunOnRunpodNode().run(deployment, mode="apply")
 
     assert '"status": "failed"' in result
     assert response == ""
     assert errors == "remote apply failed"
+    assert tuple(image.shape) == (1, 1, 1, 3)
 
 
 def test_runner_apply_waits_for_dependency_endpoint(tmp_path, monkeypatch):

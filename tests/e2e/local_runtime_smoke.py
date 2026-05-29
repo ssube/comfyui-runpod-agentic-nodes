@@ -37,7 +37,7 @@ def main() -> int:
     node = RunLocalContainersNode()
 
     try:
-        up_result_text, response, errors, compose_yaml, saved_path = node.apply(
+        up_result_text, response, errors, compose_yaml, saved_path, _image = node.apply(
             deployment,
             engine=args.engine,
             prompt="Local runtime smoke test.",
